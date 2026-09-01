@@ -6,18 +6,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let platformOps = AppKitPlatformOps()
-        let orchestrator = Orchestrator(platformOps: platformOps)
-        self.orchestrator = orchestrator
+        let configURL = WidgetConfig.defaultConfigURL
 
+        let config: WidgetConfig
         do {
-            let config = try WidgetConfig.load(from: WidgetConfig.defaultConfigURL)
-            orchestrator.start(config: config)
+            config = try WidgetConfig.load(from: configURL)
         } catch {
-            fatalError("Failed to load widget config from \(WidgetConfig.defaultConfigURL.path): \(error)")
+            fatalError("Failed to load widget config from \(configURL.path): \(error)")
         }
+
+        let orchestrator = Orchestrator(platformOps: platformOps) { windowState in
+            try? config.updatingWindowState(windowState).write(to: configURL)
+        }
+        self.orchestrator = orchestrator
+        orchestrator.start(config: config)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        orchestrator?.persistCurrentWindowState()
     }
 }
