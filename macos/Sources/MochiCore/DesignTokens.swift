@@ -196,6 +196,10 @@ public enum DesignTokens {
         public static let addressFieldHeight: Double = 30
 
         public static let emptyPageGlassPanelCornerRadius: Double = 24
+
+        /// The uniform stroke weight `DesignIcon` paths are drawn with — matching
+        /// docs/design-language.md's "统一描边粗细、圆角端点" (even stroke weight, rounded caps).
+        public static let iconStrokeWidth: Double = 1.75
     }
 
     /// One control in a toolbar's fixed left-to-right button order.
