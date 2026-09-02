@@ -24,14 +24,21 @@ final class FakePlatformOps: PlatformOps {
     private(set) var snapThresholdChanges: [(threshold: Double, windowID: Int)] = []
     private(set) var trayMenuItems: [TrayMenuItem] = []
     private(set) var terminateAppCallCount = 0
+    private(set) var summonedToolbarVisibilityChanges: [(visible: Bool, windowID: Int)] = []
+    private(set) var reloadedWindowIDs: [Int] = []
+    private(set) var windowFrameChanges: [(frame: WindowFrame, windowID: Int)] = []
+    private(set) var accessibilityPermissionRequestCount = 0
+    private(set) var forwardedKeystrokes: [Hotkey] = []
     private var willCloseHandlers: [Int: () -> Void] = [:]
     private var urlSubmittedHandlers: [Int: (URL) -> Void] = [:]
     private var pinnedChangedHandlers: [Int: (Bool) -> Void] = [:]
     private var navigationFinishedHandlers: [Int: () -> Void] = [:]
     private var mouseEnteredHandlers: [Int: () -> Void] = [:]
+    private var summonedToolbarGhostModeToggleHandlers: [Int: () -> Void] = [:]
     private var hotkeyHandlers: [() -> Void] = []
 
     var stubbedHotkeyRegistrationSucceeds = true
+    var stubbedAccessibilityTrusted = true
 
     var stubbedScreens: [CGRect] = [CGRect(x: 0, y: 0, width: 1440, height: 900)]
     var stubbedCapturedWindowState = WindowState(
@@ -157,6 +164,16 @@ final class FakePlatformOps: PlatformOps {
         hotkeyHandlers[index]()
     }
 
+    /// Looks up the handler by matching the hotkey itself rather than a positional index —
+    /// insulates tests from `Orchestrator`'s internal hotkey-registration order. Only correct
+    /// when every registration up to and including a match succeeded (true whenever
+    /// `stubbedHotkeyRegistrationSucceeds` is left at its default), since `hotkeyHandlers` only
+    /// contains successful registrations while `registeredHotkeys` contains every attempt.
+    func simulateHotkeyPressed(_ hotkey: Hotkey) {
+        guard let index = registeredHotkeys.firstIndex(of: hotkey) else { return }
+        hotkeyHandlers[index]()
+    }
+
     func presentAlert(title: String, message: String) {
         presentedAlerts.append((title, message))
     }
@@ -172,5 +189,41 @@ final class FakePlatformOps: PlatformOps {
 
     func terminateApp() {
         terminateAppCallCount += 1
+    }
+
+    func setSummonedToolbarVisible(_ visible: Bool, in window: WidgetWindowHandle) {
+        let handle = window as! FakeWidgetWindowHandle
+        summonedToolbarVisibilityChanges.append((visible, handle.id))
+    }
+
+    func onSummonedToolbarGhostModeToggleRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {
+        let handle = window as! FakeWidgetWindowHandle
+        summonedToolbarGhostModeToggleHandlers[handle.id] = handler
+    }
+
+    func simulateSummonedToolbarGhostModeToggleRequested(windowID: Int = 1) {
+        summonedToolbarGhostModeToggleHandlers[windowID]?()
+    }
+
+    func reloadPage(in window: WidgetWindowHandle) {
+        let handle = window as! FakeWidgetWindowHandle
+        reloadedWindowIDs.append(handle.id)
+    }
+
+    func setWindowFrame(_ frame: WindowFrame, in window: WidgetWindowHandle) {
+        let handle = window as! FakeWidgetWindowHandle
+        windowFrameChanges.append((frame, handle.id))
+    }
+
+    func isAccessibilityTrusted() -> Bool {
+        stubbedAccessibilityTrusted
+    }
+
+    func requestAccessibilityPermission() {
+        accessibilityPermissionRequestCount += 1
+    }
+
+    func forwardKeystroke(_ keystroke: Hotkey) {
+        forwardedKeystrokes.append(keystroke)
     }
 }

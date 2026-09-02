@@ -165,14 +165,24 @@ import Testing
         #expect(fake.injectedScripts.count == BuiltInScripts.all.count)
     }
 
-    @Test func registersTheDefaultGhostModeHotkeyOnStart() {
+    @Test func registersAllDefaultHotkeysOnStartInAFixedOrder() {
         let fake = FakePlatformOps()
         let orchestrator = Orchestrator(platformOps: fake)
         let config = WidgetConfig(url: URL(string: "https://example.com")!)
 
         orchestrator.start(config: config)
 
-        #expect(fake.registeredHotkeys == [DefaultHotkeys.toggleGhostMode])
+        #expect(
+            fake.registeredHotkeys == [
+                DefaultHotkeys.toggleGhostMode,
+                DefaultHotkeys.summonToolbar,
+                DefaultHotkeys.reloadPage,
+                DefaultHotkeys.zoomIn,
+                DefaultHotkeys.zoomOut,
+                DefaultHotkeys.quickHideWidget,
+                DefaultHotkeys.resizeWindow,
+                DefaultHotkeys.togglePin,
+            ])
     }
 
     @Test func presentsAnAlertWhenHotkeyRegistrationFailsInsteadOfFailingSilently() {
@@ -290,5 +300,208 @@ import Testing
         fake.trayMenuItems[3].action()
 
         #expect(fake.terminateAppCallCount == 1)
+    }
+
+    // MARK: - #10: Ghost Mode toolbar summon
+
+    @Test func pressingTheSummonToolbarHotkeyDoesNothingInNormalMode() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        orchestrator.start(config: config)
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.summonToolbar)
+
+        #expect(fake.summonedToolbarVisibilityChanges.isEmpty)
+    }
+
+    @Test func pressingTheSummonToolbarHotkeyInGhostModeShowsTheOverlayAndDisablesPassthrough() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        orchestrator.start(config: config)
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.summonToolbar)
+
+        #expect(fake.summonedToolbarVisibilityChanges.map(\.visible) == [true])
+        #expect(fake.mousePassthroughChanges.map(\.enabled) == [true, false])
+    }
+
+    @Test func clickingTheSummonedToolbarsGhostModeToggleButtonTogglesGhostModeThroughPlatformOps() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!, ghostOpacity: 0.3)
+        orchestrator.start(config: config)
+
+        fake.simulateSummonedToolbarGhostModeToggleRequested()
+
+        #expect(fake.mousePassthroughChanges.map(\.enabled) == [true])
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.3])
+    }
+
+    // MARK: - #12: default utility hotkeys
+
+    @Test func pressingTheReloadHotkeyReloadsThePageThroughPlatformOps() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        orchestrator.start(config: config)
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.reloadPage)
+
+        #expect(fake.reloadedWindowIDs == [1])
+    }
+
+    @Test func pressingZoomInIncreasesZoomFromTheCurrentValueThroughPlatformOps() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(
+            url: URL(string: "https://example.com")!,
+            windowState: WindowState(frame: WindowFrame(x: 0, y: 0, width: 800, height: 600), zoom: 1.0)
+        )
+        orchestrator.start(config: config)
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.zoomIn)
+
+        #expect(fake.appliedZooms.map(\.zoom).last!.isApproximatelyEqual(to: 1.1))
+    }
+
+    @Test func pressingZoomOutDecreasesZoomFromTheCurrentValueThroughPlatformOps() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(
+            url: URL(string: "https://example.com")!,
+            windowState: WindowState(frame: WindowFrame(x: 0, y: 0, width: 800, height: 600), zoom: 1.0)
+        )
+        orchestrator.start(config: config)
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.zoomOut)
+
+        #expect(fake.appliedZooms.map(\.zoom).last!.isApproximatelyEqual(to: 0.9))
+    }
+
+    @Test func zoomingInRepeatedlyClampsAtTheUpperBound() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(
+            url: URL(string: "https://example.com")!,
+            windowState: WindowState(frame: WindowFrame(x: 0, y: 0, width: 800, height: 600), zoom: 4.95)
+        )
+        orchestrator.start(config: config)
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.zoomIn)
+        fake.simulateHotkeyPressed(DefaultHotkeys.zoomIn)
+
+        #expect(fake.appliedZooms.map(\.zoom).last! <= 5.0)
+    }
+
+    @Test func pressingQuickHideInNormalModeTogglesWindowHiddenThroughPlatformOps() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        orchestrator.start(config: config)
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.quickHideWidget)
+        fake.simulateHotkeyPressed(DefaultHotkeys.quickHideWidget)
+
+        #expect(fake.windowHiddenChanges.map(\.hidden) == [true, false])
+    }
+
+    @Test func pressingQuickHideWhileInGhostModeDoesNothingSoItNeverFightsGhostModesOwnHiddenState() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        orchestrator.start(config: config)
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.quickHideWidget)
+
+        #expect(fake.windowHiddenChanges.isEmpty)
+    }
+
+    @Test func togglingGhostModeWhileQuickHiddenRestoresWindowVisibilityBeforeGhostModeTakesOver() {
+        // Regression test: entering Ghost Mode used to only clear the `isQuickHidden` bookkeeping
+        // flag without ever telling the platform to un-hide the window, leaving the widget stuck
+        // invisible even while `mode == .ghost` expected to start out visible.
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        orchestrator.start(config: config)
+        fake.simulateHotkeyPressed(DefaultHotkeys.quickHideWidget)  // hide in Normal Mode
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+
+        #expect(fake.windowHiddenChanges.map(\.hidden) == [true, false])
+    }
+
+    @Test func pressingResizeTogglesTheWindowBetweenCompactAndDefaultSizeThroughPlatformOps() {
+        let fake = FakePlatformOps()
+        fake.stubbedScreens = [CGRect(x: 0, y: 0, width: 1440, height: 900)]
+        fake.stubbedCapturedWindowState = WindowState(
+            frame: WindowFrame(x: 100, y: 100, width: WindowPlacement.defaultWidth, height: WindowPlacement.defaultHeight),
+            zoom: 1.0
+        )
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        orchestrator.start(config: config)
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.resizeWindow)
+
+        #expect(fake.windowFrameChanges.map(\.frame.width) == [WindowPlacement.compactWidth])
+        #expect(fake.windowFrameChanges.map(\.frame.height) == [WindowPlacement.compactHeight])
+    }
+
+    @Test func pressingResizeClampsAgainstTheScreenTheWindowIsActuallyOnRatherThanJustThePrimary() {
+        let fake = FakePlatformOps()
+        let primary = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let secondary = CGRect(x: 1440, y: 0, width: 800, height: 600)
+        fake.stubbedScreens = [primary, secondary]
+        fake.stubbedCapturedWindowState = WindowState(
+            frame: WindowFrame(x: 1440 + 700, y: 0, width: WindowPlacement.compactWidth, height: WindowPlacement.compactHeight),
+            zoom: 1.0
+        )
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        orchestrator.start(config: config)
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.resizeWindow)
+
+        let resized = fake.windowFrameChanges.first!.frame
+        #expect(resized.width == min(WindowPlacement.defaultWidth, Double(secondary.width)))
+        #expect(resized.x + resized.width <= Double(secondary.maxX))
+    }
+
+    @Test func pressingTogglePinFlipsPinnedStateAndPersistsItThroughPlatformOps() {
+        let fake = FakePlatformOps()
+        var persistedPinned: Bool?
+        let orchestrator = Orchestrator(platformOps: fake, persistPinned: { persistedPinned = $0 })
+        let config = WidgetConfig(url: URL(string: "https://example.com")!, isPinned: false)
+        orchestrator.start(config: config)
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.togglePin)
+
+        #expect(fake.pinnedChanges.map(\.pinned).last == true)
+        #expect(persistedPinned == true)
+    }
+
+    @Test func skipsAUserHotkeyMappingThatCollidesWithADefaultHotkeyInsteadOfDoubleRegisteringIt() {
+        // Regression test: Carbon allows registering the same combo twice in-process, which would
+        // make both the mapped page-keystroke forward and the default action fire on one press.
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let colliding = HotkeyMapping(trigger: DefaultHotkeys.reloadPage, pageKeystroke: Hotkey(keyCode: 1, modifierFlags: 0))
+        let config = WidgetConfig(url: URL(string: "https://example.com")!, hotkeyMappings: [colliding])
+
+        orchestrator.start(config: config)
+
+        #expect(fake.registeredHotkeys.filter { $0 == DefaultHotkeys.reloadPage }.count == 1)
+        #expect(fake.presentedAlerts.count == 1)
+    }
+}
+
+private extension Double {
+    func isApproximatelyEqual(to other: Double, tolerance: Double = 0.0001) -> Bool {
+        abs(self - other) < tolerance
     }
 }

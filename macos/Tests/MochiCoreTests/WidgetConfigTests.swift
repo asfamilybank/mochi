@@ -198,4 +198,79 @@ import Testing
 
         #expect(reparsed == original)
     }
+
+    @Test func hotkeyMappingsIsEmptyWhenAbsent() throws {
+        let config = try WidgetConfig.parse("url = \"https://example.com\"")
+        #expect(config.hotkeyMappings.isEmpty)
+    }
+
+    @Test func parsesHotkeyMappingsWhenPresent() throws {
+        let toml = """
+        url = "https://example.com"
+
+        [[hotkey_mappings]]
+        trigger_key_code = 49
+        trigger_modifiers = 0
+        page_key_code = 49
+        page_modifiers = 0
+        """
+
+        let config = try WidgetConfig.parse(toml)
+
+        #expect(
+            config.hotkeyMappings == [
+                HotkeyMapping(
+                    trigger: Hotkey(keyCode: 49, modifierFlags: 0),
+                    pageKeystroke: Hotkey(keyCode: 49, modifierFlags: 0)
+                )
+            ])
+    }
+
+    @Test func skipsAHotkeyMappingWithAnOutOfRangeValueInsteadOfCrashing() throws {
+        // Regression test: hand-editing this table is the only way to configure it (until #14
+        // ships a UI), so a negative or overflowing number must be skipped, not trap the app.
+        let toml = """
+        url = "https://example.com"
+
+        [[hotkey_mappings]]
+        trigger_key_code = 49
+        trigger_modifiers = -1
+        page_key_code = 49
+        page_modifiers = 0
+        """
+
+        let config = try WidgetConfig.parse(toml)
+
+        #expect(config.hotkeyMappings.isEmpty)
+    }
+
+    @Test func skipsAHotkeyMappingWhoseKeyCodeDoesNotFitAVirtualKeyCode() throws {
+        let toml = """
+        url = "https://example.com"
+
+        [[hotkey_mappings]]
+        trigger_key_code = 49
+        trigger_modifiers = 0
+        page_key_code = 999999
+        page_modifiers = 0
+        """
+
+        let config = try WidgetConfig.parse(toml)
+
+        #expect(config.hotkeyMappings.isEmpty)
+    }
+
+    @Test func serializingThenReparsingRoundTripsHotkeyMappings() throws {
+        let original = WidgetConfig(
+            url: URL(string: "https://example.com")!,
+            hotkeyMappings: [
+                HotkeyMapping(trigger: Hotkey(keyCode: 49, modifierFlags: 0x0100), pageKeystroke: Hotkey(keyCode: 49, modifierFlags: 0)),
+                HotkeyMapping(trigger: Hotkey(keyCode: 4, modifierFlags: 0x0800), pageKeystroke: Hotkey(keyCode: 6, modifierFlags: 0)),
+            ]
+        )
+
+        let reparsed = try WidgetConfig.parse(original.serialized())
+
+        #expect(reparsed == original)
+    }
 }

@@ -93,4 +93,40 @@ public protocol PlatformOps: AnyObject {
     /// Terminates the app — the tray icon's "Quit" entry (#9) must work on its own, since Ghost
     /// Mode can leave every window fully hidden with no other way to reach a quit control.
     func terminateApp()
+
+    /// Shows/hides Ghost Mode's summoned toolbar overlay (#10) — a small floating capsule built
+    /// from its own button instances, independent of the Normal Mode toolbar, that floats above
+    /// the page without resizing or repositioning the window.
+    func setSummonedToolbarVisible(_ visible: Bool, in window: WidgetWindowHandle)
+
+    /// Registers a handler invoked when the user clicks the summoned toolbar's Ghost Mode toggle
+    /// button. Routed back through the caller (`GhostModeController.toggle()`) rather than
+    /// handled inside the window itself, since — unlike Pin/Refresh — the overlay view has no
+    /// self-contained notion of Ghost Mode to flip.
+    func onSummonedToolbarGhostModeToggleRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void)
+
+    /// Reloads the widget's currently-loaded page — the default 刷新页面 hotkey's (#12) action.
+    func reloadPage(in window: WidgetWindowHandle)
+
+    /// Applies a new frame to the window in one step, used by the default 调整窗口尺寸 hotkey
+    /// (#12) to jump between preset sizes without an interactive drag/resize.
+    func setWindowFrame(_ frame: WindowFrame, in window: WidgetWindowHandle)
+
+    /// Whether the process currently holds Accessibility permission — required for
+    /// `forwardKeystroke` to have any effect (ADR-0003). Checked before every forwarding attempt
+    /// so a later revocation (the user turning it off in System Settings) is caught immediately,
+    /// not just once at launch.
+    func isAccessibilityTrusted() -> Bool
+
+    /// Prompts the user, via the system's own Accessibility permission dialog, to grant Mochi
+    /// Accessibility access — the one-time onboarding step ADR-0003 requires for
+    /// `forwardKeystroke` to work. Callers are responsible for only invoking this once per app
+    /// run (see `HotkeyForwarder`) since the system dialog itself has no such throttling.
+    func requestAccessibilityPermission()
+
+    /// Injects `keystroke` into the widget's own page via `CGEventPostToPid`, targeted at this
+    /// process's own PID so the OS delivers a real, `isTrusted: true` key event without stealing
+    /// focus from whatever app the user is actually looking at (ADR-0003). Callers are expected
+    /// to only invoke this once `isAccessibilityTrusted()` is `true`.
+    func forwardKeystroke(_ keystroke: Hotkey)
 }

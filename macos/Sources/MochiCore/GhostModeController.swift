@@ -18,6 +18,7 @@ public final class GhostModeController {
     private let window: WidgetWindowHandle
     private let ghostOpacity: Double
     public private(set) var mode: WidgetMode = .normal
+    public private(set) var isToolbarSummoned = false
 
     public init(platformOps: PlatformOps, window: WidgetWindowHandle, ghostOpacity: Double) {
         self.platformOps = platformOps
@@ -43,6 +44,17 @@ public final class GhostModeController {
         leaveGhostMode()
     }
 
+    /// Ghost Mode's secondary hotkey (#10): temporarily reveals the summoned toolbar overlay and
+    /// disables passthrough, without leaving Ghost Mode or changing the window's size/position.
+    /// Pressing it again retracts the overlay and restores passthrough. A no-op outside Ghost
+    /// Mode, since Normal Mode's toolbar is already visible and interactive.
+    public func toggleSummonedToolbar() {
+        guard mode == .ghost else { return }
+        isToolbarSummoned.toggle()
+        platformOps.setSummonedToolbarVisible(isToolbarSummoned, in: window)
+        platformOps.setMousePassthrough(!isToolbarSummoned, in: window)
+    }
+
     private func enterGhostMode() {
         mode = .ghost
         platformOps.setNativeChromeVisible(false, in: window)
@@ -53,6 +65,10 @@ public final class GhostModeController {
 
     private func leaveGhostMode() {
         mode = .normal
+        if isToolbarSummoned {
+            isToolbarSummoned = false
+            platformOps.setSummonedToolbarVisible(false, in: window)
+        }
         platformOps.setNativeChromeVisible(true, in: window)
         platformOps.setToolbarVisible(true, in: window)
         platformOps.setContentOpacity(1.0, in: window)

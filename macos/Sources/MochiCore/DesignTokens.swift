@@ -195,6 +195,12 @@ public enum DesignTokens {
         public static let addressFieldCornerRadius: Double = 9
         public static let addressFieldHeight: Double = 30
 
+        /// The summoned toolbar overlay's (#10) distance from the window's top edge — measured
+        /// off `design/mochi/GhostToolbar.dc.html`'s `top:14px`, distinct from
+        /// `toolbarOuterPaddingVertical` since that governs the Normal Mode toolbar's own row,
+        /// not a floating overlay positioned directly against the window edge.
+        public static let ghostModeSummonedToolbarTopMargin: Double = 14
+
         public static let emptyPageGlassPanelCornerRadius: Double = 24
 
         /// The uniform stroke weight `DesignIcon` paths are drawn with — matching

@@ -112,6 +112,59 @@ import Testing
         #expect(fake.mousePassthroughChanges.map(\.enabled) == [true, false])
     }
 
+    @Test func toggleSummonedToolbarDoesNothingInNormalMode() {
+        let (fake, _, controller) = makeSUT()
+
+        controller.toggleSummonedToolbar()
+
+        #expect(controller.isToolbarSummoned == false)
+        #expect(fake.summonedToolbarVisibilityChanges.isEmpty)
+        #expect(fake.mousePassthroughChanges.isEmpty)
+    }
+
+    @Test func toggleSummonedToolbarInGhostModeShowsTheOverlayAndDisablesPassthrough() {
+        let (fake, _, controller) = makeSUT()
+        controller.toggle()
+
+        controller.toggleSummonedToolbar()
+
+        #expect(controller.isToolbarSummoned == true)
+        #expect(fake.summonedToolbarVisibilityChanges.map(\.visible) == [true])
+        #expect(fake.mousePassthroughChanges.map(\.enabled) == [true, false])
+    }
+
+    @Test func togglingSummonedToolbarAgainRetractsItAndRestoresPassthrough() {
+        let (fake, _, controller) = makeSUT()
+        controller.toggle()
+        controller.toggleSummonedToolbar()
+
+        controller.toggleSummonedToolbar()
+
+        #expect(controller.isToolbarSummoned == false)
+        #expect(fake.summonedToolbarVisibilityChanges.map(\.visible) == [true, false])
+        #expect(fake.mousePassthroughChanges.map(\.enabled) == [true, false, true])
+    }
+
+    @Test func leavingGhostModeWhileSummonedRetractsTheOverlay() {
+        let (fake, _, controller) = makeSUT()
+        controller.toggle()
+        controller.toggleSummonedToolbar()
+
+        controller.toggle()
+
+        #expect(controller.isToolbarSummoned == false)
+        #expect(fake.summonedToolbarVisibilityChanges.map(\.visible) == [true, false])
+    }
+
+    @Test func leavingGhostModeWithoutEverSummoningNeverTouchesTheOverlay() {
+        let (fake, _, controller) = makeSUT()
+        controller.toggle()
+
+        controller.toggle()
+
+        #expect(fake.summonedToolbarVisibilityChanges.isEmpty)
+    }
+
     @Test func exitGhostModeUnhidesTheWindowEvenAfterBeingHiddenByMouseEntry() {
         // The defining scenario for #9: the window is fully invisible + click-through, and the
         // tray is the only remaining way back — it must still unhide the window.

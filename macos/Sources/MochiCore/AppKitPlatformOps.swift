@@ -1,3 +1,4 @@
+import ApplicationServices
 import AppKit
 import CoreGraphics
 import Foundation
@@ -74,6 +75,17 @@ fileprivate struct ToolbarControls {
     let addressField: NSTextField
 }
 
+/// Ghost Mode's summoned toolbar overlay's (#10) controls — a deliberately separate set of
+/// button instances from `ToolbarControls`, per the ticket's design decision that the overlay
+/// must not reuse the Normal Mode toolbar's component, even though both wire the same
+/// `togglePinned`/`reload` actions on `AppKitWidgetWindowHandle`. Order matches
+/// `DesignTokens.ghostModeSummonedToolbarOrder`.
+fileprivate struct SummonedToolbarControls {
+    let pinButton: NSButton
+    let ghostModeToggleButton: NSButton
+    let refreshButton: NSButton
+}
+
 /// Custom-drawn Normal Mode toolbar: back/forward/refresh + an editable address bar + a Pin
 /// toggle, embedded in a real Liquid Glass material (`NSGlassEffectView`, macOS 26+; see
 /// ADR-0008). Sits above the WKWebView in its own row — never overlapping page content — inside
@@ -87,22 +99,30 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     let webView: WKWebView
     private let toolbarContainer: NSView
     private let controls: ToolbarControls
+    private let summonedToolbarContainer: NSView
+    private let summonedControls: SummonedToolbarControls
     private var willCloseHandler: (() -> Void)?
     private var urlSubmittedHandler: ((URL) -> Void)?
     private var pinnedChangedHandler: ((Bool) -> Void)?
     private var navigationFinishedHandler: (() -> Void)?
     private var mouseEnteredHandler: (() -> Void)?
+    private var summonedGhostModeToggleHandler: (() -> Void)?
     private var isPinned = false
     private let defaultWindowBackgroundColor: NSColor
     private var navigationObservations: [NSKeyValueObservation] = []
     private var appearanceObservation: NSKeyValueObservation?
     private var accentColorObserver: NSObjectProtocol?
 
-    fileprivate init(window: NSWindow, webView: WKWebView, toolbarContainer: NSView, controls: ToolbarControls) {
+    fileprivate init(
+        window: NSWindow, webView: WKWebView, toolbarContainer: NSView, controls: ToolbarControls,
+        summonedToolbarContainer: NSView, summonedControls: SummonedToolbarControls
+    ) {
         self.window = window
         self.webView = webView
         self.toolbarContainer = toolbarContainer
         self.controls = controls
+        self.summonedToolbarContainer = summonedToolbarContainer
+        self.summonedControls = summonedControls
         self.defaultWindowBackgroundColor = window.backgroundColor
         super.init()
         window.delegate = self
@@ -119,18 +139,31 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         controls.pinButton.action = #selector(togglePinned)
         controls.pinButton.wantsLayer = true
         controls.pinButton.layer?.cornerRadius = DesignTokens.Layout.toolbarButtonDiameter / 2
+        summonedControls.refreshButton.target = self
+        summonedControls.refreshButton.action = #selector(reload)
+        summonedControls.pinButton.target = self
+        summonedControls.pinButton.action = #selector(togglePinned)
+        summonedControls.pinButton.wantsLayer = true
+        summonedControls.pinButton.layer?.cornerRadius = DesignTokens.Layout.toolbarButtonDiameter / 2
+        summonedControls.ghostModeToggleButton.target = self
+        summonedControls.ghostModeToggleButton.action = #selector(handleSummonedGhostModeToggle)
+        summonedControls.ghostModeToggleButton.wantsLayer = true
+        summonedControls.ghostModeToggleButton.layer?.cornerRadius = DesignTokens.Layout.toolbarButtonDiameter / 2
         observeNavigationState()
         updatePinButtonAppearance()
+        updateSummonedGhostModeToggleAppearance()
         // The Pin capsule's tint is baked into CALayer colors (not a dynamic NSColor), so unlike
         // everywhere else in this file it needs to be re-applied whenever the system accent color
         // or the window's light/dark appearance changes, instead of re-resolving for free at draw time.
         appearanceObservation = window.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
             self?.updatePinButtonAppearance()
+            self?.updateSummonedGhostModeToggleAppearance()
         }
         accentColorObserver = NotificationCenter.default.addObserver(
             forName: NSColor.systemColorsDidChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
             self?.updatePinButtonAppearance()
+            self?.updateSummonedGhostModeToggleAppearance()
         }
     }
 
@@ -173,7 +206,10 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         webView.goForward()
     }
 
-    @objc private func reload() {
+    /// Not `private` — shared as the target-action for both the Normal Mode toolbar's refresh
+    /// button and the summoned overlay's own refresh button (#10), and called directly by
+    /// `AppKitPlatformOps.reloadPage(in:)` for the default 刷新页面 hotkey (#12).
+    @objc func reload() {
         webView.reload()
     }
 
@@ -198,18 +234,36 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// system accent color, matching macOS's own selected-state glass tinting (design-language.md,
     /// "工具栏与工具栏"). Inactive state falls back to the plain toolbar icon tint.
     private func updatePinButtonAppearance() {
-        guard let layer = controls.pinButton.layer else { return }
+        applyPinAppearance(to: controls.pinButton)
+        applyPinAppearance(to: summonedControls.pinButton)
+    }
+
+    private func applyPinAppearance(to button: NSButton) {
+        guard let layer = button.layer else { return }
         if isPinned {
             let tint = DesignTokens.accentTint(DesignTokens.resolveSystemAccent())
             layer.backgroundColor = NSColor(rgba: tint.background).cgColor
             layer.borderWidth = 1
             layer.borderColor = NSColor(rgba: tint.border).cgColor
-            controls.pinButton.contentTintColor = NSColor(rgba: tint.icon)
+            button.contentTintColor = NSColor(rgba: tint.icon)
         } else {
             layer.backgroundColor = nil
             layer.borderWidth = 0
-            controls.pinButton.contentTintColor = ToolbarStyle.iconTint()
+            button.contentTintColor = ToolbarStyle.iconTint()
         }
+    }
+
+    /// The summoned overlay's Ghost Mode toggle button (#10) always renders in the same tinted
+    /// "active" style Pin uses when on — the overlay only ever appears while Ghost Mode already
+    /// is active (`GhostModeController.toggleSummonedToolbar`'s guard), so there is no "off" state
+    /// for this particular button to represent while it's visible at all.
+    private func updateSummonedGhostModeToggleAppearance() {
+        guard let layer = summonedControls.ghostModeToggleButton.layer else { return }
+        let tint = DesignTokens.accentTint(DesignTokens.resolveSystemAccent())
+        layer.backgroundColor = NSColor(rgba: tint.background).cgColor
+        layer.borderWidth = 1
+        layer.borderColor = NSColor(rgba: tint.border).cgColor
+        summonedControls.ghostModeToggleButton.contentTintColor = NSColor(rgba: tint.icon)
     }
 
     func setWillCloseHandler(_ handler: @escaping () -> Void) {
@@ -238,6 +292,22 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
 
     func setToolbarVisible(_ visible: Bool) {
         toolbarContainer.isHidden = !visible
+    }
+
+    func setSummonedToolbarVisible(_ visible: Bool) {
+        summonedToolbarContainer.isHidden = !visible
+    }
+
+    func setSummonedGhostModeToggleHandler(_ handler: @escaping () -> Void) {
+        summonedGhostModeToggleHandler = handler
+    }
+
+    @objc private func handleSummonedGhostModeToggle() {
+        summonedGhostModeToggleHandler?()
+    }
+
+    func setFrame(_ frame: WindowFrame) {
+        window.setFrame(NSRect(x: frame.x, y: frame.y, width: frame.width, height: frame.height), display: true)
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -384,6 +454,17 @@ public final class AppKitPlatformOps: PlatformOps {
         rootStack.distribution = .fill
         rootStack.alignment = .width
 
+        let (summonedToolbarContainer, summonedControls) = makeSummonedToolbarOverlay()
+        // A plain `addSubview`, not `addArrangedSubview` — this floats above `webView` in z-order
+        // without joining the stack's managed layout, which is what lets it appear/disappear
+        // without resizing or reflowing the window's content (#10's AC).
+        rootStack.addSubview(summonedToolbarContainer)
+        NSLayoutConstraint.activate([
+            summonedToolbarContainer.centerXAnchor.constraint(equalTo: rootStack.centerXAnchor),
+            summonedToolbarContainer.topAnchor.constraint(
+                equalTo: rootStack.topAnchor, constant: DesignTokens.Layout.ghostModeSummonedToolbarTopMargin),
+        ])
+
         let window = MochiWidgetWindow(
             contentRect: rect,
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -393,7 +474,45 @@ public final class AppKitPlatformOps: PlatformOps {
         window.title = "Mochi"
         window.contentView = rootStack
 
-        return AppKitWidgetWindowHandle(window: window, webView: webView, toolbarContainer: toolbarContainer, controls: controls)
+        return AppKitWidgetWindowHandle(
+            window: window, webView: webView, toolbarContainer: toolbarContainer, controls: controls,
+            summonedToolbarContainer: summonedToolbarContainer, summonedControls: summonedControls
+        )
+    }
+
+    /// Ghost Mode's summoned toolbar overlay (#10): a small floating glass capsule holding only
+    /// Pin, Ghost Mode toggle, and Refresh (`DesignTokens.ghostModeSummonedToolbarOrder`) — its
+    /// own dedicated view built from fresh button instances, independent of the Normal Mode
+    /// toolbar's (per the ticket's design decision), matching
+    /// `design/mochi/GhostToolbar.dc.html`'s layout. Starts hidden.
+    private func makeSummonedToolbarOverlay() -> (container: NSView, controls: SummonedToolbarControls) {
+        let pinButton = toolbarButton(icon: .pin, accessibilityDescription: "置顶")
+        let ghostModeToggleButton = toolbarButton(icon: .ghost, accessibilityDescription: "退出 Ghost Mode")
+        let refreshButton = toolbarButton(icon: .refresh, accessibilityDescription: "刷新")
+
+        let buttonsStack = NSStackView(views: [pinButton, ghostModeToggleButton, refreshButton])
+        buttonsStack.translatesAutoresizingMaskIntoConstraints = false
+        buttonsStack.orientation = .horizontal
+        buttonsStack.spacing = DesignTokens.Layout.toolbarButtonSpacing
+        buttonsStack.edgeInsets = NSEdgeInsets(
+            top: DesignTokens.Layout.toolbarInnerPaddingVertical,
+            left: DesignTokens.Layout.toolbarInnerPaddingHorizontal,
+            bottom: DesignTokens.Layout.toolbarInnerPaddingVertical,
+            right: DesignTokens.Layout.toolbarInnerPaddingHorizontal
+        )
+
+        let glass = NSGlassEffectView()
+        glass.translatesAutoresizingMaskIntoConstraints = false
+        glass.cornerRadius = DesignTokens.Layout.toolbarCapsuleCornerRadius
+        glass.tintColor = ToolbarStyle.glassTint()
+        glass.contentView = buttonsStack
+        glass.heightAnchor.constraint(equalToConstant: DesignTokens.Layout.toolbarCapsuleHeight).isActive = true
+        glass.isHidden = true
+
+        return (
+            glass,
+            SummonedToolbarControls(pinButton: pinButton, ghostModeToggleButton: ghostModeToggleButton, refreshButton: refreshButton)
+        )
     }
 
     private func makeToolbarControls() -> ToolbarControls {
@@ -505,6 +624,26 @@ public final class AppKitPlatformOps: PlatformOps {
         handle.setToolbarVisible(visible)
     }
 
+    public func setSummonedToolbarVisible(_ visible: Bool, in window: WidgetWindowHandle) {
+        guard let handle = handle(for: window) else { return }
+        handle.setSummonedToolbarVisible(visible)
+    }
+
+    public func onSummonedToolbarGhostModeToggleRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {
+        guard let handle = handle(for: window) else { return }
+        handle.setSummonedGhostModeToggleHandler(handler)
+    }
+
+    public func reloadPage(in window: WidgetWindowHandle) {
+        guard let handle = handle(for: window) else { return }
+        handle.reload()
+    }
+
+    public func setWindowFrame(_ frame: WindowFrame, in window: WidgetWindowHandle) {
+        guard let handle = handle(for: window) else { return }
+        handle.setFrame(frame)
+    }
+
     public func onURLSubmitted(_ window: WidgetWindowHandle, perform handler: @escaping (URL) -> Void) {
         guard let handle = handle(for: window) else { return }
         handle.setURLSubmittedHandler(handler)
@@ -598,6 +737,44 @@ public final class AppKitPlatformOps: PlatformOps {
 
     public func terminateApp() {
         NSApplication.shared.terminate(nil)
+    }
+
+    public func isAccessibilityTrusted() -> Bool {
+        AXIsProcessTrusted()
+    }
+
+    public func requestAccessibilityPermission() {
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as NSString: true] as CFDictionary
+        AXIsProcessTrustedWithOptions(options)
+    }
+
+    /// `CGEventPostToPid` targeted at this process's own PID (ADR-0003) — the widget's page has
+    /// no keyboard focus while the user is working in another app, so the event is delivered
+    /// directly to this process rather than relying on window key-status/first-responder.
+    public func forwardKeystroke(_ keystroke: Hotkey) {
+        let pid = ProcessInfo.processInfo.processIdentifier
+        let flags = Self.cgEventFlags(fromCarbonModifiers: keystroke.modifierFlags)
+        guard let source = CGEventSource(stateID: .hidSystemState) else { return }
+        if let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(keystroke.keyCode), keyDown: true) {
+            keyDown.flags = flags
+            keyDown.postToPid(pid)
+        }
+        if let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(keystroke.keyCode), keyDown: false) {
+            keyUp.flags = flags
+            keyUp.postToPid(pid)
+        }
+    }
+
+    /// `Hotkey.modifierFlags` is expressed in Carbon's bit values everywhere else in the codebase
+    /// (`GlobalHotkeyRegistry`'s `RegisterEventHotKey`) — translated here since `CGEvent` needs
+    /// its own, differently-valued `CGEventFlags` bitmask instead.
+    private static func cgEventFlags(fromCarbonModifiers carbonFlags: UInt32) -> CGEventFlags {
+        var flags: CGEventFlags = []
+        if carbonFlags & 0x0100 != 0 { flags.insert(.maskCommand) }
+        if carbonFlags & 0x0200 != 0 { flags.insert(.maskShift) }
+        if carbonFlags & 0x0800 != 0 { flags.insert(.maskAlternate) }
+        if carbonFlags & 0x1000 != 0 { flags.insert(.maskControl) }
+        return flags
     }
 
     private func handle(for window: WidgetWindowHandle) -> AppKitWidgetWindowHandle? {
