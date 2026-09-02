@@ -93,8 +93,6 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     private var navigationFinishedHandler: (() -> Void)?
     private var mouseEnteredHandler: (() -> Void)?
     private var isPinned = false
-    private var isProgrammaticallyMovingWindow = false
-    private var snapThreshold = WindowSnapping.defaultThreshold
     private let defaultWindowBackgroundColor: NSColor
     private var navigationObservations: [NSKeyValueObservation] = []
     private var appearanceObservation: NSKeyValueObservation?
@@ -246,21 +244,6 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         willCloseHandler?()
     }
 
-    /// Live magnetic snapping during a drag (#6): AppKit fires `windowDidMove` continuously as
-    /// the user drags by the title bar, so re-evaluating the pure `WindowSnapping` function on
-    /// every step both applies the snap and lets a further drag past the threshold release it —
-    /// no separate locked/unlocked state to track.
-    func windowDidMove(_ notification: Notification) {
-        guard !isProgrammaticallyMovingWindow else { return }
-        let currentFrame = WindowFrame(cgRect: window.frame)
-        let screens = NSScreen.screens.map(\.visibleFrame)
-        let snapped = WindowSnapping.snappedFrame(currentFrame, toEdgesOf: screens, threshold: snapThreshold)
-        guard snapped != currentFrame else { return }
-        isProgrammaticallyMovingWindow = true
-        window.setFrameOrigin(NSPoint(x: snapped.x, y: snapped.y))
-        isProgrammaticallyMovingWindow = false
-    }
-
     func setNativeChromeVisible(_ visible: Bool) {
         if visible {
             window.styleMask.insert(.titled)
@@ -297,7 +280,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     }
 
     func setSnapThreshold(_ threshold: Double) {
-        snapThreshold = threshold
+        (window as? MochiWidgetWindow)?.snapThreshold = threshold
     }
 
     /// A tracking area on the whole content view is what lets Ghost Mode detect "mouse moved
@@ -342,6 +325,28 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     }
 }
 
+/// Backs live drag snapping (#6) via `constrainFrameRect`, which AppKit itself calls throughout
+/// an interactive title-bar drag to decide where the window is allowed to land (the same hook it
+/// uses internally to keep dragged windows on-screen). Snapping here — inside the same call
+/// AppKit uses to place the window — means there is exactly one authority deciding the frame per
+/// drag step. An earlier approach reacted to `windowDidMove` *after* AppKit had already placed
+/// the window, which fought AppKit's own drag loop (each one re-correcting the other) and caused
+/// visible jitter during a slow drag; this doesn't have a second authority to fight.
+final class MochiWidgetWindow: NSWindow {
+    var snapThreshold = WindowSnapping.defaultThreshold
+
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        let constrained = super.constrainFrameRect(frameRect, to: screen)
+        // Only snap a pure move — during an active resize the frame's size is still changing,
+        // and naively adjusting the origin then would fight the edge the user is dragging.
+        guard constrained.size == frame.size else { return constrained }
+        let screens = NSScreen.screens.map(\.visibleFrame)
+        let snapped = WindowSnapping.snappedFrame(
+            WindowFrame(cgRect: constrained), toEdgesOf: screens, threshold: snapThreshold)
+        return snapped.cgRect
+    }
+}
+
 public final class AppKitPlatformOps: PlatformOps {
     public init() {}
 
@@ -359,7 +364,7 @@ public final class AppKitPlatformOps: PlatformOps {
         rootStack.distribution = .fill
         rootStack.alignment = .width
 
-        let window = NSWindow(
+        let window = MochiWidgetWindow(
             contentRect: rect,
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
