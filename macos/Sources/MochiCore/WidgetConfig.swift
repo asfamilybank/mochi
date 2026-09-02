@@ -4,10 +4,21 @@ import TOMLKit
 public struct WidgetConfig: Equatable {
     public var url: URL
     public var windowState: WindowState?
+    public var isPinned: Bool
+    public var customScript: String?
+    public var ghostOpacity: Double
+    public var snapThreshold: Double
 
-    public init(url: URL, windowState: WindowState? = nil) {
+    public init(
+        url: URL, windowState: WindowState? = nil, isPinned: Bool = false, customScript: String? = nil,
+        ghostOpacity: Double = WidgetConfig.defaultGhostOpacity, snapThreshold: Double = WindowSnapping.defaultThreshold
+    ) {
         self.url = url
         self.windowState = windowState
+        self.isPinned = isPinned
+        self.customScript = customScript
+        self.ghostOpacity = ghostOpacity
+        self.snapThreshold = snapThreshold
     }
 }
 
@@ -17,6 +28,8 @@ public enum WidgetConfigError: Error, Equatable {
 }
 
 extension WidgetConfig {
+    public static let defaultGhostOpacity: Double = 0.2
+
     public static var defaultConfigURL: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Mochi", isDirectory: true)
@@ -36,7 +49,14 @@ extension WidgetConfig {
         guard let url = URL(string: urlString) else {
             throw WidgetConfigError.invalidURL(urlString)
         }
-        return WidgetConfig(url: url, windowState: parseWindowState(from: table["window"]?.table))
+        return WidgetConfig(
+            url: url,
+            windowState: parseWindowState(from: table["window"]?.table),
+            isPinned: table["pinned"]?.bool ?? false,
+            customScript: table["custom_script"]?.string,
+            ghostOpacity: table["ghost_opacity"]?.double ?? defaultGhostOpacity,
+            snapThreshold: table["snap_threshold"]?.double ?? WindowSnapping.defaultThreshold
+        )
     }
 
     private static func parseWindowState(from table: TOMLTable?) -> WindowState? {
@@ -53,6 +73,12 @@ extension WidgetConfig {
     public func serialized() -> String {
         let table = TOMLTable()
         table["url"] = url.absoluteString
+        table["pinned"] = isPinned
+        table["ghost_opacity"] = ghostOpacity
+        table["snap_threshold"] = snapThreshold
+        if let customScript {
+            table["custom_script"] = customScript
+        }
         if let windowState {
             let windowTable = TOMLTable()
             windowTable["x"] = windowState.frame.x
@@ -82,6 +108,12 @@ extension WidgetConfig {
     public func updatingURL(_ url: URL) -> WidgetConfig {
         var copy = self
         copy.url = url
+        return copy
+    }
+
+    public func updatingPinned(_ isPinned: Bool) -> WidgetConfig {
+        var copy = self
+        copy.isPinned = isPinned
         return copy
     }
 }

@@ -27,7 +27,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let orchestrator = Orchestrator(
             platformOps: platformOps,
             persistWindowState: { windowState in persist { $0.updatingWindowState(windowState) } },
-            persistURL: { url in persist { $0.updatingURL(url) } }
+            persistURL: { url in persist { $0.updatingURL(url) } },
+            persistPinned: { isPinned in persist { $0.updatingPinned(isPinned) } }
         )
         self.orchestrator = orchestrator
         orchestrator.start(config: initialConfig)

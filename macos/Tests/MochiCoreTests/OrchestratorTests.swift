@@ -106,4 +106,115 @@ import Testing
         #expect(fake.loadedURLs.map(\.url) == [config.url, navigatedURL])
         #expect(persistedURL == navigatedURL)
     }
+
+    @Test func appliesPersistedPinnedStateOnStartThroughPlatformOps() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!, isPinned: true)
+
+        orchestrator.start(config: config)
+
+        #expect(fake.pinnedChanges.map(\.pinned) == [true])
+        #expect(fake.pinnedChanges.map(\.windowID) == [1])
+    }
+
+    @Test func togglingPinFromTheWindowPersistsTheNewState() {
+        let fake = FakePlatformOps()
+        var persistedPinned: Bool?
+        let orchestrator = Orchestrator(platformOps: fake, persistPinned: { pinned in
+            persistedPinned = pinned
+        })
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        orchestrator.start(config: config)
+
+        fake.simulatePinnedChanged(true)
+
+        #expect(persistedPinned == true)
+    }
+
+    @Test func injectsBuiltInScriptsThroughPlatformOpsWhenNavigationFinishes() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        orchestrator.start(config: config)
+
+        fake.simulateNavigationFinished()
+
+        #expect(fake.injectedScripts.map(\.source) == BuiltInScripts.all.map(\.source))
+    }
+
+    @Test func injectsConfiguredCustomScriptThroughPlatformOpsWhenNavigationFinishes() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!, customScript: "console.log('hi')")
+        orchestrator.start(config: config)
+
+        fake.simulateNavigationFinished()
+
+        #expect(fake.injectedScripts.map(\.source).last == "console.log('hi')")
+    }
+
+    @Test func doesNotInjectACustomScriptWhenNoneIsConfigured() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        orchestrator.start(config: config)
+
+        fake.simulateNavigationFinished()
+
+        #expect(fake.injectedScripts.count == BuiltInScripts.all.count)
+    }
+
+    @Test func registersTheDefaultGhostModeHotkeyOnStart() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+
+        orchestrator.start(config: config)
+
+        #expect(fake.registeredHotkeys == [DefaultHotkeys.toggleGhostMode])
+    }
+
+    @Test func presentsAnAlertWhenHotkeyRegistrationFailsInsteadOfFailingSilently() {
+        let fake = FakePlatformOps()
+        fake.stubbedHotkeyRegistrationSucceeds = false
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+
+        orchestrator.start(config: config)
+
+        #expect(fake.presentedAlerts.count == 1)
+    }
+
+    @Test func doesNotPresentAnAlertWhenHotkeyRegistrationSucceeds() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+
+        orchestrator.start(config: config)
+
+        #expect(fake.presentedAlerts.isEmpty)
+    }
+
+    @Test func pressingTheGlobalHotkeyTogglesGhostModeThroughPlatformOps() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!, ghostOpacity: 0.3)
+        orchestrator.start(config: config)
+
+        fake.simulateHotkeyPressed()
+
+        #expect(fake.mousePassthroughChanges.map(\.enabled) == [true])
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.3])
+    }
+
+    @Test func appliesConfiguredSnapThresholdOnStartThroughPlatformOps() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!, snapThreshold: 32)
+
+        orchestrator.start(config: config)
+
+        #expect(fake.snapThresholdChanges.map(\.threshold) == [32])
+    }
 }

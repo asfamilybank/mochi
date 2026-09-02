@@ -82,14 +82,20 @@ fileprivate struct ToolbarControls {
 ///
 /// Colors, corner radii, spacing, and the bespoke vector icon set all come from `DesignTokens`/
 /// `DesignIcon` (#17) — nothing here writes its own numbers.
-final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDelegate, NSTextFieldDelegate {
+final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDelegate, NSTextFieldDelegate, WKNavigationDelegate {
     let window: NSWindow
     let webView: WKWebView
     private let toolbarContainer: NSView
     private let controls: ToolbarControls
     private var willCloseHandler: (() -> Void)?
     private var urlSubmittedHandler: ((URL) -> Void)?
+    private var pinnedChangedHandler: ((Bool) -> Void)?
+    private var navigationFinishedHandler: (() -> Void)?
+    private var mouseEnteredHandler: (() -> Void)?
     private var isPinned = false
+    private var isProgrammaticallyMovingWindow = false
+    private var snapThreshold = WindowSnapping.defaultThreshold
+    private let defaultWindowBackgroundColor: NSColor
     private var navigationObservations: [NSKeyValueObservation] = []
     private var appearanceObservation: NSKeyValueObservation?
     private var accentColorObserver: NSObjectProtocol?
@@ -99,8 +105,11 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         self.webView = webView
         self.toolbarContainer = toolbarContainer
         self.controls = controls
+        self.defaultWindowBackgroundColor = window.backgroundColor
         super.init()
         window.delegate = self
+        webView.navigationDelegate = self
+        installGhostModeMouseTracking()
         controls.addressField.delegate = self
         controls.backButton.target = self
         controls.backButton.action = #selector(goBack)
@@ -171,7 +180,18 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     }
 
     @objc private func togglePinned() {
-        isPinned.toggle()
+        applyPinned(!isPinned)
+        pinnedChangedHandler?(isPinned)
+    }
+
+    /// Applies a pinned state to the window without notifying `pinnedChangedHandler` — used to
+    /// restore a persisted state on launch, where there is nothing new to persist back.
+    func setPinned(_ pinned: Bool) {
+        applyPinned(pinned)
+    }
+
+    private func applyPinned(_ pinned: Bool) {
+        isPinned = pinned
         window.level = isPinned ? .floating : .normal
         updatePinButtonAppearance()
     }
@@ -202,6 +222,22 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         urlSubmittedHandler = handler
     }
 
+    func setPinnedChangedHandler(_ handler: @escaping (Bool) -> Void) {
+        pinnedChangedHandler = handler
+    }
+
+    func injectScript(_ source: String) {
+        webView.evaluateJavaScript(source, completionHandler: nil)
+    }
+
+    func setNavigationFinishedHandler(_ handler: @escaping () -> Void) {
+        navigationFinishedHandler = handler
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        navigationFinishedHandler?()
+    }
+
     func setToolbarVisible(_ visible: Bool) {
         toolbarContainer.isHidden = !visible
     }
@@ -209,6 +245,83 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     func windowWillClose(_ notification: Notification) {
         willCloseHandler?()
     }
+
+    /// Live magnetic snapping during a drag (#6): AppKit fires `windowDidMove` continuously as
+    /// the user drags by the title bar, so re-evaluating the pure `WindowSnapping` function on
+    /// every step both applies the snap and lets a further drag past the threshold release it —
+    /// no separate locked/unlocked state to track.
+    func windowDidMove(_ notification: Notification) {
+        guard !isProgrammaticallyMovingWindow else { return }
+        let currentFrame = WindowFrame(cgRect: window.frame)
+        let screens = NSScreen.screens.map(\.visibleFrame)
+        let snapped = WindowSnapping.snappedFrame(currentFrame, toEdgesOf: screens, threshold: snapThreshold)
+        guard snapped != currentFrame else { return }
+        isProgrammaticallyMovingWindow = true
+        window.setFrameOrigin(NSPoint(x: snapped.x, y: snapped.y))
+        isProgrammaticallyMovingWindow = false
+    }
+
+    func setNativeChromeVisible(_ visible: Bool) {
+        if visible {
+            window.styleMask.insert(.titled)
+        } else {
+            window.styleMask.remove(.titled)
+        }
+    }
+
+    /// `drawsBackground` is a private WKWebView property (ADR-0001) reached via KVC since it has
+    /// no public accessor; it must be `false` for anything below full opacity to show through at
+    /// all, on top of which `NSWindow.alphaValue` supplies the actual continuous target value.
+    func setContentOpacity(_ opacity: Double) {
+        let isFullyOpaque = opacity >= 1.0
+        window.isOpaque = isFullyOpaque
+        window.backgroundColor = isFullyOpaque ? defaultWindowBackgroundColor : .clear
+        webView.setValue(isFullyOpaque, forKey: "drawsBackground")
+        window.alphaValue = CGFloat(opacity)
+    }
+
+    func setMousePassthrough(_ enabled: Bool) {
+        window.ignoresMouseEvents = enabled
+    }
+
+    func setWindowHidden(_ hidden: Bool) {
+        if hidden {
+            window.orderOut(nil)
+        } else {
+            window.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    func setMouseEnteredHandler(_ handler: @escaping () -> Void) {
+        mouseEnteredHandler = handler
+    }
+
+    func setSnapThreshold(_ threshold: Double) {
+        snapThreshold = threshold
+    }
+
+    /// A tracking area on the whole content view is what lets Ghost Mode detect "mouse moved
+    /// into the widget" (#8) even though the window ignores mouse events at the time — AppKit
+    /// evaluates tracking-rect enter/exit from raw cursor position, independent of
+    /// `ignoresMouseEvents` (which only governs click/scroll dispatch).
+    private func installGhostModeMouseTracking() {
+        guard let contentView = window.contentView else { return }
+        let trackingArea = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        contentView.addTrackingArea(trackingArea)
+    }
+
+    @objc private func mouseEntered(with event: NSEvent) {
+        mouseEnteredHandler?()
+    }
+
+    // Intentionally does nothing on exit — leaving the area does not restore visibility
+    // (ADR-0006); only toggling Ghost Mode off does, via `GhostModeController`.
+    @objc private func mouseExited(with event: NSEvent) {}
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         guard control === controls.addressField, commandSelector == #selector(NSResponder.insertNewline(_:)) else {
@@ -370,6 +483,69 @@ public final class AppKitPlatformOps: PlatformOps {
     public func onURLSubmitted(_ window: WidgetWindowHandle, perform handler: @escaping (URL) -> Void) {
         guard let handle = handle(for: window) else { return }
         handle.setURLSubmittedHandler(handler)
+    }
+
+    public func setPinned(_ pinned: Bool, in window: WidgetWindowHandle) {
+        guard let handle = handle(for: window) else { return }
+        handle.setPinned(pinned)
+    }
+
+    public func onPinnedChanged(_ window: WidgetWindowHandle, perform handler: @escaping (Bool) -> Void) {
+        guard let handle = handle(for: window) else { return }
+        handle.setPinnedChangedHandler(handler)
+    }
+
+    public func injectScript(_ source: String, in window: WidgetWindowHandle) {
+        guard let handle = handle(for: window) else { return }
+        handle.injectScript(source)
+    }
+
+    public func onNavigationFinished(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {
+        guard let handle = handle(for: window) else { return }
+        handle.setNavigationFinishedHandler(handler)
+    }
+
+    public func setNativeChromeVisible(_ visible: Bool, in window: WidgetWindowHandle) {
+        guard let handle = handle(for: window) else { return }
+        handle.setNativeChromeVisible(visible)
+    }
+
+    public func setContentOpacity(_ opacity: Double, in window: WidgetWindowHandle) {
+        guard let handle = handle(for: window) else { return }
+        handle.setContentOpacity(opacity)
+    }
+
+    public func setMousePassthrough(_ enabled: Bool, in window: WidgetWindowHandle) {
+        guard let handle = handle(for: window) else { return }
+        handle.setMousePassthrough(enabled)
+    }
+
+    public func setWindowHidden(_ hidden: Bool, in window: WidgetWindowHandle) {
+        guard let handle = handle(for: window) else { return }
+        handle.setWindowHidden(hidden)
+    }
+
+    public func onMouseEntered(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {
+        guard let handle = handle(for: window) else { return }
+        handle.setMouseEnteredHandler(handler)
+    }
+
+    @discardableResult
+    public func registerGlobalHotkey(_ hotkey: Hotkey, perform handler: @escaping () -> Void) -> Bool {
+        GlobalHotkeyRegistry.shared.register(hotkey, perform: handler)
+    }
+
+    public func presentAlert(title: String, message: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.runModal()
+    }
+
+    public func setSnapThreshold(_ threshold: Double, in window: WidgetWindowHandle) {
+        guard let handle = handle(for: window) else { return }
+        handle.setSnapThreshold(threshold)
     }
 
     private func handle(for window: WidgetWindowHandle) -> AppKitWidgetWindowHandle? {
