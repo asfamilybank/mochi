@@ -82,4 +82,15 @@ import Testing
         #expect(updated.windowState == newState)
         #expect(updated.url == config.url)
     }
+
+    @Test func updatingURLReturnsCopyWithNewURLOnly() {
+        let windowState = WindowState(frame: WindowFrame(x: 0, y: 0, width: 100, height: 100), zoom: 2.0)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!, windowState: windowState)
+        let newURL = URL(string: "https://example.org")!
+
+        let updated = config.updatingURL(newURL)
+
+        #expect(updated.url == newURL)
+        #expect(updated.windowState == config.windowState)
+    }
 }

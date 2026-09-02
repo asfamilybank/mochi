@@ -1,9 +1,9 @@
-// swift-tools-version:5.9
+// swift-tools-version:6.2
 import PackageDescription
 
 let package = Package(
     name: "Mochi",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v26)],
     dependencies: [
         .package(url: "https://github.com/LebJe/TOMLKit.git", from: "0.6.0")
     ],
@@ -20,5 +20,6 @@ let package = Package(
             name: "MochiCoreTests",
             dependencies: ["MochiCore"]
         ),
-    ]
+    ],
+    swiftLanguageModes: [.v5]
 )

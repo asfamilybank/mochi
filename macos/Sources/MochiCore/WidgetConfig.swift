@@ -2,7 +2,7 @@ import Foundation
 import TOMLKit
 
 public struct WidgetConfig: Equatable {
-    public let url: URL
+    public var url: URL
     public var windowState: WindowState?
 
     public init(url: URL, windowState: WindowState? = nil) {
@@ -76,6 +76,12 @@ extension WidgetConfig {
     public func updatingWindowState(_ windowState: WindowState) -> WidgetConfig {
         var copy = self
         copy.windowState = windowState
+        return copy
+    }
+
+    public func updatingURL(_ url: URL) -> WidgetConfig {
+        var copy = self
+        copy.url = url
         return copy
     }
 }

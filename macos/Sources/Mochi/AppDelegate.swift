@@ -8,18 +8,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let platformOps = AppKitPlatformOps()
         let configURL = WidgetConfig.defaultConfigURL
 
-        let config: WidgetConfig
+        let initialConfig: WidgetConfig
         do {
-            config = try WidgetConfig.load(from: configURL)
+            initialConfig = try WidgetConfig.load(from: configURL)
         } catch {
             fatalError("Failed to load widget config from \(configURL.path): \(error)")
         }
 
-        let orchestrator = Orchestrator(platformOps: platformOps) { windowState in
-            try? config.updatingWindowState(windowState).write(to: configURL)
+        // Both callbacks mutate the same `currentConfig` (rather than each re-deriving from
+        // `initialConfig`) so a URL persisted mid-session survives a later window-state persist,
+        // and vice versa.
+        var currentConfig = initialConfig
+        func persist(_ transform: (WidgetConfig) -> WidgetConfig) {
+            currentConfig = transform(currentConfig)
+            try? currentConfig.write(to: configURL)
         }
+
+        let orchestrator = Orchestrator(
+            platformOps: platformOps,
+            persistWindowState: { windowState in persist { $0.updatingWindowState(windowState) } },
+            persistURL: { url in persist { $0.updatingURL(url) } }
+        )
         self.orchestrator = orchestrator
-        orchestrator.start(config: config)
+        orchestrator.start(config: initialConfig)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

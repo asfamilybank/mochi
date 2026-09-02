@@ -1,11 +1,19 @@
+import Foundation
+
 public final class Orchestrator {
     private let platformOps: PlatformOps
     private let persistWindowState: (WindowState) -> Void
+    private let persistURL: (URL) -> Void
     private var window: WidgetWindowHandle?
 
-    public init(platformOps: PlatformOps, persistWindowState: @escaping (WindowState) -> Void = { _ in }) {
+    public init(
+        platformOps: PlatformOps,
+        persistWindowState: @escaping (WindowState) -> Void = { _ in },
+        persistURL: @escaping (URL) -> Void = { _ in }
+    ) {
         self.platformOps = platformOps
         self.persistWindowState = persistWindowState
+        self.persistURL = persistURL
     }
 
     public func start(config: WidgetConfig) {
@@ -18,10 +26,20 @@ public final class Orchestrator {
         if let zoom = config.windowState?.zoom {
             platformOps.applyZoom(zoom, in: window)
         }
+        platformOps.setToolbarVisible(true, in: window)
         platformOps.onWindowWillClose(window) { [weak self] in
             self?.persistCurrentWindowState()
         }
+        platformOps.onURLSubmitted(window) { [weak self] url in
+            self?.handleURLSubmitted(url)
+        }
         platformOps.showWindow(window)
+    }
+
+    private func handleURLSubmitted(_ url: URL) {
+        guard let window else { return }
+        platformOps.loadURL(url, in: window)
+        persistURL(url)
     }
 
     /// Captures and persists the current window state. Called when the window closes,

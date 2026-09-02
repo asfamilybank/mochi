@@ -79,4 +79,31 @@ import Testing
 
         #expect(persisted == fake.stubbedCapturedWindowState)
     }
+
+    @Test func showsToolbarOnStartThroughPlatformOpsRatherThanDirectWindowAccess() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+
+        orchestrator.start(config: config)
+
+        #expect(fake.toolbarVisibilityChanges.map(\.visible) == [true])
+        #expect(fake.toolbarVisibilityChanges.map(\.windowID) == [1])
+    }
+
+    @Test func submittingURLFromAddressBarLoadsItAndPersistsItOverConfiguredURL() {
+        let fake = FakePlatformOps()
+        var persistedURL: URL?
+        let orchestrator = Orchestrator(platformOps: fake, persistURL: { url in
+            persistedURL = url
+        })
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        orchestrator.start(config: config)
+
+        let navigatedURL = URL(string: "https://example.org")!
+        fake.simulateURLSubmitted(navigatedURL)
+
+        #expect(fake.loadedURLs.map(\.url) == [config.url, navigatedURL])
+        #expect(persistedURL == navigatedURL)
+    }
 }

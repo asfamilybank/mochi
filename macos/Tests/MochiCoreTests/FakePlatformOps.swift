@@ -12,7 +12,9 @@ final class FakePlatformOps: PlatformOps {
     private(set) var loadedURLs: [(url: URL, windowID: Int)] = []
     private(set) var shownWindowIDs: [Int] = []
     private(set) var appliedZooms: [(zoom: Double, windowID: Int)] = []
+    private(set) var toolbarVisibilityChanges: [(visible: Bool, windowID: Int)] = []
     private var willCloseHandlers: [Int: () -> Void] = [:]
+    private var urlSubmittedHandlers: [Int: (URL) -> Void] = [:]
 
     var stubbedScreens: [CGRect] = [CGRect(x: 0, y: 0, width: 1440, height: 900)]
     var stubbedCapturedWindowState = WindowState(
@@ -51,7 +53,21 @@ final class FakePlatformOps: PlatformOps {
         stubbedScreens
     }
 
+    func setToolbarVisible(_ visible: Bool, in window: WidgetWindowHandle) {
+        let handle = window as! FakeWidgetWindowHandle
+        toolbarVisibilityChanges.append((visible, handle.id))
+    }
+
+    func onURLSubmitted(_ window: WidgetWindowHandle, perform handler: @escaping (URL) -> Void) {
+        let handle = window as! FakeWidgetWindowHandle
+        urlSubmittedHandlers[handle.id] = handler
+    }
+
     func simulateWindowWillClose(windowID: Int = 1) {
         willCloseHandlers[windowID]?()
+    }
+
+    func simulateURLSubmitted(_ url: URL, windowID: Int = 1) {
+        urlSubmittedHandlers[windowID]?(url)
     }
 }
