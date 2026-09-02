@@ -85,4 +85,42 @@ import Testing
         let (_, _, controller) = makeSUT()
         #expect(controller.mode == .normal)
     }
+
+    @Test func exitGhostModeWhenAlreadyNormalDoesNothing() {
+        // The tray icon's "Exit Ghost Mode" entry (#9) must be safe to invoke unconditionally,
+        // without accidentally toggling back into Ghost Mode.
+        let (fake, _, controller) = makeSUT()
+
+        controller.exitGhostMode()
+
+        #expect(controller.mode == .normal)
+        #expect(fake.nativeChromeVisibilityChanges.isEmpty)
+        #expect(fake.contentOpacityChanges.isEmpty)
+        #expect(fake.mousePassthroughChanges.isEmpty)
+    }
+
+    @Test func exitGhostModeWhenInGhostModeRestoresEverythingLikeToggling() {
+        let (fake, _, controller) = makeSUT(ghostOpacity: 0.2)
+        controller.toggle()
+
+        controller.exitGhostMode()
+
+        #expect(controller.mode == .normal)
+        #expect(fake.nativeChromeVisibilityChanges.map(\.visible) == [false, true])
+        #expect(fake.toolbarVisibilityChanges.map(\.visible) == [false, true])
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 1.0])
+        #expect(fake.mousePassthroughChanges.map(\.enabled) == [true, false])
+    }
+
+    @Test func exitGhostModeUnhidesTheWindowEvenAfterBeingHiddenByMouseEntry() {
+        // The defining scenario for #9: the window is fully invisible + click-through, and the
+        // tray is the only remaining way back — it must still unhide the window.
+        let (fake, _, controller) = makeSUT()
+        controller.toggle()
+        fake.simulateMouseEntered()
+
+        controller.exitGhostMode()
+
+        #expect(fake.windowHiddenChanges.map(\.hidden) == [true, false])
+    }
 }

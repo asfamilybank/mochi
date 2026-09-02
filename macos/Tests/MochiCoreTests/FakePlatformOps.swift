@@ -22,6 +22,8 @@ final class FakePlatformOps: PlatformOps {
     private(set) var registeredHotkeys: [Hotkey] = []
     private(set) var presentedAlerts: [(title: String, message: String)] = []
     private(set) var snapThresholdChanges: [(threshold: Double, windowID: Int)] = []
+    private(set) var trayMenuItems: [TrayMenuItem] = []
+    private(set) var terminateAppCallCount = 0
     private var willCloseHandlers: [Int: () -> Void] = [:]
     private var urlSubmittedHandlers: [Int: (URL) -> Void] = [:]
     private var pinnedChangedHandlers: [Int: (Bool) -> Void] = [:]
@@ -162,5 +164,13 @@ final class FakePlatformOps: PlatformOps {
     func setSnapThreshold(_ threshold: Double, in window: WidgetWindowHandle) {
         let handle = window as! FakeWidgetWindowHandle
         snapThresholdChanges.append((threshold, handle.id))
+    }
+
+    func createTrayIcon(items: [TrayMenuItem]) {
+        trayMenuItems = items
+    }
+
+    func terminateApp() {
+        terminateAppCallCount += 1
     }
 }

@@ -217,4 +217,78 @@ import Testing
 
         #expect(fake.snapThresholdChanges.map(\.threshold) == [32])
     }
+
+    @Test func createsTheTrayIconWithFourEntriesInOrderOnStart() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+
+        orchestrator.start(config: config)
+
+        #expect(fake.trayMenuItems.map(\.title) == ["退出 Ghost Mode", "切换 Ghost Mode", "打开设置", "退出应用"])
+    }
+
+    @Test func trayExitGhostModeEntryDoesNothingWhenAlreadyInNormalMode() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        orchestrator.start(config: config)
+
+        fake.trayMenuItems[0].action()
+
+        #expect(fake.mousePassthroughChanges.isEmpty)
+        #expect(fake.contentOpacityChanges.isEmpty)
+    }
+
+    @Test func trayExitGhostModeEntryRestoresNormalModeEvenWhileFullyHiddenAndClickThrough() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!, ghostOpacity: 0.2)
+        orchestrator.start(config: config)
+        fake.simulateHotkeyPressed()
+        fake.simulateMouseEntered()
+
+        fake.trayMenuItems[0].action()
+
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 1.0])
+        #expect(fake.mousePassthroughChanges.map(\.enabled) == [true, false])
+        #expect(fake.windowHiddenChanges.map(\.hidden) == [true, false])
+    }
+
+    @Test func trayToggleGhostModeEntryTogglesModeThroughPlatformOps() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!, ghostOpacity: 0.3)
+        orchestrator.start(config: config)
+
+        fake.trayMenuItems[1].action()
+
+        #expect(fake.mousePassthroughChanges.map(\.enabled) == [true])
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.3])
+    }
+
+    @Test func trayOpenSettingsEntryInvokesTheInjectedCallback() {
+        let fake = FakePlatformOps()
+        var openSettingsCallCount = 0
+        let orchestrator = Orchestrator(platformOps: fake, openSettings: {
+            openSettingsCallCount += 1
+        })
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        orchestrator.start(config: config)
+
+        fake.trayMenuItems[2].action()
+
+        #expect(openSettingsCallCount == 1)
+    }
+
+    @Test func trayQuitEntryTerminatesTheAppThroughPlatformOps() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        orchestrator.start(config: config)
+
+        fake.trayMenuItems[3].action()
+
+        #expect(fake.terminateAppCallCount == 1)
+    }
 }

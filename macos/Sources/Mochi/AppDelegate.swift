@@ -28,7 +28,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             platformOps: platformOps,
             persistWindowState: { windowState in persist { $0.updatingWindowState(windowState) } },
             persistURL: { url in persist { $0.updatingURL(url) } },
-            persistPinned: { isPinned in persist { $0.updatingPinned(isPinned) } }
+            persistPinned: { isPinned in persist { $0.updatingPinned(isPinned) } },
+            // The settings panel itself is #13's scope, not yet built — this keeps the tray's
+            // "打开设置" entry from being a silent no-op in the meantime.
+            openSettings: {
+                platformOps.presentAlert(
+                    title: "设置面板尚未实现",
+                    message: "设置面板正在开发中，敬请期待。"
+                )
+            }
         )
         self.orchestrator = orchestrator
         orchestrator.start(config: initialConfig)

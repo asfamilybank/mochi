@@ -2,6 +2,19 @@ import Foundation
 
 public protocol WidgetWindowHandle {}
 
+/// One entry in the tray (menu-bar) icon's menu (#9) — a title paired with the action to run
+/// when it's clicked. Not `Equatable` since `action` is a closure; tests compare `.title` and
+/// invoke `.action` directly to observe its effect instead.
+public struct TrayMenuItem {
+    public let title: String
+    public let action: () -> Void
+
+    public init(title: String, action: @escaping () -> Void) {
+        self.title = title
+        self.action = action
+    }
+}
+
 public protocol PlatformOps: AnyObject {
     func createWidgetWindow(initialFrame: WindowFrame) -> WidgetWindowHandle
     func loadURL(_ url: URL, in window: WidgetWindowHandle)
@@ -70,4 +83,14 @@ public protocol PlatformOps: AnyObject {
 
     /// Sets the magnetic edge/corner snap distance (#6) applied on every drag step.
     func setSnapThreshold(_ threshold: Double, in window: WidgetWindowHandle)
+
+    /// Creates the app's persistent menu-bar (tray) icon (#9) — present for the app's entire
+    /// lifetime regardless of Normal/Ghost Mode — populated with `items` in order. Not tied to a
+    /// `WidgetWindowHandle` since the tray icon is app-global, not per-window. Called once, at
+    /// launch.
+    func createTrayIcon(items: [TrayMenuItem])
+
+    /// Terminates the app — the tray icon's "Quit" entry (#9) must work on its own, since Ghost
+    /// Mode can leave every window fully hidden with no other way to reach a quit control.
+    func terminateApp()
 }

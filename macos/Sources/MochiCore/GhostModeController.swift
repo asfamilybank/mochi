@@ -30,20 +30,34 @@ public final class GhostModeController {
 
     public func toggle() {
         switch mode {
-        case .normal:
-            mode = .ghost
-            platformOps.setNativeChromeVisible(false, in: window)
-            platformOps.setToolbarVisible(false, in: window)
-            platformOps.setContentOpacity(ghostOpacity, in: window)
-            platformOps.setMousePassthrough(true, in: window)
-        case .ghost:
-            mode = .normal
-            platformOps.setNativeChromeVisible(true, in: window)
-            platformOps.setToolbarVisible(true, in: window)
-            platformOps.setContentOpacity(1.0, in: window)
-            platformOps.setMousePassthrough(false, in: window)
-            platformOps.setWindowHidden(false, in: window)
+        case .normal: enterGhostMode()
+        case .ghost: leaveGhostMode()
         }
+    }
+
+    /// Forces the widget back to Normal Mode regardless of current state — the tray icon's
+    /// "Exit Ghost Mode" entry (#9) must work even while the window is fully hidden/click-through,
+    /// and must be a no-op when already in Normal Mode rather than toggling back into Ghost Mode.
+    public func exitGhostMode() {
+        guard mode == .ghost else { return }
+        leaveGhostMode()
+    }
+
+    private func enterGhostMode() {
+        mode = .ghost
+        platformOps.setNativeChromeVisible(false, in: window)
+        platformOps.setToolbarVisible(false, in: window)
+        platformOps.setContentOpacity(ghostOpacity, in: window)
+        platformOps.setMousePassthrough(true, in: window)
+    }
+
+    private func leaveGhostMode() {
+        mode = .normal
+        platformOps.setNativeChromeVisible(true, in: window)
+        platformOps.setToolbarVisible(true, in: window)
+        platformOps.setContentOpacity(1.0, in: window)
+        platformOps.setMousePassthrough(false, in: window)
+        platformOps.setWindowHidden(false, in: window)
     }
 
     private func handleMouseEntered() {

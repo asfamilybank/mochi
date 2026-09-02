@@ -5,6 +5,7 @@ public final class Orchestrator {
     private let persistWindowState: (WindowState) -> Void
     private let persistURL: (URL) -> Void
     private let persistPinned: (Bool) -> Void
+    private let openSettings: () -> Void
     private var window: WidgetWindowHandle?
     private var customScript: String?
     private var ghostModeController: GhostModeController?
@@ -13,12 +14,14 @@ public final class Orchestrator {
         platformOps: PlatformOps,
         persistWindowState: @escaping (WindowState) -> Void = { _ in },
         persistURL: @escaping (URL) -> Void = { _ in },
-        persistPinned: @escaping (Bool) -> Void = { _ in }
+        persistPinned: @escaping (Bool) -> Void = { _ in },
+        openSettings: @escaping () -> Void = {}
     ) {
         self.platformOps = platformOps
         self.persistWindowState = persistWindowState
         self.persistURL = persistURL
         self.persistPinned = persistPinned
+        self.openSettings = openSettings
     }
 
     public func start(config: WidgetConfig) {
@@ -60,6 +63,17 @@ public final class Orchestrator {
                 message: "默认的 Ghost Mode 切换热键已被其他应用占用，请检查快捷键冲突后重启 Mochi。"
             )
         }
+
+        platformOps.createTrayIcon(items: [
+            TrayMenuItem(title: "退出 Ghost Mode") { [weak ghostModeController] in
+                ghostModeController?.exitGhostMode()
+            },
+            TrayMenuItem(title: "切换 Ghost Mode") { [weak ghostModeController] in
+                ghostModeController?.toggle()
+            },
+            TrayMenuItem(title: "打开设置", action: openSettings),
+            TrayMenuItem(title: "退出应用", action: platformOps.terminateApp),
+        ])
     }
 
     private func handleURLSubmitted(_ url: URL) {

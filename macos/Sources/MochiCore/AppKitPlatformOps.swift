@@ -347,7 +347,27 @@ final class MochiWidgetWindow: NSWindow {
     }
 }
 
+/// Bridges a `TrayMenuItem`'s closure to the `@objc`/target-action mechanism `NSMenuItem`
+/// requires. `NSMenuItem.target` doesn't retain its target, so `AppKitPlatformOps` must keep
+/// these alive itself for as long as the tray menu exists.
+private final class TrayMenuItemTarget: NSObject {
+    private let action: () -> Void
+
+    init(action: @escaping () -> Void) {
+        self.action = action
+    }
+
+    @objc func invoke() {
+        action()
+    }
+}
+
 public final class AppKitPlatformOps: PlatformOps {
+    /// Retains the tray icon's `NSStatusItem` and its menu's `TrayMenuItemTarget`s for as long as
+    /// the tray exists — `NSStatusBar` doesn't keep the status item alive on its own, and
+    /// `NSMenuItem.target` doesn't retain its target either.
+    private var tray: (statusItem: NSStatusItem, targets: [TrayMenuItemTarget])?
+
     public init() {}
 
     public func createWidgetWindow(initialFrame: WindowFrame) -> WidgetWindowHandle {
@@ -551,6 +571,33 @@ public final class AppKitPlatformOps: PlatformOps {
     public func setSnapThreshold(_ threshold: Double, in window: WidgetWindowHandle) {
         guard let handle = handle(for: window) else { return }
         handle.setSnapThreshold(threshold)
+    }
+
+    /// The tray icon glyph is `DesignIcon.ghost` — Mochi's existing hand-drawn mascot vector —
+    /// as a stand-in until docs/design-language.md's dedicated "flattened app icon with a
+    /// negative-space window cutout" tray asset is produced by a separate design pass; this
+    /// already satisfies the packaging requirement (monochrome, real alpha transparency,
+    /// template image) via the same `ToolbarStyle.templateImage` renderer the toolbar buttons use.
+    public func createTrayIcon(items: [TrayMenuItem]) {
+        let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        statusItem.button?.image = ToolbarStyle.templateImage(for: .ghost, accessibilityDescription: "Mochi")
+
+        let menu = NSMenu()
+        var targets: [TrayMenuItemTarget] = []
+        for item in items {
+            let target = TrayMenuItemTarget(action: item.action)
+            targets.append(target)
+            let menuItem = NSMenuItem(title: item.title, action: #selector(TrayMenuItemTarget.invoke), keyEquivalent: "")
+            menuItem.target = target
+            menu.addItem(menuItem)
+        }
+        statusItem.menu = menu
+
+        tray = (statusItem, targets)
+    }
+
+    public func terminateApp() {
+        NSApplication.shared.terminate(nil)
     }
 
     private func handle(for window: WidgetWindowHandle) -> AppKitWidgetWindowHandle? {
