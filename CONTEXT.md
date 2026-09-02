@@ -11,6 +11,14 @@ _Avoid_: 浮窗（仅口语化描述，正式术语统一用 Widget）
 **Normal Mode（普通模式）**:
 Widget 的默认状态：原生 OS 窗口装饰（标题栏、关闭/最小化按钮、原生拖动手感）+ 自绘工具栏（地址栏与其他工具）常驻显示，网页内容完全不透明、可正常交互，不做鼠标穿透（见 [ADR-0004](docs/adr/0004-native-chrome-plus-custom-toolbar.md)）。
 
+**Smart Address Field（智能地址栏）**:
+Normal Mode 工具栏里的地址栏，按页面状态自动切换显示内容：加载完成且未交互时显示页面标题；鼠标悬停或点击时显示 URL（点击后可编辑）；页面加载中，无论是否有交互都恒定显示 URL。空页面（未导航）状态不受这套切换影响，固定显示占位提示文字，直到用户真正导航一次（见 [ADR-0009](docs/adr/0009-unified-native-toolbar-chrome.md)）。
+_Avoid_: 地址栏始终可编辑（design-language.md 里的旧表述，已被这套双态切换取代，不再是唯一行为）
+
+**Loading Progress Bar（加载进度条）**:
+Normal Mode 工具栏下方一条随页面真实加载进度填充的细线，加载完成后淡出消失，不加载时不占用界面空间。
+_Avoid_: 无
+
 **Ghost Mode（幽灵模式）**:
 Widget 的隐身状态，由默认热键整体切换开关，透明度、鼠标穿透、隐藏行为绑定在一起，不是若干独立开关的自由组合（见 [ADR-0006](docs/adr/0006-ghost-mode-is-a-bundled-state.md)）：
 - 原生窗口装饰和自绘工具栏一起隐藏，只留纯网页内容；

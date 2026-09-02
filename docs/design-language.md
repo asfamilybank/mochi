@@ -24,16 +24,20 @@
 
 ## 窗口与工具栏
 
-**Normal Mode**：系统原生标题栏（拖动/关闭/最小化/居中显示"Mochi"标题）+ 下方一条独立的自绘 Liquid Glass 工具栏胶囊，两者不重叠、不挤压网页内容区。整体观感对标"液态玻璃版 Safari"。
+**Normal Mode**：原生标题栏与自绘工具栏合并为同一行——traffic lights（关闭/最小化/最大化）与工具栏按钮、地址栏显示在同一水平高度，不再居中显示应用标题文字。技术上通过原生 `NSToolbar`（`titlebarAppearsTransparent` + `.unifiedCompact` 样式）实现，这一整行的 Liquid Glass 材质由系统原生渲染（macOS 26 上标准 AppKit 控件默认即真 Liquid Glass），不额外包自定义玻璃层；`NSGlassEffectView` 只保留给 Ghost Mode 召唤浮层、空页面抽象构图 panel 这两处脱离原生 chrome 的自绘内容。整体观感直接对标 Safari 的 unified toolbar，见 [ADR-0009](adr/0009-unified-native-toolbar-chrome.md)（取代 [ADR-0004](adr/0004-native-chrome-plus-custom-toolbar.md) 的两行式布局）。
+
+工具栏下方新增一条加载进度条：绑定 `WKWebView.estimatedProgress` 真实加载进度，2pt 高、系统强调色，从左到右填充，加载完成后短暂淡出消失，不加载时不占用界面空间（不是常驻灰色轨道）。
 
 工具栏按钮清单（从左到右）：
 1. 后退
 2. 前进
 3. 刷新
-4. 地址栏（始终可编辑，浏览器式导航；手动导航会覆盖持久化的"上次访问 URL"）
+4. 地址栏——**智能双态**：标准 `NSSearchField`（不额外包自绘玻璃层，视觉上比周围行更"实"是系统原生效果）。页面加载完成且未交互时显示页面标题；鼠标悬停或点击时显示 URL（点击后可编辑，失焦或移出且非加载中则退回标题）；加载中无论是否有交互都恒定显示 URL。标题取不到时兜底显示域名，再取不到就留空。手动导航会覆盖持久化的"上次访问 URL"。空页面（未导航）状态不受这套切换影响，固定显示占位提示文字，直到用户真正导航一次
 5. Pin 置顶切换（激活态：强调色染色玻璃背景 + 强调色描边 + 强调色图标，仿 macOS 选中态的染色玻璃效果）
 6. Ghost Mode 切换
 7. 设置（"更多"入口，⋯）
+
+窗口标题（`NSWindow.title`，供 Mission Control/Cmd-Tab 使用）动态跟随页面标题，取不到时兜底域名，再取不到兜底 `"Mochi"`（这一级不能为空）。
 
 见 [issue #4](https://github.com/asfamilybank/mochi/issues/4)。
 
