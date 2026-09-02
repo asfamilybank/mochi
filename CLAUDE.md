@@ -6,6 +6,8 @@
 
 `gh issue view <n> --comments` 只输出评论列表、不含 issue 正文——评论数为 0 时输出为空（exit 0，不是命令坏了，别重试）。要读正文/摘要用 `gh issue view <n> --json title,body,comments --jq '...'`。
 
+批量建互相引用的 issue（body 里既要插值 issue 号又要保留 markdown 反引号）时，`--body` 的 heredoc 必须用 `<<'EOF'`（quoted）+ 占位符（如 `__T1__`）+ 创建后 `${body//__T1__/#$t1}` 替换——不加引号的 `<<EOF` 会把反引号当命令替换执行。
+
 ### Issue tracker
 
 Issues live in this repo's GitHub Issues (uses the `gh` CLI). See `docs/agents/issue-tracker.md`.
@@ -14,6 +16,10 @@ Issues live in this repo's GitHub Issues (uses the `gh` CLI). See `docs/agents/i
 
 Issue 的 comments 里可能留有前序 session 的"本地实现进度"/"有意延后"说明（对应改动可能还在本地未 push，`gh issue list` 仍显示 open）——领任务前 `gh issue view <n> --comments` 把评论一起读，别只看 AC checklist 和 open/closed 状态判断"这活儿做完没"。
 
+GitHub 原生 `blocked_by` 依赖（`issue-tracker.md` 写在"Wayfinding operations"节下）不止 `/wayfinder` 能用，`/to-tickets` 这类有依赖关系的拆票也该建。
+
+重新设计一个已经 CLOSED 的 issue 所描述的（已上线）行为时，新开一个 issue 引用旧的，不要重开/改写旧 issue 的验收标准——旧记录保留作历史存档。
+
 ### Triage labels
 
 Default vocabulary, label strings equal to their names. See `docs/agents/triage-labels.md`.
@@ -21,6 +27,8 @@ Default vocabulary, label strings equal to their names. See `docs/agents/triage-
 ### Domain docs
 
 Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+新决定推翻已有 ADR 时不重写旧文件：旧 ADR 顶部加一行"已被 ADR-NNNN 取代"的引用说明保留作历史记录，新决定另开一个顺序编号的新 ADR。
 
 ### macOS app (`macos/`)
 
