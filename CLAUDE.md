@@ -8,6 +8,10 @@
 
 批量建互相引用的 issue（body 里既要插值 issue 号又要保留 markdown 反引号）时，`--body` 的 heredoc 必须用 `<<'EOF'`（quoted）+ 占位符（如 `__T1__`）+ 创建后 `${body//__T1__/#$t1}` 替换——不加引号的 `<<EOF` 会把反引号当命令替换执行。
 
+`gh api graphql`/`gh api repos/<owner>/<repo>/...` 这类裸 API 调用不会像 `gh issue view` 那样自动从当前 clone 推断仓库——先 `gh repo view --json owner,name -q '.owner.login + "/" + .name'` 拿准确的 owner/repo，不要凭记忆/猜测拼。
+
+由于 push 只能手动执行（见上文"线上资源只读"），本地常年积累多个未 push 的 commit——`/code-review` 默认的 `git diff @{upstream}...HEAD` 可能因此膨胀到几千甚至上万行、混进早前 session 的历史工作。审查"这次任务做的改动"时改用 `git diff HEAD`（或显式限定本次改的文件），不要把整个未 push 的分支历史当审查范围。
+
 ### Issue tracker
 
 Issues live in this repo's GitHub Issues (uses the `gh` CLI). See `docs/agents/issue-tracker.md`.
@@ -19,6 +23,8 @@ Issue 的 comments 里可能留有前序 session 的"本地实现进度"/"有意
 GitHub 原生 `blocked_by` 依赖（`issue-tracker.md` 写在"Wayfinding operations"节下）不止 `/wayfinder` 能用，`/to-tickets` 这类有依赖关系的拆票也该建。
 
 重新设计一个已经 CLOSED 的 issue 所描述的（已上线）行为时，新开一个 issue 引用旧的，不要重开/改写旧 issue 的验收标准——旧记录保留作历史存档。
+
+顶层 spec issue（几十条 user stories 那种）即使仍是 OPEN，也可能已经被拆解成一串子 issue（如 #1→#2-22、#18→#19-22）——`/implement` 前先 `gh issue list` 看有没有已存在的子任务，别把整份 spec 当一个可执行单元直接实现。
 
 ### Triage labels
 
@@ -33,7 +39,7 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 ### macOS app (`macos/`)
 
 - Swift Package Manager 项目，不是 `.xcodeproj`——`open macos/Package.swift` 直接在 Xcode 里当项目打开。本机没有 xcodegen/tuist，这是刻意选择而非临时凑合。
-- 构建/测试：`cd macos && swift build` / `swift test`。
+- 构建/测试：`cd macos && swift build` / `swift test`。cwd 有时会在会话中途（尤其是穿插了 Skill/Agent 调用之后）跳回仓库根目录，报 `Could not find Package.swift in this directory or any of its parent directories` 时先 `cd macos` 重试，不是构建配置坏了。
 - 运行时配置文件：`~/Library/Application Support/Mochi/config.toml`。
 - ADR-0008 的 macOS 26 baseline 落到 `Package.swift` 需要 `swift-tools-version:6.2`+ 才能写 `.macOS(.v26)`；同时要加 `swiftLanguageModes: [.v5]`（在 `Package(...)` 参数列表里排在 `targets:` 之后，顺序反了编译器报错），否则默认转成 Swift 6 严格并发检查，`MochiCore` 里直接调 AppKit/WebKit 的同步方法会全部报 actor-isolation 错误。
 - `NSGlassEffectView`/`NSGlassEffectContainerView`（真 Liquid Glass 材质）已经在本机 SDK 里（`AppKit.framework/Headers/NSGlassEffectView.h`），ADR-0008 不是画饼，可以直接用。
