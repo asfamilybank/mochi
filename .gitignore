@@ -1,0 +1,8 @@
+# macOS
+.DS_Store
+
+# Claude Code runtime state
+.claude/scheduled_tasks.lock
+
+# Personal Claude Code notes (not team-shared)
+CLAUDE.local.md
