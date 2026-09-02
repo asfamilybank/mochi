@@ -1,0 +1,231 @@
+import Foundation
+
+#if canImport(AppKit)
+    import AppKit
+#endif
+
+/// Single source of truth for Mochi's Liquid Glass visual language: colors, materials,
+/// corner radii/spacing, the Ghost Mode shadow-vs-opacity formula, and accent-color
+/// resolution. Every native view (Normal Mode toolbar, Ghost Mode summoned overlay, tray
+/// icon, Empty Page) should read its numbers from here instead of writing its own.
+///
+/// Values are transcribed from `design/mochi/*.dc.html`'s `renderVals()` (the canvas is the
+/// primary source; docs/design-language.md is its prose summary) — see that doc for the
+/// rendered picture these numbers produce.
+public enum DesignTokens {
+    /// A color expressed as 0–1 component doubles, independent of any UI framework's color type.
+    public struct RGBA: Equatable, Sendable {
+        public let red: Double
+        public let green: Double
+        public let blue: Double
+        public let alpha: Double
+
+        public init(red: Double, green: Double, blue: Double, alpha: Double) {
+            self.red = red
+            self.green = green
+            self.blue = blue
+            self.alpha = alpha
+        }
+
+        /// - Parameter hex: a `"#RRGGBB"`, `"RRGGBB"`, `"#RGB"`, or `"RGB"` string, matching the
+        ///   canvas's own `hex2rgba` helper.
+        public init(hex: String, alpha: Double = 1) {
+            var digits = Array(hex.hasPrefix("#") ? String(hex.dropFirst()) : hex)
+            if digits.count == 3 {
+                digits = digits.flatMap { [$0, $0] }
+            }
+            let value = UInt32(String(digits), radix: 16) ?? 0
+            self.red = Double((value >> 16) & 0xFF) / 255
+            self.green = Double((value >> 8) & 0xFF) / 255
+            self.blue = Double(value & 0xFF) / 255
+            self.alpha = alpha
+        }
+
+        public func withAlpha(_ alpha: Double) -> RGBA {
+            RGBA(red: red, green: green, blue: blue, alpha: alpha)
+        }
+    }
+
+    /// The Liquid Glass color set for one appearance (light or dark).
+    public struct GlassPalette: Equatable {
+        public let glassFill: RGBA
+        public let titlebarFill: RGBA
+        public let border: RGBA
+        public let innerHighlight: RGBA
+        public let hairline: RGBA
+        public let fieldFill: RGBA
+        public let fieldText: RGBA
+        public let textPrimary: RGBA
+        public let textSecondary: RGBA
+        public let iconPrimary: RGBA
+        public let iconMuted: RGBA
+    }
+
+    /// - Parameter dark: `true` for the dark-appearance palette, `false` for light.
+    public static func glassPalette(dark: Bool) -> GlassPalette {
+        dark ? darkGlassPalette : lightGlassPalette
+    }
+
+    private static let lightGlassPalette = GlassPalette(
+        glassFill: RGBA(red: 255 / 255, green: 255 / 255, blue: 255 / 255, alpha: 0.55),
+        titlebarFill: RGBA(red: 248 / 255, green: 248 / 255, blue: 250 / 255, alpha: 0.72),
+        border: RGBA(red: 255 / 255, green: 255 / 255, blue: 255 / 255, alpha: 0.6),
+        innerHighlight: RGBA(red: 255 / 255, green: 255 / 255, blue: 255 / 255, alpha: 0.85),
+        hairline: RGBA(red: 0, green: 0, blue: 0, alpha: 0.08),
+        fieldFill: RGBA(red: 0, green: 0, blue: 0, alpha: 0.045),
+        fieldText: RGBA(hex: "1D1D1F", alpha: 0.75),
+        textPrimary: RGBA(hex: "1D1D1F"),
+        textSecondary: RGBA(red: 60 / 255, green: 60 / 255, blue: 67 / 255, alpha: 0.6),
+        iconPrimary: RGBA(hex: "1D1D1F", alpha: 0.82),
+        iconMuted: RGBA(hex: "1D1D1F", alpha: 0.24)
+    )
+
+    private static let darkGlassPalette = GlassPalette(
+        glassFill: RGBA(red: 44 / 255, green: 44 / 255, blue: 48 / 255, alpha: 0.55),
+        titlebarFill: RGBA(red: 28 / 255, green: 28 / 255, blue: 32 / 255, alpha: 0.72),
+        border: RGBA(red: 255 / 255, green: 255 / 255, blue: 255 / 255, alpha: 0.10),
+        innerHighlight: RGBA(red: 255 / 255, green: 255 / 255, blue: 255 / 255, alpha: 0.05),
+        hairline: RGBA(red: 255 / 255, green: 255 / 255, blue: 255 / 255, alpha: 0.08),
+        fieldFill: RGBA(red: 0, green: 0, blue: 0, alpha: 0.25),
+        fieldText: RGBA(hex: "F5F5F7", alpha: 0.85),
+        textPrimary: RGBA(hex: "F5F5F7"),
+        textSecondary: RGBA(red: 235 / 255, green: 235 / 255, blue: 245 / 255, alpha: 0.65),
+        iconPrimary: RGBA(hex: "F5F5F7", alpha: 0.9),
+        iconMuted: RGBA(hex: "F5F5F7", alpha: 0.28)
+    )
+
+    /// The system accent color options offered by the design canvas, matching macOS's own
+    /// accent-color picker. `.orange` is the documented default.
+    public enum AccentSwatch: String, CaseIterable, Sendable {
+        case orange, blue, purple, pink, red, green, graphite
+
+        public var hex: String {
+            switch self {
+            case .orange: return "#FF9500"
+            case .blue: return "#007AFF"
+            case .purple: return "#AF52DE"
+            case .pink: return "#FF375F"
+            case .red: return "#FF3B30"
+            case .green: return "#34C759"
+            case .graphite: return "#8E8E93"
+            }
+        }
+
+        public var rgba: RGBA { RGBA(hex: hex) }
+    }
+
+    public static let defaultAccent: AccentSwatch = .orange
+
+    /// The typeface Mochi draws with. Always the system font — no custom brand typeface is
+    /// shipped — so this exists to record that choice as an intentional decision (map to
+    /// SwiftUI's `.system(...)` or AppKit's `NSFont.systemFont`), not to carry a CSS-style
+    /// font stack string.
+    public enum FontFamily: Sendable {
+        case system
+    }
+
+    public static let fontFamily: FontFamily = .system
+
+    #if canImport(AppKit)
+        /// The live system accent color, for the normal app runtime. Preview/test contexts
+        /// without a real AppKit environment should use `defaultAccent.rgba` (or another
+        /// `AccentSwatch`) directly instead of calling this.
+        public static func resolveSystemAccent() -> RGBA {
+            guard let converted = NSColor.controlAccentColor.usingColorSpace(.deviceRGB) else {
+                return defaultAccent.rgba
+            }
+            return RGBA(
+                red: converted.redComponent,
+                green: converted.greenComponent,
+                blue: converted.blueComponent,
+                alpha: converted.alphaComponent
+            )
+        }
+    #endif
+
+    /// The colors an accent-tinted active control (Pin, Ghost Mode toggle) draws with —
+    /// a tinted glass background and border plus a solid-accent icon, matching macOS's own
+    /// selected-state glass tinting.
+    public struct AccentTint: Equatable {
+        public let background: RGBA
+        public let border: RGBA
+        public let icon: RGBA
+    }
+
+    public static func accentTint(_ accent: RGBA) -> AccentTint {
+        AccentTint(background: accent.withAlpha(0.18), border: accent.withAlpha(0.45), icon: accent)
+    }
+
+    /// The Ghost Mode window's drop shadow, as a function of its current content opacity —
+    /// "the more transparent the window, the fainter its shadow", so a barely-visible window
+    /// doesn't drag around an obviously-visible shadow ring. Matches the `ghostShadow` formula
+    /// in `design/mochi/GhostMode.dc.html` / `GhostToolbar.dc.html`.
+    public struct GhostShadow: Equatable {
+        public let verticalOffset: Double
+        public let blurRadius: Double
+        public let alpha: Double
+    }
+
+    /// - Parameter contentOpacity: the window's current target opacity, `0...1`.
+    public static func ghostShadow(forContentOpacity contentOpacity: Double) -> GhostShadow {
+        let opacity = min(max(contentOpacity, 0), 1)
+        let alpha = min(max(opacity * 0.5, 0.04), 0.45)
+        return GhostShadow(
+            verticalOffset: (20 * opacity + 6).rounded(),
+            blurRadius: (40 * opacity + 10).rounded(),
+            alpha: alpha
+        )
+    }
+
+    /// Corner radii, spacing, and fixed dimensions for the glass surfaces, measured off the
+    /// design canvas.
+    public enum Layout {
+        public static let windowCornerRadius: Double = 14
+        public static let titlebarHeight: Double = 38
+
+        public static let toolbarCapsuleCornerRadius: Double = 16
+        public static let toolbarOuterPaddingHorizontal: Double = 10
+        public static let toolbarOuterPaddingVertical: Double = 8
+        public static let toolbarInnerPaddingHorizontal: Double = 8
+        public static let toolbarInnerPaddingVertical: Double = 6
+        public static let toolbarButtonSpacing: Double = 4
+        public static let toolbarButtonDiameter: Double = 30
+        public static let toolbarCapsuleHeight: Double = toolbarButtonDiameter + toolbarInnerPaddingVertical * 2
+
+        public static let addressFieldCornerRadius: Double = 9
+        public static let addressFieldHeight: Double = 30
+
+        public static let emptyPageGlassPanelCornerRadius: Double = 24
+    }
+
+    /// One control in a toolbar's fixed left-to-right button order.
+    public enum ToolbarButton: Equatable, Sendable {
+        case back, forward, refresh, addressField, pin, ghostModeToggle, settings
+    }
+
+    /// Normal Mode's full toolbar: back, forward, refresh, address bar, Pin, Ghost Mode
+    /// toggle, settings — this order is fixed by the design canvas, not a free choice.
+    public static let normalModeToolbarOrder: [ToolbarButton] = [
+        .back, .forward, .refresh, .addressField, .pin, .ghostModeToggle, .settings,
+    ]
+
+    /// Ghost Mode's summoned floating toolbar deliberately carries only three controls —
+    /// no address bar, no back/forward — since it's a temporary emergency-access surface,
+    /// not a navigation UI.
+    public static let ghostModeSummonedToolbarOrder: [ToolbarButton] = [
+        .pin, .ghostModeToggle, .refresh,
+    ]
+
+    /// Which glyph the address bar's leading icon shows.
+    public enum AddressFieldGlyph: Equatable, Sendable {
+        /// A page is loaded — shows a lock, like a browser's secure-page indicator.
+        case lock
+        /// No page is loaded (Empty Page) — a lock would misleadingly imply a secure page
+        /// that isn't there, so this shows a magnifying glass instead.
+        case search
+    }
+
+    public static func addressFieldGlyph(hasLoadedPage: Bool) -> AddressFieldGlyph {
+        hasLoadedPage ? .lock : .search
+    }
+}
