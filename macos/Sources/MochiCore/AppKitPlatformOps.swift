@@ -32,14 +32,6 @@ private enum ToolbarStyle {
         dynamicColor(light: DesignTokens.glassPalette(dark: false).glassFill, dark: DesignTokens.glassPalette(dark: true).glassFill)
     }
 
-    static func fieldFill() -> NSColor {
-        dynamicColor(light: DesignTokens.glassPalette(dark: false).fieldFill, dark: DesignTokens.glassPalette(dark: true).fieldFill)
-    }
-
-    static func fieldText() -> NSColor {
-        dynamicColor(light: DesignTokens.glassPalette(dark: false).fieldText, dark: DesignTokens.glassPalette(dark: true).fieldText)
-    }
-
     /// Renders a `DesignIcon`'s path as a stroked template image (uniform stroke weight, round
     /// caps/joins — matching `DesignIcon`'s own documented SF Symbols-style geometry), so
     /// `NSButton.contentTintColor` can tint it like any system template image.
@@ -66,14 +58,38 @@ private extension NSColor {
     }
 }
 
-/// The interactive controls hosted inside the Normal Mode toolbar glass. Bundled together because
-/// they're always constructed, wired, and handed off as one unit.
+/// A search field that reports the moment it's clicked, *before* AppKit's own `mouseDown`
+/// processing runs — needed so the Smart Address Field (#18) can flip into its editable state
+/// (`AddressFieldPresenter`) in time for that same click to place a cursor, rather than the user
+/// needing a second click after the field becomes editable.
+private final class AddressField: NSSearchField {
+    var onMouseDown: (() -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        onMouseDown?()
+        super.mouseDown(with: event)
+    }
+}
+
+/// Reports hover enter/exit for a single view via its own `NSTrackingArea`, decoupled from the
+/// window-wide tracking area `installGhostModeMouseTracking` installs for Ghost Mode — each
+/// `NSTrackingArea` needs a distinct `owner` for AppKit to route enter/exit callbacks separately.
+private final class HoverTracker: NSObject {
+    var onEnter: (() -> Void)?
+    var onExit: (() -> Void)?
+
+    @objc func mouseEntered(with event: NSEvent) { onEnter?() }
+    @objc func mouseExited(with event: NSEvent) { onExit?() }
+}
+
+/// The interactive controls hosted in the Normal Mode `NSToolbar` (ADR-0009). Bundled together
+/// because they're always constructed, wired, and handed off as one unit.
 fileprivate struct ToolbarControls {
     let backButton: NSButton
     let forwardButton: NSButton
     let refreshButton: NSButton
     let pinButton: NSButton
-    let addressField: NSTextField
+    let addressField: AddressField
     let settingsButton: NSButton
 }
 
@@ -81,32 +97,53 @@ fileprivate struct ToolbarControls {
 /// button instances from `ToolbarControls`, per the ticket's design decision that the overlay
 /// must not reuse the Normal Mode toolbar's component, even though both wire the same
 /// `togglePinned`/`reload` actions on `AppKitWidgetWindowHandle`. Order matches
-/// `DesignTokens.ghostModeSummonedToolbarOrder`.
+/// `DesignTokens.ghostModeSummonedToolbarOrder`. Unaffected by ADR-0009 — still its own floating
+/// `NSGlassEffectView` capsule, independent of the Normal Mode toolbar's native chrome.
 fileprivate struct SummonedToolbarControls {
     let pinButton: NSButton
     let ghostModeToggleButton: NSButton
     let refreshButton: NSButton
 }
 
-/// Custom-drawn Normal Mode toolbar: back/forward/refresh + an editable address bar + a Pin
-/// toggle, embedded in a real Liquid Glass material (`NSGlassEffectView`, macOS 26+; see
-/// ADR-0008). Sits above the WKWebView in its own row — never overlapping page content — inside
-/// a vertical NSStackView, which is also what lets `setToolbarVisible` collapse it later for
-/// Ghost Mode (#8) without any extra layout bookkeeping here.
+/// The Loading Progress Bar (#18): a thin line docked to the content area's top edge, overlaid
+/// on top of `webView`/the Empty Page rather than reserving its own layout row — matching
+/// design-language.md's "不加载时不占用界面空间". `widthConstraint`'s `constant` is driven
+/// straight from `WKWebView.estimatedProgress`.
+fileprivate struct LoadingProgressBar {
+    let view: NSView
+    let widthConstraint: NSLayoutConstraint
+}
+
+/// Normal Mode's window chrome (ADR-0009): a native `NSToolbar` in `.unifiedCompact` style —
+/// traffic lights, back/forward/refresh, the Smart Address Field, Pin, and settings all on one
+/// row, rendered with the system's own Liquid Glass material — sitting above the WKWebView.
 ///
 /// Colors, corner radii, spacing, and the bespoke vector icon set all come from `DesignTokens`/
 /// `DesignIcon` (#17) — nothing here writes its own numbers.
-final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDelegate, NSTextFieldDelegate, WKNavigationDelegate {
+final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDelegate, NSSearchFieldDelegate, WKNavigationDelegate {
+    private static let backItemID = NSToolbarItem.Identifier("com.mochi.toolbar.back")
+    private static let forwardItemID = NSToolbarItem.Identifier("com.mochi.toolbar.forward")
+    private static let refreshItemID = NSToolbarItem.Identifier("com.mochi.toolbar.refresh")
+    private static let addressItemID = NSToolbarItem.Identifier("com.mochi.toolbar.address")
+    private static let pinItemID = NSToolbarItem.Identifier("com.mochi.toolbar.pin")
+    private static let settingsItemID = NSToolbarItem.Identifier("com.mochi.toolbar.settings")
+    /// The Normal Mode toolbar's fixed button order (`DesignTokens.normalModeToolbarOrder`, minus
+    /// the not-yet-implemented Ghost Mode toggle button — see AppKitPlatformOps's doc comment).
+    private static let toolbarItemOrder: [NSToolbarItem.Identifier] = [
+        backItemID, forwardItemID, refreshItemID, addressItemID, pinItemID, settingsItemID,
+    ]
+
     let window: NSWindow
     let webView: WKWebView
-    private let toolbarContainer: NSView
     private let controls: ToolbarControls
     private let summonedToolbarContainer: NSView
     private let summonedControls: SummonedToolbarControls
+    private let progressBar: LoadingProgressBar
     /// The Empty Page's (#16) native content, occupying the same slot as `webView` inside
     /// `contentContainer` — exactly one of the two is visible at a time, toggled by `loadURL`/
     /// `showEmptyPage` rather than swapped in and out of the view hierarchy.
     private let emptyPageHostingView: NSHostingView<EmptyPageView>
+    private let addressFieldHoverTracker = HoverTracker()
     private var willCloseHandler: (() -> Void)?
     private var urlSubmittedHandler: ((URL) -> Void)?
     private var pinnedChangedHandler: ((Bool) -> Void)?
@@ -114,30 +151,49 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     private var navigationFinishedHandler: (() -> Void)?
     private var mouseEnteredHandler: (() -> Void)?
     private var summonedGhostModeToggleHandler: (() -> Void)?
+    private var pageTitleChangedHandler: ((String?) -> Void)?
+    private var loadingStateChangedHandler: ((Bool) -> Void)?
+    private var loadingProgressChangedHandler: ((Double) -> Void)?
     private var isPinned = false
+    /// Whether a real navigation (`loadURL`) has ever happened — the Smart Address Field (#18)
+    /// only kicks in once this flips `true`; before that, the Empty Page's (#16) fixed
+    /// placeholder + freely-editable field is left untouched (story #12).
+    private var hasNavigatedAtLeastOnce = false
+    private var isLoading = false
+    /// Mirrors `webView.url`, but updated *synchronously* in `loadURL` — `webView.url` itself only
+    /// updates once WKWebView actually commits the navigation, which lags a KVO tick or more
+    /// behind the `loadURL`/`isLoading` transition, so reading `webView.url` directly in
+    /// `updateAddressFieldDisplay()` could show the previous page's (stale) URL/host for a moment.
+    private var currentURL: URL?
+    private var isHoveringAddressField = false
+    private var isEditingAddressField = false
     private let defaultWindowBackgroundColor: NSColor
     private var navigationObservations: [NSKeyValueObservation] = []
     private var appearanceObservation: NSKeyValueObservation?
     private var accentColorObserver: NSObjectProtocol?
 
     fileprivate init(
-        window: NSWindow, webView: WKWebView, toolbarContainer: NSView, controls: ToolbarControls,
+        window: NSWindow, webView: WKWebView, controls: ToolbarControls,
         summonedToolbarContainer: NSView, summonedControls: SummonedToolbarControls,
-        emptyPageHostingView: NSHostingView<EmptyPageView>
+        emptyPageHostingView: NSHostingView<EmptyPageView>, progressBar: LoadingProgressBar
     ) {
         self.window = window
         self.webView = webView
-        self.toolbarContainer = toolbarContainer
         self.controls = controls
         self.summonedToolbarContainer = summonedToolbarContainer
         self.summonedControls = summonedControls
         self.emptyPageHostingView = emptyPageHostingView
+        self.progressBar = progressBar
         self.defaultWindowBackgroundColor = window.backgroundColor
         super.init()
         window.delegate = self
         webView.navigationDelegate = self
         installGhostModeMouseTracking()
+        installAddressFieldHoverTracking()
         controls.addressField.delegate = self
+        controls.addressField.onMouseDown = { [weak self] in
+            self?.beginEditingAddressField()
+        }
         controls.backButton.target = self
         controls.backButton.action = #selector(goBack)
         controls.forwardButton.target = self
@@ -147,7 +203,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         controls.pinButton.target = self
         controls.pinButton.action = #selector(togglePinned)
         controls.pinButton.wantsLayer = true
-        controls.pinButton.layer?.cornerRadius = DesignTokens.Layout.toolbarButtonDiameter / 2
+        controls.pinButton.layer?.cornerRadius = DesignTokens.Layout.normalModeToolbarButtonDiameter / 2
         controls.settingsButton.target = self
         controls.settingsButton.action = #selector(handleSettingsRequested)
         summonedControls.refreshButton.target = self
@@ -163,18 +219,22 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         observeNavigationState()
         updatePinButtonAppearance()
         updateSummonedGhostModeToggleAppearance()
-        // The Pin capsule's tint is baked into CALayer colors (not a dynamic NSColor), so unlike
-        // everywhere else in this file it needs to be re-applied whenever the system accent color
-        // or the window's light/dark appearance changes, instead of re-resolving for free at draw time.
+        updateProgressBarColor()
+        // The Pin capsule's tint (and the progress bar's fill) are baked into CALayer colors (not
+        // dynamic NSColors), so unlike everywhere else in this file they need to be re-applied
+        // whenever the system accent color or the window's light/dark appearance changes, instead
+        // of re-resolving for free at draw time.
         appearanceObservation = window.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
             self?.updatePinButtonAppearance()
             self?.updateSummonedGhostModeToggleAppearance()
+            self?.updateProgressBarColor()
         }
         accentColorObserver = NotificationCenter.default.addObserver(
             forName: NSColor.systemColorsDidChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
             self?.updatePinButtonAppearance()
             self?.updateSummonedGhostModeToggleAppearance()
+            self?.updateProgressBarColor()
         }
     }
 
@@ -197,9 +257,28 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
                 self.setNavigationButton(self.controls.forwardButton, enabled: change.newValue ?? false)
             },
             webView.observe(\.url, options: [.new]) { [weak self] _, change in
-                if let url = change.newValue ?? nil {
-                    self?.controls.addressField.stringValue = url.absoluteString
-                }
+                guard let self else { return }
+                self.currentURL = change.newValue ?? self.currentURL
+                self.updateAddressFieldDisplay()
+            },
+            webView.observe(\.title, options: [.new]) { [weak self] _, change in
+                guard let self else { return }
+                self.updateAddressFieldDisplay()
+                self.pageTitleChangedHandler?(change.newValue ?? nil)
+            },
+            webView.observe(\.isLoading, options: [.new]) { [weak self] _, change in
+                guard let self else { return }
+                let isLoading = change.newValue ?? false
+                self.isLoading = isLoading
+                self.updateAddressFieldDisplay()
+                self.updateProgressBarVisibility(isLoading: isLoading)
+                self.loadingStateChangedHandler?(isLoading)
+            },
+            webView.observe(\.estimatedProgress, options: [.new]) { [weak self] _, change in
+                guard let self else { return }
+                let progress = change.newValue ?? 0
+                self.updateProgressBarWidth(progress: progress)
+                self.loadingProgressChangedHandler?(progress)
             },
         ]
     }
@@ -277,6 +356,85 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         summonedControls.ghostModeToggleButton.contentTintColor = NSColor(rgba: tint.icon)
     }
 
+    /// The Loading Progress Bar's fill color, system accent — baked into a `CALayer` (see the
+    /// class-level comment), so re-applied on every accent/appearance change alongside Pin.
+    private func updateProgressBarColor() {
+        progressBar.view.layer?.backgroundColor = NSColor(rgba: DesignTokens.resolveSystemAccent()).cgColor
+    }
+
+    private func updateProgressBarVisibility(isLoading: Bool) {
+        if isLoading {
+            progressBar.widthConstraint.constant = 0
+            progressBar.view.alphaValue = 1
+        } else {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.2
+                progressBar.view.animator().alphaValue = 0
+            }
+        }
+    }
+
+    private func updateProgressBarWidth(progress: Double) {
+        let containerWidth = window.contentView?.bounds.width ?? 0
+        progressBar.widthConstraint.constant = containerWidth * CGFloat(min(max(progress, 0), 1))
+    }
+
+    /// Computes and applies the Smart Address Field's (#18) current text + editability via
+    /// `AddressFieldPresenter`, using `webView`'s own state directly (no `PlatformOps` round trip
+    /// needed — this view already owns `webView`) plus the locally-tracked hover/edit flags. A
+    /// no-op before the first real navigation (see `hasNavigatedAtLeastOnce`).
+    private func updateAddressFieldDisplay() {
+        guard hasNavigatedAtLeastOnce else { return }
+        let state = AddressFieldPresenter.displayState(
+            isLoading: isLoading,
+            isHovering: isHoveringAddressField,
+            isEditing: isEditingAddressField,
+            pageTitle: webView.title,
+            urlString: currentURL?.absoluteString ?? "",
+            host: currentURL?.host
+        )
+        if controls.addressField.stringValue != state.text {
+            controls.addressField.stringValue = state.text
+        }
+        controls.addressField.isEditable = state.isEditable
+    }
+
+    private func installAddressFieldHoverTracking() {
+        addressFieldHoverTracker.onEnter = { [weak self] in
+            self?.isHoveringAddressField = true
+            self?.updateAddressFieldDisplay()
+        }
+        addressFieldHoverTracker.onExit = { [weak self] in
+            self?.isHoveringAddressField = false
+            self?.updateAddressFieldDisplay()
+        }
+        let trackingArea = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: addressFieldHoverTracker,
+            userInfo: nil
+        )
+        controls.addressField.addTrackingArea(trackingArea)
+    }
+
+    /// Flips the field into its editable state (story #4) — called from `AddressField.onMouseDown`
+    /// *before* AppKit's own click handling runs, so the same click both reveals the URL and
+    /// places a cursor in it, rather than requiring a second click. Excludes `isLoading`: the
+    /// presenter forces a non-editable URL display while loading regardless of `isEditing`, so
+    /// setting the flag here would just get silently stuck `true` (with no focus ever having been
+    /// granted) until the load finishes.
+    private func beginEditingAddressField() {
+        guard hasNavigatedAtLeastOnce, !isLoading, !isEditingAddressField else { return }
+        isEditingAddressField = true
+        updateAddressFieldDisplay()
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        guard let field = obj.object as? NSSearchField, field === controls.addressField else { return }
+        isEditingAddressField = false
+        updateAddressFieldDisplay()
+    }
+
     func setWillCloseHandler(_ handler: @escaping () -> Void) {
         willCloseHandler = handler
     }
@@ -307,7 +465,10 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     func loadURL(_ url: URL) {
         emptyPageHostingView.isHidden = true
         webView.isHidden = false
+        hasNavigatedAtLeastOnce = true
+        currentURL = url
         webView.load(URLRequest(url: url))
+        updateAddressFieldDisplay()
     }
 
     /// Switches the content area to the Empty Page's native content, hiding `webView` — the
@@ -326,7 +487,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     }
 
     func setToolbarVisible(_ visible: Bool) {
-        toolbarContainer.isHidden = !visible
+        window.toolbar?.isVisible = visible
     }
 
     func setSummonedToolbarVisible(_ visible: Bool) {
@@ -417,6 +578,9 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         }
         guard let url = Self.resolveURL(from: controls.addressField.stringValue) else { return true }
         urlSubmittedHandler?(url)
+        // Blurs the field, which fires `controlTextDidEndEditing` and reverts the display back to
+        // the (new) page's title once it loads — matches story #4's "submit closes edit mode".
+        window.makeFirstResponder(nil)
         return true
     }
 
@@ -427,6 +591,56 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
             return url
         }
         return URL(string: "https://\(trimmed)")
+    }
+
+    func setPageTitleChangedHandler(_ handler: @escaping (String?) -> Void) {
+        pageTitleChangedHandler = handler
+    }
+
+    func setLoadingStateChangedHandler(_ handler: @escaping (Bool) -> Void) {
+        loadingStateChangedHandler = handler
+    }
+
+    func setLoadingProgressChangedHandler(_ handler: @escaping (Double) -> Void) {
+        loadingProgressChangedHandler = handler
+    }
+
+    func setWindowTitle(_ title: String) {
+        window.title = title
+    }
+}
+
+extension AppKitWidgetWindowHandle: NSToolbarDelegate {
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        Self.toolbarItemOrder
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        Self.toolbarItemOrder
+    }
+
+    func toolbar(
+        _ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+        willBeInsertedIntoToolbar flag: Bool
+    ) -> NSToolbarItem? {
+        let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+        switch itemIdentifier {
+        case Self.backItemID:
+            item.view = controls.backButton
+        case Self.forwardItemID:
+            item.view = controls.forwardButton
+        case Self.refreshItemID:
+            item.view = controls.refreshButton
+        case Self.addressItemID:
+            item.view = controls.addressField
+        case Self.pinItemID:
+            item.view = controls.pinButton
+        case Self.settingsItemID:
+            item.view = controls.settingsButton
+        default:
+            return nil
+        }
+        return item
     }
 }
 
@@ -485,9 +699,7 @@ public final class AppKitPlatformOps: PlatformOps {
         emptyPageHostingView.isHidden = true
 
         // `webView` and `emptyPageHostingView` (#16) share this container, each pinned to fill it
-        // completely — only one is ever visible at a time (see `loadURL`/`showEmptyPage`), which
-        // lets the container itself behave sizing-wise exactly like a bare `webView` did before,
-        // so `rootStack`'s layout below doesn't need to change.
+        // completely — only one is ever visible at a time (see `loadURL`/`showEmptyPage`).
         let contentContainer = NSView()
         contentContainer.translatesAutoresizingMaskIntoConstraints = false
         contentContainer.addSubview(webView)
@@ -504,23 +716,29 @@ public final class AppKitPlatformOps: PlatformOps {
         ])
 
         let controls = makeToolbarControls()
-        let toolbarContainer = makeToolbarRow(containing: controls)
-
-        let rootStack = NSStackView(views: [toolbarContainer, contentContainer])
-        rootStack.orientation = .vertical
-        rootStack.spacing = 0
-        rootStack.distribution = .fill
-        rootStack.alignment = .width
-
+        let progressBar = makeLoadingProgressBar()
         let (summonedToolbarContainer, summonedControls) = makeSummonedToolbarOverlay()
-        // A plain `addSubview`, not `addArrangedSubview` — this floats above `webView` in z-order
-        // without joining the stack's managed layout, which is what lets it appear/disappear
+
+        // The progress bar overlays the top edge of the content area (added after it, so it
+        // draws on top) instead of occupying its own row — it takes no layout space while hidden.
+        let rootView = NSView()
+        rootView.translatesAutoresizingMaskIntoConstraints = false
+        rootView.addSubview(contentContainer)
+        rootView.addSubview(progressBar.view)
+        // A plain `addSubview`, not part of any stack's managed layout — this floats above
+        // `webView` in z-order without joining layout, which is what lets it appear/disappear
         // without resizing or reflowing the window's content (#10's AC).
-        rootStack.addSubview(summonedToolbarContainer)
+        rootView.addSubview(summonedToolbarContainer)
         NSLayoutConstraint.activate([
-            summonedToolbarContainer.centerXAnchor.constraint(equalTo: rootStack.centerXAnchor),
+            contentContainer.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
+            contentContainer.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
+            contentContainer.topAnchor.constraint(equalTo: rootView.topAnchor),
+            contentContainer.bottomAnchor.constraint(equalTo: rootView.bottomAnchor),
+            progressBar.view.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
+            progressBar.view.topAnchor.constraint(equalTo: rootView.topAnchor),
+            summonedToolbarContainer.centerXAnchor.constraint(equalTo: rootView.centerXAnchor),
             summonedToolbarContainer.topAnchor.constraint(
-                equalTo: rootStack.topAnchor, constant: DesignTokens.Layout.ghostModeSummonedToolbarTopMargin),
+                equalTo: rootView.topAnchor, constant: DesignTokens.Layout.ghostModeSummonedToolbarTopMargin),
         ])
 
         let window = MochiWidgetWindow(
@@ -529,25 +747,37 @@ public final class AppKitPlatformOps: PlatformOps {
             backing: .buffered,
             defer: false
         )
-        window.title = "Mochi"
-        window.contentView = rootStack
+        // ADR-0009: traffic lights + toolbar content share one native row, rendered with the
+        // system's own Liquid Glass material — no `NSGlassEffectView` wrapper needed here.
+        window.titlebarAppearsTransparent = true
+        window.toolbarStyle = .unifiedCompact
+        window.contentView = rootView
 
-        return AppKitWidgetWindowHandle(
-            window: window, webView: webView, toolbarContainer: toolbarContainer, controls: controls,
+        let handle = AppKitWidgetWindowHandle(
+            window: window, webView: webView, controls: controls,
             summonedToolbarContainer: summonedToolbarContainer, summonedControls: summonedControls,
-            emptyPageHostingView: emptyPageHostingView
+            emptyPageHostingView: emptyPageHostingView, progressBar: progressBar
         )
+
+        let toolbar = NSToolbar(identifier: "MochiNormalModeToolbar")
+        toolbar.displayMode = .iconOnly
+        toolbar.allowsUserCustomization = false
+        toolbar.delegate = handle
+        window.toolbar = toolbar
+
+        return handle
     }
 
     /// Ghost Mode's summoned toolbar overlay (#10): a small floating glass capsule holding only
     /// Pin, Ghost Mode toggle, and Refresh (`DesignTokens.ghostModeSummonedToolbarOrder`) — its
     /// own dedicated view built from fresh button instances, independent of the Normal Mode
     /// toolbar's (per the ticket's design decision), matching
-    /// `design/mochi/GhostToolbar.dc.html`'s layout. Starts hidden.
+    /// `design/mochi/GhostToolbar.dc.html`'s layout. Starts hidden. Unaffected by ADR-0009.
     private func makeSummonedToolbarOverlay() -> (container: NSView, controls: SummonedToolbarControls) {
-        let pinButton = toolbarButton(icon: .pin, accessibilityDescription: "置顶")
-        let ghostModeToggleButton = toolbarButton(icon: .ghost, accessibilityDescription: "退出 Ghost Mode")
-        let refreshButton = toolbarButton(icon: .refresh, accessibilityDescription: "刷新")
+        let pinButton = toolbarButton(icon: .pin, accessibilityDescription: "置顶", diameter: DesignTokens.Layout.toolbarButtonDiameter)
+        let ghostModeToggleButton = toolbarButton(
+            icon: .ghost, accessibilityDescription: "退出 Ghost Mode", diameter: DesignTokens.Layout.toolbarButtonDiameter)
+        let refreshButton = toolbarButton(icon: .refresh, accessibilityDescription: "刷新", diameter: DesignTokens.Layout.toolbarButtonDiameter)
 
         let buttonsStack = NSStackView(views: [pinButton, ghostModeToggleButton, refreshButton])
         buttonsStack.translatesAutoresizingMaskIntoConstraints = false
@@ -574,72 +804,60 @@ public final class AppKitPlatformOps: PlatformOps {
         )
     }
 
+    /// Builds the Normal Mode toolbar's controls (ADR-0009) — a standard `NSSearchField` for the
+    /// Smart Address Field (no hand-drawn glass wrapper; its native rendering already looks
+    /// "more solid" than the surrounding row, per design-language.md) and bespoke-icon
+    /// `NSButton`s for the rest, all hosted as `NSToolbarItem` views by
+    /// `AppKitWidgetWindowHandle`'s `NSToolbarDelegate` conformance.
     private func makeToolbarControls() -> ToolbarControls {
-        let addressField = NSTextField()
+        let addressField = AddressField()
         addressField.translatesAutoresizingMaskIntoConstraints = false
-        addressField.isBezeled = false
-        addressField.isBordered = false
-        addressField.drawsBackground = true
-        addressField.backgroundColor = ToolbarStyle.fieldFill()
-        addressField.textColor = ToolbarStyle.fieldText()
-        addressField.wantsLayer = true
-        addressField.layer?.cornerRadius = DesignTokens.Layout.addressFieldCornerRadius
-        addressField.layer?.masksToBounds = true
         addressField.placeholderString = "输入网址"
         addressField.lineBreakMode = .byTruncatingTail
         addressField.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        addressField.widthAnchor.constraint(greaterThanOrEqualToConstant: 160).isActive = true
+        let expandingWidth = addressField.widthAnchor.constraint(equalToConstant: 10_000)
+        expandingWidth.priority = .defaultLow
+        expandingWidth.isActive = true
         addressField.heightAnchor.constraint(equalToConstant: DesignTokens.Layout.addressFieldHeight).isActive = true
+        // The field's content is a title/URL the presenter computes, not a free-text search query
+        // — the stock clear ("×") button would let AppKit blank `stringValue` directly, bypassing
+        // `AddressFieldPresenter` entirely.
+        (addressField.cell as? NSSearchFieldCell)?.cancelButtonCell = nil
+        // The Empty Page (#16) hasn't navigated yet, so the field stays a plain, freely-editable
+        // URL box until `hasNavigatedAtLeastOnce` flips — see `AppKitWidgetWindowHandle.loadURL`.
+        addressField.isEditable = true
 
         return ToolbarControls(
-            backButton: toolbarButton(icon: .chevronLeft, accessibilityDescription: "后退"),
-            forwardButton: toolbarButton(icon: .chevronRight, accessibilityDescription: "前进"),
-            refreshButton: toolbarButton(icon: .refresh, accessibilityDescription: "刷新"),
-            pinButton: toolbarButton(icon: .pin, accessibilityDescription: "置顶"),
+            backButton: toolbarButton(
+                icon: .chevronLeft, accessibilityDescription: "后退", diameter: DesignTokens.Layout.normalModeToolbarButtonDiameter),
+            forwardButton: toolbarButton(
+                icon: .chevronRight, accessibilityDescription: "前进", diameter: DesignTokens.Layout.normalModeToolbarButtonDiameter),
+            refreshButton: toolbarButton(
+                icon: .refresh, accessibilityDescription: "刷新", diameter: DesignTokens.Layout.normalModeToolbarButtonDiameter),
+            pinButton: toolbarButton(
+                icon: .pin, accessibilityDescription: "置顶", diameter: DesignTokens.Layout.normalModeToolbarButtonDiameter),
             addressField: addressField,
             // docs/design-language.md's toolbar button list documents the settings entry as the
             // "更多" (⋯) affordance, not a dedicated glyph — reusing `.moreHorizontal` here rather
             // than introducing a new icon.
-            settingsButton: toolbarButton(icon: .moreHorizontal, accessibilityDescription: "设置")
+            settingsButton: toolbarButton(
+                icon: .moreHorizontal, accessibilityDescription: "设置", diameter: DesignTokens.Layout.normalModeToolbarButtonDiameter)
         )
     }
 
-    /// The Liquid Glass toolbar capsule, floating with the design canvas's outer margin inside
-    /// its row — the row itself (not just the glass) collapses when `setToolbarVisible(false)`.
-    private func makeToolbarRow(containing controls: ToolbarControls) -> NSView {
-        let buttonsStack = NSStackView(views: [
-            controls.backButton, controls.forwardButton, controls.refreshButton, controls.addressField, controls.pinButton,
-            controls.settingsButton,
-        ])
-        buttonsStack.translatesAutoresizingMaskIntoConstraints = false
-        buttonsStack.orientation = .horizontal
-        buttonsStack.spacing = DesignTokens.Layout.toolbarButtonSpacing
-        buttonsStack.edgeInsets = NSEdgeInsets(
-            top: DesignTokens.Layout.toolbarInnerPaddingVertical,
-            left: DesignTokens.Layout.toolbarInnerPaddingHorizontal,
-            bottom: DesignTokens.Layout.toolbarInnerPaddingVertical,
-            right: DesignTokens.Layout.toolbarInnerPaddingHorizontal
-        )
-
-        let toolbarGlass = NSGlassEffectView()
-        toolbarGlass.translatesAutoresizingMaskIntoConstraints = false
-        toolbarGlass.cornerRadius = DesignTokens.Layout.toolbarCapsuleCornerRadius
-        toolbarGlass.tintColor = ToolbarStyle.glassTint()
-        toolbarGlass.contentView = buttonsStack
-        toolbarGlass.heightAnchor.constraint(equalToConstant: DesignTokens.Layout.toolbarCapsuleHeight).isActive = true
-
-        let row = NSView()
-        row.translatesAutoresizingMaskIntoConstraints = false
-        row.addSubview(toolbarGlass)
-        NSLayoutConstraint.activate([
-            toolbarGlass.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: DesignTokens.Layout.toolbarOuterPaddingHorizontal),
-            toolbarGlass.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -DesignTokens.Layout.toolbarOuterPaddingHorizontal),
-            toolbarGlass.topAnchor.constraint(equalTo: row.topAnchor, constant: DesignTokens.Layout.toolbarOuterPaddingVertical),
-            toolbarGlass.bottomAnchor.constraint(equalTo: row.bottomAnchor, constant: -DesignTokens.Layout.toolbarOuterPaddingVertical),
-        ])
-        return row
+    private func makeLoadingProgressBar() -> LoadingProgressBar {
+        let bar = NSView()
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        bar.wantsLayer = true
+        bar.alphaValue = 0
+        bar.heightAnchor.constraint(equalToConstant: DesignTokens.Layout.loadingProgressBarHeight).isActive = true
+        let widthConstraint = bar.widthAnchor.constraint(equalToConstant: 0)
+        widthConstraint.isActive = true
+        return LoadingProgressBar(view: bar, widthConstraint: widthConstraint)
     }
 
-    private func toolbarButton(icon: DesignIcon, accessibilityDescription: String) -> NSButton {
+    private func toolbarButton(icon: DesignIcon, accessibilityDescription: String, diameter: Double) -> NSButton {
         let image = ToolbarStyle.templateImage(for: icon, accessibilityDescription: accessibilityDescription)
         let button = NSButton(image: image, target: nil, action: nil)
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -647,8 +865,8 @@ public final class AppKitPlatformOps: PlatformOps {
         button.isBordered = false
         button.imageScaling = .scaleProportionallyDown
         button.contentTintColor = ToolbarStyle.iconTint()
-        button.widthAnchor.constraint(equalToConstant: DesignTokens.Layout.toolbarButtonDiameter).isActive = true
-        button.heightAnchor.constraint(equalToConstant: DesignTokens.Layout.toolbarButtonDiameter).isActive = true
+        button.widthAnchor.constraint(equalToConstant: diameter).isActive = true
+        button.heightAnchor.constraint(equalToConstant: diameter).isActive = true
         return button
     }
 
@@ -741,6 +959,26 @@ public final class AppKitPlatformOps: PlatformOps {
     public func onNavigationFinished(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {
         guard let handle = handle(for: window) else { return }
         handle.setNavigationFinishedHandler(handler)
+    }
+
+    public func onPageTitleChanged(_ window: WidgetWindowHandle, perform handler: @escaping (String?) -> Void) {
+        guard let handle = handle(for: window) else { return }
+        handle.setPageTitleChangedHandler(handler)
+    }
+
+    public func onLoadingStateChanged(_ window: WidgetWindowHandle, perform handler: @escaping (Bool) -> Void) {
+        guard let handle = handle(for: window) else { return }
+        handle.setLoadingStateChangedHandler(handler)
+    }
+
+    public func onLoadingProgressChanged(_ window: WidgetWindowHandle, perform handler: @escaping (Double) -> Void) {
+        guard let handle = handle(for: window) else { return }
+        handle.setLoadingProgressChangedHandler(handler)
+    }
+
+    public func setWindowTitle(_ title: String, in window: WidgetWindowHandle) {
+        guard let handle = handle(for: window) else { return }
+        handle.setWindowTitle(title)
     }
 
     public func setNativeChromeVisible(_ visible: Bool, in window: WidgetWindowHandle) {

@@ -30,6 +30,7 @@ final class FakePlatformOps: PlatformOps {
     private(set) var windowFrameChanges: [(frame: WindowFrame, windowID: Int)] = []
     private(set) var accessibilityPermissionRequestCount = 0
     private(set) var forwardedKeystrokes: [Hotkey] = []
+    private(set) var windowTitleChanges: [(title: String, windowID: Int)] = []
     private var willCloseHandlers: [Int: () -> Void] = [:]
     private var urlSubmittedHandlers: [Int: (URL) -> Void] = [:]
     private var pinnedChangedHandlers: [Int: (Bool) -> Void] = [:]
@@ -37,6 +38,9 @@ final class FakePlatformOps: PlatformOps {
     private var navigationFinishedHandlers: [Int: () -> Void] = [:]
     private var mouseEnteredHandlers: [Int: () -> Void] = [:]
     private var summonedToolbarGhostModeToggleHandlers: [Int: () -> Void] = [:]
+    private var pageTitleChangedHandlers: [Int: (String?) -> Void] = [:]
+    private var loadingStateChangedHandlers: [Int: (Bool) -> Void] = [:]
+    private var loadingProgressChangedHandlers: [Int: (Double) -> Void] = [:]
     private var hotkeyHandlers: [() -> Void] = []
 
     var stubbedHotkeyRegistrationSucceeds = true
@@ -241,5 +245,37 @@ final class FakePlatformOps: PlatformOps {
 
     func forwardKeystroke(_ keystroke: Hotkey) {
         forwardedKeystrokes.append(keystroke)
+    }
+
+    func onPageTitleChanged(_ window: WidgetWindowHandle, perform handler: @escaping (String?) -> Void) {
+        let handle = window as! FakeWidgetWindowHandle
+        pageTitleChangedHandlers[handle.id] = handler
+    }
+
+    func simulatePageTitleChanged(_ title: String?, windowID: Int = 1) {
+        pageTitleChangedHandlers[windowID]?(title)
+    }
+
+    func onLoadingStateChanged(_ window: WidgetWindowHandle, perform handler: @escaping (Bool) -> Void) {
+        let handle = window as! FakeWidgetWindowHandle
+        loadingStateChangedHandlers[handle.id] = handler
+    }
+
+    func simulateLoadingStateChanged(_ isLoading: Bool, windowID: Int = 1) {
+        loadingStateChangedHandlers[windowID]?(isLoading)
+    }
+
+    func onLoadingProgressChanged(_ window: WidgetWindowHandle, perform handler: @escaping (Double) -> Void) {
+        let handle = window as! FakeWidgetWindowHandle
+        loadingProgressChangedHandlers[handle.id] = handler
+    }
+
+    func simulateLoadingProgressChanged(_ progress: Double, windowID: Int = 1) {
+        loadingProgressChangedHandlers[windowID]?(progress)
+    }
+
+    func setWindowTitle(_ title: String, in window: WidgetWindowHandle) {
+        let handle = window as! FakeWidgetWindowHandle
+        windowTitleChanges.append((title, handle.id))
     }
 }

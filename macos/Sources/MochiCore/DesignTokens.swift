@@ -181,24 +181,32 @@ public enum DesignTokens {
     /// design canvas.
     public enum Layout {
         public static let windowCornerRadius: Double = 14
-        public static let titlebarHeight: Double = 38
 
+        /// Retained only for Ghost Mode's summoned toolbar overlay (ADR-0009) — the Normal Mode
+        /// toolbar itself no longer draws an independent glass capsule, since it now lives inside
+        /// the native `NSToolbar` row and its Liquid Glass material is rendered by the system.
         public static let toolbarCapsuleCornerRadius: Double = 16
-        public static let toolbarOuterPaddingHorizontal: Double = 10
-        public static let toolbarOuterPaddingVertical: Double = 8
         public static let toolbarInnerPaddingHorizontal: Double = 8
         public static let toolbarInnerPaddingVertical: Double = 6
         public static let toolbarButtonSpacing: Double = 4
         public static let toolbarButtonDiameter: Double = 30
         public static let toolbarCapsuleHeight: Double = toolbarButtonDiameter + toolbarInnerPaddingVertical * 2
 
-        public static let addressFieldCornerRadius: Double = 9
-        public static let addressFieldHeight: Double = 30
+        /// The Normal Mode toolbar's own buttons (ADR-0009) — sized smaller than
+        /// `toolbarButtonDiameter` to fit the native `.unifiedCompact` toolbar row instead of a
+        /// hand-drawn capsule; exact value is an implementation-time estimate, not measured off
+        /// a design canvas.
+        public static let normalModeToolbarButtonDiameter: Double = 22
+
+        public static let addressFieldHeight: Double = 24
+
+        /// The Loading Progress Bar's (#18) fixed height — a thin line under the toolbar, not a
+        /// full-height track, per docs/design-language.md.
+        public static let loadingProgressBarHeight: Double = 2
 
         /// The summoned toolbar overlay's (#10) distance from the window's top edge — measured
-        /// off `design/mochi/GhostToolbar.dc.html`'s `top:14px`, distinct from
-        /// `toolbarOuterPaddingVertical` since that governs the Normal Mode toolbar's own row,
-        /// not a floating overlay positioned directly against the window edge.
+        /// off `design/mochi/GhostToolbar.dc.html`'s `top:14px`; the Normal Mode toolbar's own
+        /// row is a native `NSToolbar` (ADR-0009) and has no comparable token.
         public static let ghostModeSummonedToolbarTopMargin: Double = 14
 
         public static let emptyPageGlassPanelCornerRadius: Double = 24

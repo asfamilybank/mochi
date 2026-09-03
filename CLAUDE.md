@@ -56,7 +56,10 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 - Swift Testing 的 `#expect(a == b)` 混合比较裸 `Double` 和裸 `CGFloat`（如 `CGRect.minY`/`.maxX`）时可能误报失败——即使 `print(a == b)` 打出 `true`、`.build` 全清也复现。比较前把 CGFloat 一侧显式转 `Double(...)`；碰到"打印值明明相等却报 failed"，先怀疑这个，别急着查产物逻辑。
 - 实现窗口拖拽吸附/磁性对齐一律用 `NSWindow.constrainFrameRect(_:to:)`（子类重写），别用 `windowDidMove` 回调里 `setFrameOrigin` 纠正——后者和 AppKit 自己的拖拽循环抢着决定坐标，慢速拖动会有肉眼可见的抖动；前者是 AppKit 拖拽时自己会调用的钩子，同一步里只有一个权威在决定坐标。
 - `FakePlatformOps` 里追踪调用用的带 label 元组数组（如 `[(pinned: Bool, windowID: Int)]`）不满足 `Equatable`，测试里不能直接 `#expect(arr == [...])`——按字段 `.map(\.field)` 分别比较。
-- `docs/design-language.md`"窗口与工具栏"一节描述的是 ADR-0009 的新统一 NSToolbar 设计（对应尚未实现的 #18），当前 `AppKitPlatformOps.swift` 里的 toolbar 仍是 ADR-0004 时期的自绘两行式实现——改动前先确认自己改的是"当前实现小修"还是"#18 整体重做"，别把新文档里的按钮清单/图标直接套到当前代码状态上（例如设置入口应复用已有的 `.moreHorizontal`"更多"图标，而不是新画一个）。
+- `AppKitPlatformOps.swift` 的 Normal Mode toolbar 自 #18 起已是 ADR-0009 的原生 `NSToolbar`（`.unifiedCompact`）实现，不再是 ADR-0004 的自绘两行式；但 `NSToolbarItem.view` 靠低优先级宽度约束模拟"撑满可用空间"、以及 `NSToolbar.isVisible` 切换是否会引发窗口尺寸变化，这两点沙盒内验证不了，改动前别假设已经生效，交给真机验证。
+- `NSTextField` 换成 `NSSearchField` 时容易漏迁移原有的 `heightAnchor` 约束（新控件退化成默认高度，和其他工具栏按钮对不齐）；`NSSearchField` 自带的清除按钮（"×"）会绕开自定义 delegate 直接清空 `stringValue`——字段内容是程序算出来的而非自由文本查询时，要 `(field.cell as? NSSearchFieldCell)?.cancelButtonCell = nil` 禁用它。
+- `WKWebView.load(_:)` 调用后 `.url` 不会同步更新（滞后一个 KVO tick）——导航发起瞬间要立刻展示目标地址（如智能地址栏）不能读 `webView.url`，得在调用 `.load()` 时同步写一份本地变量。
+- 跨导航持有派生状态（如页面标题/host）的 controller，每次真实导航要整体重置旧状态，不能只更新其中一个字段——否则会在新页面还没上报标题前，短暂展示上一个页面的残留信息。
 - 新增会写 `WidgetConfig` 的功能（如设置面板）时，构造函数接收 `currentConfig: () -> WidgetConfig` + `persist: (@escaping (WidgetConfig) -> WidgetConfig) -> Void` 这对 transform 闭包，直接传入 `AppDelegate` 已有的 `persist(_:)` 函数本体——不要让新类缓存自己的配置快照，否则会在多个写入源之间产生"用旧快照覆盖新状态"的竞态。
 - `GlobalHotkeyRegistry` 没有 unregister 能力：设置面板对热键映射表/内置脚本开关的增删改只能做到"立即持久化到配置文件"，运行中的 `Orchestrator`/`HotkeyForwarder`/脚本注入不会热更新，需要重启 Mochi 才生效——别假设这类编辑是实时生效的。
 - 实现某个 UI 功能前先查 `design/<name>/<TicketName>.dc.html`（如 #16 对应 `design/mochi/EmptyPage.dc.html`）是否有同名设计稿——`renderVals()` 里能量出精确的颜色/尺寸/旋转角度/透明度，原生视图应该照这些数值实现，而不是凭感觉估。

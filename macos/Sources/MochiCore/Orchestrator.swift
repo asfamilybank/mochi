@@ -15,6 +15,7 @@ public final class Orchestrator {
     private var customScript: String?
     private var disabledBuiltInScriptIDs: Set<String> = []
     private var ghostModeController: GhostModeController?
+    private var addressBarController: AddressBarController?
     private var hotkeyForwarder: HotkeyForwarder?
     private var currentZoom: Double = 1.0
     private var isPinned = false
@@ -47,9 +48,13 @@ public final class Orchestrator {
         self.currentZoom = config.windowState?.zoom ?? 1.0
         self.isPinned = config.isPinned
 
+        let addressBarController = AddressBarController(platformOps: platformOps, window: window)
+        self.addressBarController = addressBarController
+
         switch StartupResolution.resolveStartupContent(for: config) {
         case .url(let url):
             platformOps.loadURL(url, in: window)
+            addressBarController.urlLoaded(url)
         case .emptyPage:
             platformOps.showEmptyPageContent(in: window)
         }
@@ -151,6 +156,7 @@ public final class Orchestrator {
     private func handleURLSubmitted(_ url: URL) {
         guard let window else { return }
         platformOps.loadURL(url, in: window)
+        addressBarController?.urlLoaded(url)
         persistURL(url)
     }
 

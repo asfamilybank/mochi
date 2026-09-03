@@ -61,6 +61,30 @@ public protocol PlatformOps: AnyObject {
     /// (re-)injected after each navigation, not just the first.
     func onNavigationFinished(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void)
 
+    /// Registers a handler invoked whenever the loaded page's title changes (`WKWebView.title`
+    /// KVO), `nil` while no page has reported one yet. Drives the window's dynamic title (#18,
+    /// `AddressBarController`) independently of the Normal Mode toolbar's own Smart Address Field
+    /// display, which reads the same underlying signal directly inside the AppKit view.
+    func onPageTitleChanged(_ window: WidgetWindowHandle, perform handler: @escaping (String?) -> Void)
+
+    /// Registers a handler invoked whenever the page's loading state changes (`WKWebView.isLoading`
+    /// KVO). The Normal Mode toolbar's own Smart Address Field and Loading Progress Bar (#18)
+    /// react to this same signal directly inside the AppKit view (they already own `webView`); this
+    /// hook exists so other, PlatformOps-only callers can observe loading state too, per the
+    /// project's "toolbar-observable state goes through PlatformOps" convention (#4) — see
+    /// `onPageTitleChanged`'s equivalent split for the title signal.
+    func onLoadingStateChanged(_ window: WidgetWindowHandle, perform handler: @escaping (Bool) -> Void)
+
+    /// Registers a handler invoked as the page's load progresses (`WKWebView.estimatedProgress`
+    /// KVO, `0.0...1.0`). Same split as `onLoadingStateChanged`: the toolbar's own Loading Progress
+    /// Bar (#18) reads `estimatedProgress` directly inside the AppKit view rather than through
+    /// this hook.
+    func onLoadingProgressChanged(_ window: WidgetWindowHandle, perform handler: @escaping (Double) -> Void)
+
+    /// Sets the window's title (`NSWindow.title`), surfaced in Mission Control/Cmd-Tab (#18).
+    /// Callers must always pass a non-empty fallback — see `AddressFieldPresenter.windowTitle`.
+    func setWindowTitle(_ title: String, in window: WidgetWindowHandle)
+
     /// Toggles the native title bar + custom toolbar row's presence via the window's `styleMask`
     /// (ADR-0004) — Ghost Mode's "no chrome at all" look. Distinct from `setToolbarVisible`,
     /// which only ever hides the custom row and leaves native decorations alone.
