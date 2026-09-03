@@ -97,4 +97,20 @@ import Testing
     @Test func fontFamilyIsTheSystemFontNotACustomBrandTypeface() {
         #expect(DesignTokens.fontFamily == .system)
     }
+
+    @Test func emptyPageSecondaryGlassPanelTintIsFixedRegardlessOfAccent() {
+        #expect(DesignTokens.EmptyPage.secondaryGlassPanelTint(dark: false) == DesignTokens.RGBA(red: 120 / 255, green: 150 / 255, blue: 1, alpha: 0.14))
+        #expect(DesignTokens.EmptyPage.secondaryGlassPanelTint(dark: true) == DesignTokens.RGBA(red: 120 / 255, green: 150 / 255, blue: 1, alpha: 0.16))
+    }
+
+    @Test func emptyPageAccentGlassPanelTintFollowsTheGivenAccent() {
+        let accent = DesignTokens.AccentSwatch.blue.rgba
+        #expect(DesignTokens.EmptyPage.accentGlassPanelTint(accent, dark: false) == accent.withAlpha(0.14))
+        #expect(DesignTokens.EmptyPage.accentGlassPanelTint(accent, dark: true) == accent.withAlpha(0.16))
+    }
+
+    @Test func emptyPageBackgroundBaseDiffersBetweenLightAndDark() {
+        #expect(DesignTokens.EmptyPage.backgroundBase(dark: false) == DesignTokens.RGBA(hex: "f4f4f6"))
+        #expect(DesignTokens.EmptyPage.backgroundBase(dark: true) == DesignTokens.RGBA(hex: "0e0e10"))
+    }
 }

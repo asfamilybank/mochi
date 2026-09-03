@@ -47,7 +47,12 @@ public final class Orchestrator {
         self.currentZoom = config.windowState?.zoom ?? 1.0
         self.isPinned = config.isPinned
 
-        platformOps.loadURL(config.url, in: window)
+        switch StartupResolution.resolveStartupContent(for: config) {
+        case .url(let url):
+            platformOps.loadURL(url, in: window)
+        case .emptyPage:
+            platformOps.showEmptyPageContent(in: window)
+        }
         if let zoom = config.windowState?.zoom {
             platformOps.applyZoom(zoom, in: window)
         }

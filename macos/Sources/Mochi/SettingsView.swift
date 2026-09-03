@@ -53,7 +53,7 @@ private struct GeneralSettingsTab: View {
     var body: some View {
         Form {
             Section("上次访问 URL") {
-                Text(viewModel.config.url.absoluteString)
+                Text(viewModel.config.url?.absoluteString ?? "尚无浏览记录")
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }

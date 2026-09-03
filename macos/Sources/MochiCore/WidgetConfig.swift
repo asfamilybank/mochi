@@ -13,7 +13,11 @@ public struct WidgetConfig: Equatable {
         case emptyPage
     }
 
-    public var url: URL
+    /// The last-visited URL — `nil` before the widget has ever loaded a real page (a fresh
+    /// install with no `startup_target` override either, #16's "never configured/navigated
+    /// anywhere" state). Updated by every toolbar navigation; resolving what actually loads on
+    /// launch from this plus `startupTarget` is `resolveStartupContent`'s job, not this type's.
+    public var url: URL?
     public var windowState: WindowState?
     public var isPinned: Bool
     public var customScript: String?
@@ -27,7 +31,7 @@ public struct WidgetConfig: Equatable {
     public var disabledBuiltInScriptIDs: Set<String>
 
     public init(
-        url: URL, windowState: WindowState? = nil, isPinned: Bool = false, customScript: String? = nil,
+        url: URL? = nil, windowState: WindowState? = nil, isPinned: Bool = false, customScript: String? = nil,
         ghostOpacity: Double = WidgetConfig.defaultGhostOpacity, snapThreshold: Double = WindowSnapping.defaultThreshold,
         hotkeyMappings: [HotkeyMapping] = [], startupTarget: StartupTarget? = nil,
         disabledBuiltInScriptIDs: Set<String> = []
@@ -45,7 +49,6 @@ public struct WidgetConfig: Equatable {
 }
 
 public enum WidgetConfigError: Error, Equatable {
-    case missingURL
     case invalidURL(String)
 }
 
@@ -65,14 +68,8 @@ extension WidgetConfig {
 
     public static func parse(_ tomlString: String) throws -> WidgetConfig {
         let table = try TOMLTable(string: tomlString)
-        guard let urlString = table["url"]?.string, !urlString.isEmpty else {
-            throw WidgetConfigError.missingURL
-        }
-        guard let url = URL(string: urlString) else {
-            throw WidgetConfigError.invalidURL(urlString)
-        }
         return WidgetConfig(
-            url: url,
+            url: try parseURL(from: table),
             windowState: parseWindowState(from: table["window"]?.table),
             isPinned: table["pinned"]?.bool ?? false,
             customScript: table["custom_script"]?.string,
@@ -82,6 +79,17 @@ extension WidgetConfig {
             startupTarget: parseStartupTarget(from: table["startup_target"]?.table),
             disabledBuiltInScriptIDs: Set(table["disabled_built_in_scripts"]?.array?.compactMap(\.string) ?? [])
         )
+    }
+
+    /// `nil` when the `url` key is absent (#16: a fresh install with no browsing history yet is
+    /// now a valid, expected state, not a config error) — but a *present* key that fails to parse
+    /// as a URL still throws, since that's hand-edit corruption rather than "never visited".
+    private static func parseURL(from table: TOMLTable) throws -> URL? {
+        guard let urlString = table["url"]?.string else { return nil }
+        guard !urlString.isEmpty, let url = URL(string: urlString) else {
+            throw WidgetConfigError.invalidURL(urlString)
+        }
+        return url
     }
 
     /// A malformed table (unknown `kind`, or a `.url` case missing/mangling its URL) is treated
@@ -144,7 +152,9 @@ extension WidgetConfig {
 
     public func serialized() -> String {
         let table = TOMLTable()
-        table["url"] = url.absoluteString
+        if let url {
+            table["url"] = url.absoluteString
+        }
         table["pinned"] = isPinned
         table["ghost_opacity"] = ghostOpacity
         table["snap_threshold"] = snapThreshold

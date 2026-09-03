@@ -17,9 +17,45 @@ import Testing
         orchestrator.start(config: config)
 
         #expect(fake.createdFrames == [persistedFrame])
-        #expect(fake.loadedURLs.map(\.url) == [config.url])
+        #expect(fake.loadedURLs.map(\.url) == [config.url!])
         #expect(fake.appliedZooms.map(\.zoom) == [1.5])
         #expect(fake.shownWindowIDs == [1])
+    }
+
+    // #16: startup content resolution
+
+    @Test func showsEmptyPageContentInsteadOfLoadingWhenThereIsNoURLOrStartupTarget() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: nil)
+
+        orchestrator.start(config: config)
+
+        #expect(fake.emptyPageShownWindowIDs == [1])
+        #expect(fake.loadedURLs.isEmpty)
+    }
+
+    @Test func loadsAFixedStartupURLOverridingTheLastVisitedURL() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let fixedStartupURL = URL(string: "https://fixed-startup.example.com")!
+        let config = WidgetConfig(url: URL(string: "https://last-visited.example.com")!, startupTarget: .url(fixedStartupURL))
+
+        orchestrator.start(config: config)
+
+        #expect(fake.loadedURLs.map(\.url) == [fixedStartupURL])
+        #expect(fake.emptyPageShownWindowIDs.isEmpty)
+    }
+
+    @Test func showsEmptyPageContentWhenExplicitlyChosenAsStartupTargetEvenWithALastVisitedURL() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://last-visited.example.com")!, startupTarget: .emptyPage)
+
+        orchestrator.start(config: config)
+
+        #expect(fake.emptyPageShownWindowIDs == [1])
+        #expect(fake.loadedURLs.isEmpty)
     }
 
     @Test func fallsBackToSafeDefaultFrameWhenPersistedFrameIsOffscreen() {
@@ -103,7 +139,7 @@ import Testing
         let navigatedURL = URL(string: "https://example.org")!
         fake.simulateURLSubmitted(navigatedURL)
 
-        #expect(fake.loadedURLs.map(\.url) == [config.url, navigatedURL])
+        #expect(fake.loadedURLs.map(\.url) == [config.url!, navigatedURL])
         #expect(persistedURL == navigatedURL)
     }
 

@@ -10,6 +10,7 @@ final class FakeWidgetWindowHandle: WidgetWindowHandle {
 final class FakePlatformOps: PlatformOps {
     private(set) var createdFrames: [WindowFrame] = []
     private(set) var loadedURLs: [(url: URL, windowID: Int)] = []
+    private(set) var emptyPageShownWindowIDs: [Int] = []
     private(set) var shownWindowIDs: [Int] = []
     private(set) var appliedZooms: [(zoom: Double, windowID: Int)] = []
     private(set) var toolbarVisibilityChanges: [(visible: Bool, windowID: Int)] = []
@@ -53,6 +54,11 @@ final class FakePlatformOps: PlatformOps {
     func loadURL(_ url: URL, in window: WidgetWindowHandle) {
         let handle = window as! FakeWidgetWindowHandle
         loadedURLs.append((url, handle.id))
+    }
+
+    func showEmptyPageContent(in window: WidgetWindowHandle) {
+        let handle = window as! FakeWidgetWindowHandle
+        emptyPageShownWindowIDs.append(handle.id)
     }
 
     func showWindow(_ window: WidgetWindowHandle) {

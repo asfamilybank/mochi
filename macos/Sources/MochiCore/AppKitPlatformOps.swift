@@ -2,6 +2,7 @@ import ApplicationServices
 import AppKit
 import CoreGraphics
 import Foundation
+import SwiftUI
 import WebKit
 
 /// Bridges `DesignTokens`/`DesignIcon` (framework-agnostic value types) into the AppKit types
@@ -102,6 +103,10 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     private let controls: ToolbarControls
     private let summonedToolbarContainer: NSView
     private let summonedControls: SummonedToolbarControls
+    /// The Empty Page's (#16) native content, occupying the same slot as `webView` inside
+    /// `contentContainer` — exactly one of the two is visible at a time, toggled by `loadURL`/
+    /// `showEmptyPage` rather than swapped in and out of the view hierarchy.
+    private let emptyPageHostingView: NSHostingView<EmptyPageView>
     private var willCloseHandler: (() -> Void)?
     private var urlSubmittedHandler: ((URL) -> Void)?
     private var pinnedChangedHandler: ((Bool) -> Void)?
@@ -117,7 +122,8 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
 
     fileprivate init(
         window: NSWindow, webView: WKWebView, toolbarContainer: NSView, controls: ToolbarControls,
-        summonedToolbarContainer: NSView, summonedControls: SummonedToolbarControls
+        summonedToolbarContainer: NSView, summonedControls: SummonedToolbarControls,
+        emptyPageHostingView: NSHostingView<EmptyPageView>
     ) {
         self.window = window
         self.webView = webView
@@ -125,6 +131,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         self.controls = controls
         self.summonedToolbarContainer = summonedToolbarContainer
         self.summonedControls = summonedControls
+        self.emptyPageHostingView = emptyPageHostingView
         self.defaultWindowBackgroundColor = window.backgroundColor
         super.init()
         window.delegate = self
@@ -294,6 +301,22 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         webView.evaluateJavaScript(source, completionHandler: nil)
     }
 
+    /// Switches the content area back to `webView` (in case the Empty Page was showing) and loads
+    /// `url` into it — used both for the resolved startup URL and every later address-bar
+    /// navigation, so navigating away from the Empty Page always brings the page back on top.
+    func loadURL(_ url: URL) {
+        emptyPageHostingView.isHidden = true
+        webView.isHidden = false
+        webView.load(URLRequest(url: url))
+    }
+
+    /// Switches the content area to the Empty Page's native content, hiding `webView` — the
+    /// counterpart to `loadURL`.
+    func showEmptyPage() {
+        webView.isHidden = true
+        emptyPageHostingView.isHidden = false
+    }
+
     func setNavigationFinishedHandler(_ handler: @escaping () -> Void) {
         navigationFinishedHandler = handler
     }
@@ -457,10 +480,33 @@ public final class AppKitPlatformOps: PlatformOps {
         let webView = WKWebView(frame: .zero)
         webView.translatesAutoresizingMaskIntoConstraints = false
 
+        let emptyPageHostingView = NSHostingView(rootView: EmptyPageView())
+        emptyPageHostingView.translatesAutoresizingMaskIntoConstraints = false
+        emptyPageHostingView.isHidden = true
+
+        // `webView` and `emptyPageHostingView` (#16) share this container, each pinned to fill it
+        // completely — only one is ever visible at a time (see `loadURL`/`showEmptyPage`), which
+        // lets the container itself behave sizing-wise exactly like a bare `webView` did before,
+        // so `rootStack`'s layout below doesn't need to change.
+        let contentContainer = NSView()
+        contentContainer.translatesAutoresizingMaskIntoConstraints = false
+        contentContainer.addSubview(webView)
+        contentContainer.addSubview(emptyPageHostingView)
+        NSLayoutConstraint.activate([
+            webView.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
+            webView.topAnchor.constraint(equalTo: contentContainer.topAnchor),
+            webView.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor),
+            emptyPageHostingView.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
+            emptyPageHostingView.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
+            emptyPageHostingView.topAnchor.constraint(equalTo: contentContainer.topAnchor),
+            emptyPageHostingView.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor),
+        ])
+
         let controls = makeToolbarControls()
         let toolbarContainer = makeToolbarRow(containing: controls)
 
-        let rootStack = NSStackView(views: [toolbarContainer, webView])
+        let rootStack = NSStackView(views: [toolbarContainer, contentContainer])
         rootStack.orientation = .vertical
         rootStack.spacing = 0
         rootStack.distribution = .fill
@@ -488,7 +534,8 @@ public final class AppKitPlatformOps: PlatformOps {
 
         return AppKitWidgetWindowHandle(
             window: window, webView: webView, toolbarContainer: toolbarContainer, controls: controls,
-            summonedToolbarContainer: summonedToolbarContainer, summonedControls: summonedControls
+            summonedToolbarContainer: summonedToolbarContainer, summonedControls: summonedControls,
+            emptyPageHostingView: emptyPageHostingView
         )
     }
 
@@ -607,7 +654,12 @@ public final class AppKitPlatformOps: PlatformOps {
 
     public func loadURL(_ url: URL, in window: WidgetWindowHandle) {
         guard let handle = handle(for: window) else { return }
-        handle.webView.load(URLRequest(url: url))
+        handle.loadURL(url)
+    }
+
+    public func showEmptyPageContent(in window: WidgetWindowHandle) {
+        guard let handle = handle(for: window) else { return }
+        handle.showEmptyPage()
     }
 
     public func showWindow(_ window: WidgetWindowHandle) {

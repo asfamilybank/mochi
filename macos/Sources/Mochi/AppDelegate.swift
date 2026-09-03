@@ -9,11 +9,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let platformOps = AppKitPlatformOps()
         let configURL = WidgetConfig.defaultConfigURL
 
+        // A fresh install (no config file yet) is #16's expected "never configured/navigated
+        // anywhere" state — falls back silently to a default, history-less config rather than
+        // crashing the app on launch, and `Orchestrator` resolves that into the Empty Page rather
+        // than a blank/broken window. A config file that *exists* but fails to load is a
+        // different case (corruption, a bad hand-edit) — surfaced via an alert rather than
+        // silently discarding the user's other settings (pin state, hotkey mappings, custom
+        // script, window geometry) the same way a load failure would, and rather than the old
+        // `fatalError` crashing the app outright.
         let initialConfig: WidgetConfig
-        do {
-            initialConfig = try WidgetConfig.load(from: configURL)
-        } catch {
-            fatalError("Failed to load widget config from \(configURL.path): \(error)")
+        if FileManager.default.fileExists(atPath: configURL.path) {
+            do {
+                initialConfig = try WidgetConfig.load(from: configURL)
+            } catch {
+                platformOps.presentAlert(
+                    title: "配置文件读取失败",
+                    message: "\(configURL.path) 无法解析，已使用默认设置启动：\(error)"
+                )
+                initialConfig = WidgetConfig()
+            }
+        } else {
+            initialConfig = WidgetConfig()
         }
 
         // Both callbacks mutate the same `currentConfig` (rather than each re-deriving from

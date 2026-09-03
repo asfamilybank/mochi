@@ -9,10 +9,12 @@ import Testing
         #expect(config.url == URL(string: "https://example.com"))
     }
 
-    @Test func throwsWhenURLKeyMissing() {
-        #expect(throws: WidgetConfigError.self) {
-            try WidgetConfig.parse("")
-        }
+    // #16: a config with no `url` key at all is a valid, expected state (a fresh install with no
+    // browsing history yet) rather than a config error — see `resolveStartupContent`, which falls
+    // back to the Empty Page for exactly this case.
+    @Test func urlIsNilWhenKeyMissingInsteadOfThrowing() throws {
+        let config = try WidgetConfig.parse("")
+        #expect(config.url == nil)
     }
 
     @Test func throwsWhenURLIsMalformed() {
@@ -71,6 +73,15 @@ import Testing
         let loaded = try WidgetConfig.load(from: fileURL)
 
         #expect(loaded == original)
+    }
+
+    @Test func serializingThenReparsingRoundTripsAnAbsentURL() throws {
+        let original = WidgetConfig(url: nil, isPinned: true)
+
+        let reparsed = try WidgetConfig.parse(original.serialized())
+
+        #expect(reparsed == original)
+        #expect(reparsed.url == nil)
     }
 
     @Test func updatingWindowStateReturnsCopyWithNewStateOnly() {

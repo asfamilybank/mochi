@@ -12,6 +12,8 @@
 
 由于 push 只能手动执行（见上文"线上资源只读"），本地常年积累多个未 push 的 commit——`/code-review` 默认的 `git diff @{upstream}...HEAD` 可能因此膨胀到几千甚至上万行、混进早前 session 的历史工作。审查"这次任务做的改动"时改用 `git diff HEAD`（或显式限定本次改的文件），不要把整个未 push 的分支历史当审查范围。
 
+`git diff HEAD` 默认不包含本次新建的 untracked 文件——喂给 `/code-review` 之类的审查流程前先 `git add -N <file>`（intent-to-add，不会真正暂存内容）让新文件以整份新增的形式出现在 diff 里，否则新文件的实现会被完全漏审。
+
 ### Issue tracker
 
 Issues live in this repo's GitHub Issues (uses the `gh` CLI). See `docs/agents/issue-tracker.md`.
@@ -57,6 +59,9 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 - `docs/design-language.md`"窗口与工具栏"一节描述的是 ADR-0009 的新统一 NSToolbar 设计（对应尚未实现的 #18），当前 `AppKitPlatformOps.swift` 里的 toolbar 仍是 ADR-0004 时期的自绘两行式实现——改动前先确认自己改的是"当前实现小修"还是"#18 整体重做"，别把新文档里的按钮清单/图标直接套到当前代码状态上（例如设置入口应复用已有的 `.moreHorizontal`"更多"图标，而不是新画一个）。
 - 新增会写 `WidgetConfig` 的功能（如设置面板）时，构造函数接收 `currentConfig: () -> WidgetConfig` + `persist: (@escaping (WidgetConfig) -> WidgetConfig) -> Void` 这对 transform 闭包，直接传入 `AppDelegate` 已有的 `persist(_:)` 函数本体——不要让新类缓存自己的配置快照，否则会在多个写入源之间产生"用旧快照覆盖新状态"的竞态。
 - `GlobalHotkeyRegistry` 没有 unregister 能力：设置面板对热键映射表/内置脚本开关的增删改只能做到"立即持久化到配置文件"，运行中的 `Orchestrator`/`HotkeyForwarder`/脚本注入不会热更新，需要重启 Mochi 才生效——别假设这类编辑是实时生效的。
+- 实现某个 UI 功能前先查 `design/<name>/<TicketName>.dc.html`（如 #16 对应 `design/mochi/EmptyPage.dc.html`）是否有同名设计稿——`renderVals()` 里能量出精确的颜色/尺寸/旋转角度/透明度，原生视图应该照这些数值实现，而不是凭感觉估。
+- 同一窗口内容区要在 `WKWebView` 和原生 SwiftUI 内容（`NSHostingView`）之间切换显示时，把两者都放进一个共享的 `NSView` 容器、各自用 Auto Layout 四边 pin 满容器、用 `isHidden` 切换可见性——容器本身的 sizing 行为和裸 `webView` 一致，外层 `NSStackView` 布局不用跟着改。
+- 实现一个 ticket 前先搜一下 spec 里提到的新字段名/新类型（如 `grep -rn <name>`）——早前 session 实现相邻 ticket 时可能已经顺手把这个 ticket 的部分数据层/设置面板 UI 打好了（例如 #13 的 commit 里已经带了 #16 的 `startupTarget` 字段和设置面板三态选择器），不能假设从零开始。
 
 ### 视觉设计（design/）
 

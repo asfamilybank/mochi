@@ -18,6 +18,13 @@ public struct TrayMenuItem {
 public protocol PlatformOps: AnyObject {
     func createWidgetWindow(initialFrame: WindowFrame) -> WidgetWindowHandle
     func loadURL(_ url: URL, in window: WidgetWindowHandle)
+
+    /// Shows the Empty Page's native content (#16) in place of the page area — the
+    /// no-startup-target-and-no-history fallback, and the explicit "空页面" startup choice.
+    /// Callers switch back to a real page by calling `loadURL`, which is responsible for hiding
+    /// this content again.
+    func showEmptyPageContent(in window: WidgetWindowHandle)
+
     func showWindow(_ window: WidgetWindowHandle)
     func applyZoom(_ zoom: Double, in window: WidgetWindowHandle)
     func captureWindowState(of window: WidgetWindowHandle) -> WindowState

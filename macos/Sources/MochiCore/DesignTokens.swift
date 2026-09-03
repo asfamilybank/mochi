@@ -238,4 +238,30 @@ public enum DesignTokens {
     public static func addressFieldGlyph(hasLoadedPage: Bool) -> AddressFieldGlyph {
         hasLoadedPage ? .lock : .search
     }
+
+    /// Colors for the Empty Page's (#16) abstract Liquid Glass composition and de-emphasized
+    /// hotkey quick reference — measured off `design/mochi/EmptyPage.dc.html`.
+    public enum EmptyPage {
+        /// The composition's front panel — tinted with the resolved system accent, unlike the
+        /// back panel below.
+        public static func accentGlassPanelTint(_ accent: RGBA, dark: Bool) -> RGBA {
+            accent.withAlpha(dark ? 0.16 : 0.14)
+        }
+
+        /// The composition's back panel — a fixed blue tint independent of the system accent
+        /// color, per the design canvas (only the front panel follows the user's accent choice).
+        public static func secondaryGlassPanelTint(dark: Bool) -> RGBA {
+            RGBA(red: 120 / 255, green: 150 / 255, blue: 255 / 255, alpha: dark ? 0.16 : 0.14)
+        }
+
+        /// The pill background behind each hotkey combo in the quick reference row.
+        public static func hotkeyBadgeBackground(dark: Bool) -> RGBA {
+            dark ? RGBA(red: 1, green: 1, blue: 1, alpha: 0.10) : RGBA(red: 0, green: 0, blue: 0, alpha: 0.06)
+        }
+
+        /// The content area's base fill, beneath the two soft radial-gradient blobs.
+        public static func backgroundBase(dark: Bool) -> RGBA {
+            dark ? RGBA(hex: "0e0e10") : RGBA(hex: "f4f4f6")
+        }
+    }
 }
