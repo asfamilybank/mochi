@@ -13,6 +13,7 @@ public final class Orchestrator {
     private let openSettings: () -> Void
     private var window: WidgetWindowHandle?
     private var customScript: String?
+    private var disabledBuiltInScriptIDs: Set<String> = []
     private var ghostModeController: GhostModeController?
     private var hotkeyForwarder: HotkeyForwarder?
     private var currentZoom: Double = 1.0
@@ -42,6 +43,7 @@ public final class Orchestrator {
         let window = platformOps.createWidgetWindow(initialFrame: frame)
         self.window = window
         self.customScript = config.customScript
+        self.disabledBuiltInScriptIDs = config.disabledBuiltInScriptIDs
         self.currentZoom = config.windowState?.zoom ?? 1.0
         self.isPinned = config.isPinned
 
@@ -61,6 +63,9 @@ public final class Orchestrator {
         platformOps.onPinnedChanged(window) { [weak self] pinned in
             self?.isPinned = pinned
             self?.persistPinned(pinned)
+        }
+        platformOps.onSettingsRequested(window) { [weak self] in
+            self?.openSettings()
         }
         platformOps.onNavigationFinished(window) { [weak self] in
             self?.injectConfiguredScripts()
@@ -197,7 +202,7 @@ public final class Orchestrator {
 
     private func injectConfiguredScripts() {
         guard let window else { return }
-        for script in BuiltInScripts.all {
+        for script in BuiltInScripts.all where !disabledBuiltInScriptIDs.contains(script.id) {
             platformOps.injectScript(script.source, in: window)
         }
         if let customScript, !customScript.isEmpty {

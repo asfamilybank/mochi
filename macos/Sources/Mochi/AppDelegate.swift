@@ -3,6 +3,7 @@ import MochiCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var orchestrator: Orchestrator?
+    private var settingsWindowController: SettingsWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let platformOps = AppKitPlatformOps()
@@ -17,26 +18,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Both callbacks mutate the same `currentConfig` (rather than each re-deriving from
         // `initialConfig`) so a URL persisted mid-session survives a later window-state persist,
-        // and vice versa.
+        // and vice versa. `SettingsController` (#13/#14/#15) is handed this same function, not a
+        // copy of `currentConfig`, so a settings edit applies on top of it too.
         var currentConfig = initialConfig
         func persist(_ transform: (WidgetConfig) -> WidgetConfig) {
             currentConfig = transform(currentConfig)
             try? currentConfig.write(to: configURL)
         }
 
+        let settingsController = SettingsController(
+            platformOps: platformOps, currentConfig: { currentConfig }, persist: persist)
+        let settingsViewModel = SettingsViewModel(controller: settingsController)
+        let settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)
+        self.settingsWindowController = settingsWindowController
+
         let orchestrator = Orchestrator(
             platformOps: platformOps,
             persistWindowState: { windowState in persist { $0.updatingWindowState(windowState) } },
             persistURL: { url in persist { $0.updatingURL(url) } },
             persistPinned: { isPinned in persist { $0.updatingPinned(isPinned) } },
-            // The settings panel itself is #13's scope, not yet built — this keeps the tray's
-            // "打开设置" entry from being a silent no-op in the meantime.
-            openSettings: {
-                platformOps.presentAlert(
-                    title: "设置面板尚未实现",
-                    message: "设置面板正在开发中，敬请期待。"
-                )
-            }
+            openSettings: { settingsWindowController.show() }
         )
         self.orchestrator = orchestrator
         orchestrator.start(config: initialConfig)

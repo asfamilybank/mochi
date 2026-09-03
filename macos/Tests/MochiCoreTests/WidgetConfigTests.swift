@@ -273,4 +273,142 @@ import Testing
 
         #expect(reparsed == original)
     }
+
+    // MARK: - #13/#16: startup target
+
+    @Test func startupTargetIsNilWhenAbsent() throws {
+        let config = try WidgetConfig.parse("url = \"https://example.com\"")
+        #expect(config.startupTarget == nil)
+    }
+
+    @Test func parsesStartupTargetURLWhenPresent() throws {
+        let toml = """
+        url = "https://example.com"
+
+        [startup_target]
+        kind = "url"
+        url = "https://startup.example.com"
+        """
+
+        let config = try WidgetConfig.parse(toml)
+
+        #expect(config.startupTarget == .url(URL(string: "https://startup.example.com")!))
+    }
+
+    @Test func parsesStartupTargetEmptyPageWhenPresent() throws {
+        let toml = """
+        url = "https://example.com"
+
+        [startup_target]
+        kind = "empty_page"
+        """
+
+        let config = try WidgetConfig.parse(toml)
+
+        #expect(config.startupTarget == .emptyPage)
+    }
+
+    @Test func treatsAnUnknownStartupTargetKindAsAbsentInsteadOfCrashing() throws {
+        let toml = """
+        url = "https://example.com"
+
+        [startup_target]
+        kind = "something_else"
+        """
+
+        let config = try WidgetConfig.parse(toml)
+
+        #expect(config.startupTarget == nil)
+    }
+
+    @Test func serializingThenReparsingRoundTripsStartupTargetURL() throws {
+        let original = WidgetConfig(
+            url: URL(string: "https://example.com")!, startupTarget: .url(URL(string: "https://startup.example.com")!))
+
+        let reparsed = try WidgetConfig.parse(original.serialized())
+
+        #expect(reparsed == original)
+    }
+
+    @Test func serializingThenReparsingRoundTripsStartupTargetEmptyPage() throws {
+        let original = WidgetConfig(url: URL(string: "https://example.com")!, startupTarget: .emptyPage)
+
+        let reparsed = try WidgetConfig.parse(original.serialized())
+
+        #expect(reparsed == original)
+    }
+
+    @Test func updatingStartupTargetReturnsCopyWithNewStartupTargetOnly() {
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+
+        let updated = config.updatingStartupTarget(.emptyPage)
+
+        #expect(updated.startupTarget == .emptyPage)
+        #expect(updated.url == config.url)
+    }
+
+    // MARK: - #15: disabled built-in scripts
+
+    @Test func disabledBuiltInScriptIDsIsEmptyWhenAbsent() throws {
+        let config = try WidgetConfig.parse("url = \"https://example.com\"")
+        #expect(config.disabledBuiltInScriptIDs.isEmpty)
+    }
+
+    @Test func parsesDisabledBuiltInScriptIDsWhenPresent() throws {
+        let toml = """
+        url = "https://example.com"
+        disabled_built_in_scripts = ["generic-video-focus"]
+        """
+
+        let config = try WidgetConfig.parse(toml)
+
+        #expect(config.disabledBuiltInScriptIDs == ["generic-video-focus"])
+    }
+
+    @Test func serializingThenReparsingRoundTripsDisabledBuiltInScriptIDs() throws {
+        let original = WidgetConfig(url: URL(string: "https://example.com")!, disabledBuiltInScriptIDs: ["a", "b"])
+
+        let reparsed = try WidgetConfig.parse(original.serialized())
+
+        #expect(reparsed == original)
+    }
+
+    @Test func updatingDisabledBuiltInScriptIDsReturnsCopyWithNewSetOnly() {
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+
+        let updated = config.updatingDisabledBuiltInScriptIDs(["x"])
+
+        #expect(updated.disabledBuiltInScriptIDs == ["x"])
+        #expect(updated.url == config.url)
+    }
+
+    // MARK: - updating* helpers not yet covered above
+
+    @Test func updatingGhostOpacityReturnsCopyWithNewOpacityOnly() {
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+
+        let updated = config.updatingGhostOpacity(0.9)
+
+        #expect(updated.ghostOpacity == 0.9)
+        #expect(updated.url == config.url)
+    }
+
+    @Test func updatingCustomScriptReturnsCopyWithNewScriptOnly() {
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+
+        let updated = config.updatingCustomScript("console.log(1)")
+
+        #expect(updated.customScript == "console.log(1)")
+        #expect(updated.url == config.url)
+    }
+
+    @Test func updatingHotkeyMappingsReturnsCopyWithNewMappingsOnly() {
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        let mapping = HotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0), pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
+
+        let updated = config.updatingHotkeyMappings([mapping])
+
+        #expect(updated.hotkeyMappings == [mapping])
+        #expect(updated.url == config.url)
+    }
 }

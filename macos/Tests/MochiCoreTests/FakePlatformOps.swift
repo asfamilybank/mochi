@@ -32,6 +32,7 @@ final class FakePlatformOps: PlatformOps {
     private var willCloseHandlers: [Int: () -> Void] = [:]
     private var urlSubmittedHandlers: [Int: (URL) -> Void] = [:]
     private var pinnedChangedHandlers: [Int: (Bool) -> Void] = [:]
+    private var settingsRequestedHandlers: [Int: () -> Void] = [:]
     private var navigationFinishedHandlers: [Int: () -> Void] = [:]
     private var mouseEnteredHandlers: [Int: () -> Void] = [:]
     private var summonedToolbarGhostModeToggleHandlers: [Int: () -> Void] = [:]
@@ -107,6 +108,15 @@ final class FakePlatformOps: PlatformOps {
 
     func simulatePinnedChanged(_ pinned: Bool, windowID: Int = 1) {
         pinnedChangedHandlers[windowID]?(pinned)
+    }
+
+    func onSettingsRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {
+        let handle = window as! FakeWidgetWindowHandle
+        settingsRequestedHandlers[handle.id] = handler
+    }
+
+    func simulateSettingsRequested(windowID: Int = 1) {
+        settingsRequestedHandlers[windowID]?()
     }
 
     func injectScript(_ source: String, in window: WidgetWindowHandle) {

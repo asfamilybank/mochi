@@ -48,4 +48,14 @@ public enum DefaultHotkeys {
     /// ⌥⌘P — toggles Pin (always-on-top), independent of Normal/Ghost Mode (#12).
     /// `0x23` is `kVK_ANSI_P`.
     public static let togglePin = Hotkey(keyCode: 0x23, modifierFlags: cmdOption)
+
+    /// Every default combo, for callers (the settings panel's mapping editor, #14) that need to
+    /// check a candidate trigger against Mochi's own reserved hotkeys *before* attempting to
+    /// register it — `GlobalHotkeyRegistry`'s underlying `RegisterEventHotKey` does not fail on an
+    /// in-process duplicate registration (it happily installs a second, independently-firing
+    /// handler for the same combo instead — see `HotkeyForwarder`'s doc comment), so registration
+    /// success/failure alone cannot be used to detect a collision with one of these.
+    public static let all: [Hotkey] = [
+        toggleGhostMode, summonToolbar, reloadPage, zoomIn, zoomOut, quickHideWidget, resizeWindow, togglePin,
+    ]
 }

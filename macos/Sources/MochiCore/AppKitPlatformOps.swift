@@ -73,6 +73,7 @@ fileprivate struct ToolbarControls {
     let refreshButton: NSButton
     let pinButton: NSButton
     let addressField: NSTextField
+    let settingsButton: NSButton
 }
 
 /// Ghost Mode's summoned toolbar overlay's (#10) controls — a deliberately separate set of
@@ -104,6 +105,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     private var willCloseHandler: (() -> Void)?
     private var urlSubmittedHandler: ((URL) -> Void)?
     private var pinnedChangedHandler: ((Bool) -> Void)?
+    private var settingsRequestedHandler: (() -> Void)?
     private var navigationFinishedHandler: (() -> Void)?
     private var mouseEnteredHandler: (() -> Void)?
     private var summonedGhostModeToggleHandler: (() -> Void)?
@@ -139,6 +141,8 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         controls.pinButton.action = #selector(togglePinned)
         controls.pinButton.wantsLayer = true
         controls.pinButton.layer?.cornerRadius = DesignTokens.Layout.toolbarButtonDiameter / 2
+        controls.settingsButton.target = self
+        controls.settingsButton.action = #selector(handleSettingsRequested)
         summonedControls.refreshButton.target = self
         summonedControls.refreshButton.action = #selector(reload)
         summonedControls.pinButton.target = self
@@ -276,6 +280,14 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
 
     func setPinnedChangedHandler(_ handler: @escaping (Bool) -> Void) {
         pinnedChangedHandler = handler
+    }
+
+    func setSettingsRequestedHandler(_ handler: @escaping () -> Void) {
+        settingsRequestedHandler = handler
+    }
+
+    @objc private func handleSettingsRequested() {
+        settingsRequestedHandler?()
     }
 
     func injectScript(_ source: String) {
@@ -536,7 +548,11 @@ public final class AppKitPlatformOps: PlatformOps {
             forwardButton: toolbarButton(icon: .chevronRight, accessibilityDescription: "前进"),
             refreshButton: toolbarButton(icon: .refresh, accessibilityDescription: "刷新"),
             pinButton: toolbarButton(icon: .pin, accessibilityDescription: "置顶"),
-            addressField: addressField
+            addressField: addressField,
+            // docs/design-language.md's toolbar button list documents the settings entry as the
+            // "更多" (⋯) affordance, not a dedicated glyph — reusing `.moreHorizontal` here rather
+            // than introducing a new icon.
+            settingsButton: toolbarButton(icon: .moreHorizontal, accessibilityDescription: "设置")
         )
     }
 
@@ -545,6 +561,7 @@ public final class AppKitPlatformOps: PlatformOps {
     private func makeToolbarRow(containing controls: ToolbarControls) -> NSView {
         let buttonsStack = NSStackView(views: [
             controls.backButton, controls.forwardButton, controls.refreshButton, controls.addressField, controls.pinButton,
+            controls.settingsButton,
         ])
         buttonsStack.translatesAutoresizingMaskIntoConstraints = false
         buttonsStack.orientation = .horizontal
@@ -657,6 +674,11 @@ public final class AppKitPlatformOps: PlatformOps {
     public func onPinnedChanged(_ window: WidgetWindowHandle, perform handler: @escaping (Bool) -> Void) {
         guard let handle = handle(for: window) else { return }
         handle.setPinnedChangedHandler(handler)
+    }
+
+    public func onSettingsRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {
+        guard let handle = handle(for: window) else { return }
+        handle.setSettingsRequestedHandler(handler)
     }
 
     public func injectScript(_ source: String, in window: WidgetWindowHandle) {

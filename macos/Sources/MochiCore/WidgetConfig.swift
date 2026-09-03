@@ -2,6 +2,17 @@ import Foundation
 import TOMLKit
 
 public struct WidgetConfig: Equatable {
+    /// An optional override of "resume last visited page" (#16's decision), edited via the
+    /// settings panel's startup-URL tri-state selector (#13). `nil` means "not set" — kept
+    /// distinct from the existing `url` field (which tracks *last visited*, updated by every
+    /// toolbar navigation) so clearing this override can hand control back to `url` without
+    /// losing browsing history. Resolving this into what actually loads on launch is #16's scope,
+    /// not this type's.
+    public enum StartupTarget: Equatable {
+        case url(URL)
+        case emptyPage
+    }
+
     public var url: URL
     public var windowState: WindowState?
     public var isPinned: Bool
@@ -9,11 +20,17 @@ public struct WidgetConfig: Equatable {
     public var ghostOpacity: Double
     public var snapThreshold: Double
     public var hotkeyMappings: [HotkeyMapping]
+    public var startupTarget: StartupTarget?
+    /// Built-in scripts (`BuiltInScripts.all`) the user has turned off via the settings panel
+    /// (#15) — identified by `BuiltInScript.id` rather than storing an "enabled" flag per script,
+    /// so a script added in a later app update defaults to enabled without needing a migration.
+    public var disabledBuiltInScriptIDs: Set<String>
 
     public init(
         url: URL, windowState: WindowState? = nil, isPinned: Bool = false, customScript: String? = nil,
         ghostOpacity: Double = WidgetConfig.defaultGhostOpacity, snapThreshold: Double = WindowSnapping.defaultThreshold,
-        hotkeyMappings: [HotkeyMapping] = []
+        hotkeyMappings: [HotkeyMapping] = [], startupTarget: StartupTarget? = nil,
+        disabledBuiltInScriptIDs: Set<String> = []
     ) {
         self.url = url
         self.windowState = windowState
@@ -22,6 +39,8 @@ public struct WidgetConfig: Equatable {
         self.ghostOpacity = ghostOpacity
         self.snapThreshold = snapThreshold
         self.hotkeyMappings = hotkeyMappings
+        self.startupTarget = startupTarget
+        self.disabledBuiltInScriptIDs = disabledBuiltInScriptIDs
     }
 }
 
@@ -59,8 +78,27 @@ extension WidgetConfig {
             customScript: table["custom_script"]?.string,
             ghostOpacity: table["ghost_opacity"]?.double ?? defaultGhostOpacity,
             snapThreshold: table["snap_threshold"]?.double ?? WindowSnapping.defaultThreshold,
-            hotkeyMappings: parseHotkeyMappings(from: table["hotkey_mappings"]?.array)
+            hotkeyMappings: parseHotkeyMappings(from: table["hotkey_mappings"]?.array),
+            startupTarget: parseStartupTarget(from: table["startup_target"]?.table),
+            disabledBuiltInScriptIDs: Set(table["disabled_built_in_scripts"]?.array?.compactMap(\.string) ?? [])
         )
+    }
+
+    /// A malformed table (unknown `kind`, or a `.url` case missing/mangling its URL) is treated
+    /// the same as absent rather than thrown — this is hand-editable TOML like the rest of the
+    /// file, and an invalid override should fall back to "not set" rather than crash the app on
+    /// every launch (matching `parseHotkeyMappings`' own leniency for the same reason).
+    private static func parseStartupTarget(from table: TOMLTable?) -> StartupTarget? {
+        guard let table, let kind = table["kind"]?.string else { return nil }
+        switch kind {
+        case "url":
+            guard let urlString = table["url"]?.string, let url = URL(string: urlString) else { return nil }
+            return .url(url)
+        case "empty_page":
+            return .emptyPage
+        default:
+            return nil
+        }
     }
 
     /// Hotkey Forwarding's (#11) user-configured mappings — until #14 ships a settings-panel
@@ -133,6 +171,20 @@ extension WidgetConfig {
                     return mappingTable
                 })
         }
+        if let startupTarget {
+            let startupTable = TOMLTable()
+            switch startupTarget {
+            case .url(let url):
+                startupTable["kind"] = "url"
+                startupTable["url"] = url.absoluteString
+            case .emptyPage:
+                startupTable["kind"] = "empty_page"
+            }
+            table["startup_target"] = startupTable
+        }
+        if !disabledBuiltInScriptIDs.isEmpty {
+            table["disabled_built_in_scripts"] = TOMLArray(disabledBuiltInScriptIDs.sorted())
+        }
         return table.convert()
     }
 
@@ -159,6 +211,36 @@ extension WidgetConfig {
     public func updatingPinned(_ isPinned: Bool) -> WidgetConfig {
         var copy = self
         copy.isPinned = isPinned
+        return copy
+    }
+
+    public func updatingGhostOpacity(_ ghostOpacity: Double) -> WidgetConfig {
+        var copy = self
+        copy.ghostOpacity = ghostOpacity
+        return copy
+    }
+
+    public func updatingCustomScript(_ customScript: String?) -> WidgetConfig {
+        var copy = self
+        copy.customScript = customScript
+        return copy
+    }
+
+    public func updatingStartupTarget(_ startupTarget: StartupTarget?) -> WidgetConfig {
+        var copy = self
+        copy.startupTarget = startupTarget
+        return copy
+    }
+
+    public func updatingHotkeyMappings(_ hotkeyMappings: [HotkeyMapping]) -> WidgetConfig {
+        var copy = self
+        copy.hotkeyMappings = hotkeyMappings
+        return copy
+    }
+
+    public func updatingDisabledBuiltInScriptIDs(_ disabledBuiltInScriptIDs: Set<String>) -> WidgetConfig {
+        var copy = self
+        copy.disabledBuiltInScriptIDs = disabledBuiltInScriptIDs
         return copy
     }
 }

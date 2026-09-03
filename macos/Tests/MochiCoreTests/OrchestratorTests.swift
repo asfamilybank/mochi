@@ -165,6 +165,33 @@ import Testing
         #expect(fake.injectedScripts.count == BuiltInScripts.all.count)
     }
 
+    @Test func skipsInjectingABuiltInScriptDisabledInSettings() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let disabledID = BuiltInScripts.all[0].id
+        let config = WidgetConfig(url: URL(string: "https://example.com")!, disabledBuiltInScriptIDs: [disabledID])
+        orchestrator.start(config: config)
+
+        fake.simulateNavigationFinished()
+
+        #expect(!fake.injectedScripts.map(\.source).contains(BuiltInScripts.all[0].source))
+        #expect(fake.injectedScripts.count == BuiltInScripts.all.count - 1)
+    }
+
+    @Test func openingSettingsFromTheToolbarInvokesTheInjectedCallback() {
+        let fake = FakePlatformOps()
+        var openSettingsCallCount = 0
+        let orchestrator = Orchestrator(platformOps: fake, openSettings: {
+            openSettingsCallCount += 1
+        })
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        orchestrator.start(config: config)
+
+        fake.simulateSettingsRequested()
+
+        #expect(openSettingsCallCount == 1)
+    }
+
     @Test func registersAllDefaultHotkeysOnStartInAFixedOrder() {
         let fake = FakePlatformOps()
         let orchestrator = Orchestrator(platformOps: fake)

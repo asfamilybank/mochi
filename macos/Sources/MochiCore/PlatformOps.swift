@@ -41,6 +41,11 @@ public protocol PlatformOps: AnyObject {
     /// state can be persisted.
     func onPinnedChanged(_ window: WidgetWindowHandle, perform handler: @escaping (Bool) -> Void)
 
+    /// Registers a handler invoked when the user clicks the toolbar's settings entry (#13) —
+    /// mirrors the tray icon's existing "打开设置" entry, giving Normal Mode a second way to reach
+    /// the same settings panel.
+    func onSettingsRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void)
+
     /// Evaluates `source` in the page's JavaScript context. Callers are expected to only call
     /// this once a page has finished loading (see `onNavigationFinished`).
     func injectScript(_ source: String, in window: WidgetWindowHandle)
