@@ -22,7 +22,11 @@ Issue 的 comments 里可能留有前序 session 的"本地实现进度"/"有意
 
 GitHub 原生 `blocked_by` 依赖（`issue-tracker.md` 写在"Wayfinding operations"节下）不止 `/wayfinder` 能用，`/to-tickets` 这类有依赖关系的拆票也该建。
 
+多 session 并发时 `CLAUDE.md` 自身也可能被别的 session 同时改动（比如学习记录更新）——commit 前 `git status` 看到 `CLAUDE.md` 有非本次任务的改动，按文件名精确 `git add`，不要用 `-A`/`.` 把它一起带上。`git reset`/`git commit --amend` 之类改写历史的操作（哪怕只是改 commit message）也可能顺带清空其他文件上尚未提交的改动——修改已推送的 commit 前先确认工作区没有别的 session 留下的草稿。
+
 重新设计一个已经 CLOSED 的 issue 所描述的（已上线）行为时，新开一个 issue 引用旧的，不要重开/改写旧 issue 的验收标准——旧记录保留作历史存档。
+
+commit message 里用 `Closes #<n>` 关闭多个 issue 时，逗号列表（`Closes #13, #14, #15`）只会关闭紧跟关键字的第一个，其余只是被关联（cross-reference）不会关闭——每个号码前都要重复关键字：`Closes #13`、`Closes #14`、`Closes #15` 各自一行（或都用 `Closes` 而不是省略后续的关键字）。
 
 顶层 spec issue（几十条 user stories 那种）即使仍是 OPEN，也可能已经被拆解成一串子 issue（如 #1→#2-22、#18→#19-22）——`/implement` 前先 `gh issue list` 看有没有已存在的子任务，别把整份 spec 当一个可执行单元直接实现。
 
@@ -50,6 +54,9 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 - Swift Testing 的 `#expect(a == b)` 混合比较裸 `Double` 和裸 `CGFloat`（如 `CGRect.minY`/`.maxX`）时可能误报失败——即使 `print(a == b)` 打出 `true`、`.build` 全清也复现。比较前把 CGFloat 一侧显式转 `Double(...)`；碰到"打印值明明相等却报 failed"，先怀疑这个，别急着查产物逻辑。
 - 实现窗口拖拽吸附/磁性对齐一律用 `NSWindow.constrainFrameRect(_:to:)`（子类重写），别用 `windowDidMove` 回调里 `setFrameOrigin` 纠正——后者和 AppKit 自己的拖拽循环抢着决定坐标，慢速拖动会有肉眼可见的抖动；前者是 AppKit 拖拽时自己会调用的钩子，同一步里只有一个权威在决定坐标。
 - `FakePlatformOps` 里追踪调用用的带 label 元组数组（如 `[(pinned: Bool, windowID: Int)]`）不满足 `Equatable`，测试里不能直接 `#expect(arr == [...])`——按字段 `.map(\.field)` 分别比较。
+- `docs/design-language.md`"窗口与工具栏"一节描述的是 ADR-0009 的新统一 NSToolbar 设计（对应尚未实现的 #18），当前 `AppKitPlatformOps.swift` 里的 toolbar 仍是 ADR-0004 时期的自绘两行式实现——改动前先确认自己改的是"当前实现小修"还是"#18 整体重做"，别把新文档里的按钮清单/图标直接套到当前代码状态上（例如设置入口应复用已有的 `.moreHorizontal`"更多"图标，而不是新画一个）。
+- 新增会写 `WidgetConfig` 的功能（如设置面板）时，构造函数接收 `currentConfig: () -> WidgetConfig` + `persist: (@escaping (WidgetConfig) -> WidgetConfig) -> Void` 这对 transform 闭包，直接传入 `AppDelegate` 已有的 `persist(_:)` 函数本体——不要让新类缓存自己的配置快照，否则会在多个写入源之间产生"用旧快照覆盖新状态"的竞态。
+- `GlobalHotkeyRegistry` 没有 unregister 能力：设置面板对热键映射表/内置脚本开关的增删改只能做到"立即持久化到配置文件"，运行中的 `Orchestrator`/`HotkeyForwarder`/脚本注入不会热更新，需要重启 Mochi 才生效——别假设这类编辑是实时生效的。
 
 ### 视觉设计（design/）
 
@@ -58,3 +65,5 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 ### 关闭 issue
 
 commit message 里写 `Closes #<n>`，push 后让 GitHub 自动关闭——不要手动跑 `gh issue close`。
+
+一个 commit 要关闭多个 issue 时，`Closes #13, #14, #15` 这种逗号列表只会关闭紧跟关键字的第一个，其余只是被关联（cross-reference）不会关闭——每个号码前都要重复关键字：`Closes #13`、`Closes #14`、`Closes #15` 各自一行（或都用 `Closes` 而不是省略后续的关键字）。
