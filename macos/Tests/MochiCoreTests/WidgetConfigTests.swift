@@ -168,6 +168,30 @@ import Testing
         #expect(reparsed == original)
     }
 
+    @Test func mouseAvoidanceDefaultsToEnabledWhenAbsent() throws {
+        let config = try WidgetConfig.parse("url = \"https://example.com\"")
+        #expect(config.isMouseAvoidanceEnabled == true)
+    }
+
+    @Test func parsesMouseAvoidanceWhenPresent() throws {
+        let toml = """
+        url = "https://example.com"
+        mouse_avoidance_enabled = false
+        """
+
+        let config = try WidgetConfig.parse(toml)
+
+        #expect(config.isMouseAvoidanceEnabled == false)
+    }
+
+    @Test func serializingThenReparsingRoundTripsMouseAvoidance() throws {
+        let original = WidgetConfig(url: URL(string: "https://example.com")!, isMouseAvoidanceEnabled: false)
+
+        let reparsed = try WidgetConfig.parse(original.serialized())
+
+        #expect(reparsed == original)
+    }
+
     @Test func snapThresholdDefaultsToWindowSnappingsDefaultWhenAbsent() throws {
         let config = try WidgetConfig.parse("url = \"https://example.com\"")
         #expect(config.snapThreshold == WindowSnapping.defaultThreshold)

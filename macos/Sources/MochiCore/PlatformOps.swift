@@ -103,9 +103,11 @@ public protocol PlatformOps: AnyObject {
     /// Enables/disables `NSWindow.ignoresMouseEvents` — Ghost Mode's click-through behavior.
     func setMousePassthrough(_ enabled: Bool, in window: WidgetWindowHandle)
 
-    /// Registers a handler invoked when the mouse enters the widget's area, regardless of mode —
-    /// callers are responsible for ignoring it outside Ghost Mode.
-    func onMouseEntered(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void)
+    /// Registers a handler invoked when the mouse enters (`true`) or leaves (`false`) the
+    /// widget's area, regardless of mode — callers are responsible for ignoring it outside Ghost
+    /// Mode. One handler carrying the new state rather than a separate enter/exit pair, since
+    /// avoidance (ADR-0012) needs both edges and they are never handled apart.
+    func onMouseInsideChanged(_ window: WidgetWindowHandle, perform handler: @escaping (Bool) -> Void)
 
     /// Registers a system-wide hotkey and returns whether registration succeeded (`false` when
     /// another application already holds that combination) — callers must surface failure to the

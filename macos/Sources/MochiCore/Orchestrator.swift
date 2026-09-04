@@ -68,7 +68,9 @@ public final class Orchestrator {
         }
         platformOps.showWindow(window)
 
-        let ghostModeController = GhostModeController(platformOps: platformOps, window: window, ghostOpacity: config.ghostOpacity)
+        let ghostModeController = GhostModeController(
+            platformOps: platformOps, window: window, ghostOpacity: config.ghostOpacity,
+            isMouseAvoidanceEnabled: config.isMouseAvoidanceEnabled)
         self.ghostModeController = ghostModeController
         // Registered before `HotkeyForwarder` so its claimed combos can be passed down as
         // `reservedTriggers` — a user-configured mapping colliding with one of these must be

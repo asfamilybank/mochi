@@ -21,6 +21,9 @@ public struct WidgetConfig: Equatable {
     public var windowState: WindowState?
     public var customScript: String?
     public var ghostOpacity: Double
+    /// Ghost Mode's mouse-entered avoidance (ADR-0012), on by default. Only reachable by
+    /// hand-editing the config file until the settings panel grows a switch for it.
+    public var isMouseAvoidanceEnabled: Bool
     public var snapThreshold: Double
     public var hotkeyMappings: [HotkeyMapping]
     public var startupTarget: StartupTarget?
@@ -31,7 +34,8 @@ public struct WidgetConfig: Equatable {
 
     public init(
         url: URL? = nil, windowState: WindowState? = nil, customScript: String? = nil,
-        ghostOpacity: Double = WidgetConfig.defaultGhostOpacity, snapThreshold: Double = WindowSnapping.defaultThreshold,
+        ghostOpacity: Double = WidgetConfig.defaultGhostOpacity, isMouseAvoidanceEnabled: Bool = true,
+        snapThreshold: Double = WindowSnapping.defaultThreshold,
         hotkeyMappings: [HotkeyMapping] = [], startupTarget: StartupTarget? = nil,
         disabledBuiltInScriptIDs: Set<String> = []
     ) {
@@ -39,6 +43,7 @@ public struct WidgetConfig: Equatable {
         self.windowState = windowState
         self.customScript = customScript
         self.ghostOpacity = ghostOpacity
+        self.isMouseAvoidanceEnabled = isMouseAvoidanceEnabled
         self.snapThreshold = snapThreshold
         self.hotkeyMappings = hotkeyMappings
         self.startupTarget = startupTarget
@@ -71,6 +76,7 @@ extension WidgetConfig {
             windowState: parseWindowState(from: table["window"]?.table),
             customScript: table["custom_script"]?.string,
             ghostOpacity: table["ghost_opacity"]?.double ?? defaultGhostOpacity,
+            isMouseAvoidanceEnabled: table["mouse_avoidance_enabled"]?.bool ?? true,
             snapThreshold: table["snap_threshold"]?.double ?? WindowSnapping.defaultThreshold,
             hotkeyMappings: parseHotkeyMappings(from: table["hotkey_mappings"]?.array),
             startupTarget: parseStartupTarget(from: table["startup_target"]?.table),
@@ -153,6 +159,7 @@ extension WidgetConfig {
             table["url"] = url.absoluteString
         }
         table["ghost_opacity"] = ghostOpacity
+        table["mouse_avoidance_enabled"] = isMouseAvoidanceEnabled
         table["snap_threshold"] = snapThreshold
         if let customScript {
             table["custom_script"] = customScript

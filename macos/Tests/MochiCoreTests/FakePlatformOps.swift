@@ -32,7 +32,7 @@ final class FakePlatformOps: PlatformOps {
     private var urlSubmittedHandlers: [Int: (URL) -> Void] = [:]
     private var settingsRequestedHandlers: [Int: () -> Void] = [:]
     private var navigationFinishedHandlers: [Int: () -> Void] = [:]
-    private var mouseEnteredHandlers: [Int: () -> Void] = [:]
+    private var mouseInsideChangedHandlers: [Int: (Bool) -> Void] = [:]
     private var pageTitleChangedHandlers: [Int: (String?) -> Void] = [:]
     private var loadingStateChangedHandlers: [Int: (Bool) -> Void] = [:]
     private var loadingProgressChangedHandlers: [Int: (Double) -> Void] = [:]
@@ -144,13 +144,13 @@ final class FakePlatformOps: PlatformOps {
         mousePassthroughChanges.append((enabled, handle.id))
     }
 
-    func onMouseEntered(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {
+    func onMouseInsideChanged(_ window: WidgetWindowHandle, perform handler: @escaping (Bool) -> Void) {
         let handle = window as! FakeWidgetWindowHandle
-        mouseEnteredHandlers[handle.id] = handler
+        mouseInsideChangedHandlers[handle.id] = handler
     }
 
-    func simulateMouseEntered(windowID: Int = 1) {
-        mouseEnteredHandlers[windowID]?()
+    func simulateMouseInsideChanged(_ inside: Bool, windowID: Int = 1) {
+        mouseInsideChangedHandlers[windowID]?(inside)
     }
 
     @discardableResult

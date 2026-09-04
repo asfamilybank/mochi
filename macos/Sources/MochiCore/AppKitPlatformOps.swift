@@ -182,7 +182,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     private var urlSubmittedHandler: ((URL) -> Void)?
     private var settingsRequestedHandler: (() -> Void)?
     private var navigationFinishedHandler: (() -> Void)?
-    private var mouseEnteredHandler: (() -> Void)?
+    private var mouseInsideChangedHandler: ((Bool) -> Void)?
     private var pageTitleChangedHandler: ((String?) -> Void)?
     private var loadingStateChangedHandler: ((Bool) -> Void)?
     private var loadingProgressChangedHandler: ((Double) -> Void)?
@@ -490,17 +490,17 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         window.ignoresMouseEvents = enabled
     }
 
-    func setMouseEnteredHandler(_ handler: @escaping () -> Void) {
-        mouseEnteredHandler = handler
+    func setMouseInsideChangedHandler(_ handler: @escaping (Bool) -> Void) {
+        mouseInsideChangedHandler = handler
     }
 
     func setSnapThreshold(_ threshold: Double) {
         (window as? MochiWidgetWindow)?.snapThreshold = threshold
     }
 
-    /// A tracking area on the whole content view is what lets Ghost Mode detect "mouse moved
-    /// into the widget" (#8) even though the window ignores mouse events at the time — AppKit
-    /// evaluates tracking-rect enter/exit from raw cursor position, independent of
+    /// A tracking area on the whole content view is what lets Ghost Mode detect the mouse moving
+    /// into and back out of the widget (#8) even though the window ignores mouse events at the
+    /// time — AppKit evaluates tracking-rect enter/exit from raw cursor position, independent of
     /// `ignoresMouseEvents` (which only governs click/scroll dispatch).
     private func installGhostModeMouseTracking() {
         guard let contentView = window.contentView else { return }
@@ -514,12 +514,12 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     }
 
     @objc private func mouseEntered(with event: NSEvent) {
-        mouseEnteredHandler?()
+        mouseInsideChangedHandler?(true)
     }
 
-    // Intentionally does nothing on exit — leaving the area does not restore visibility
-    // (ADR-0006); only toggling Ghost Mode off does, via `GhostModeController`.
-    @objc private func mouseExited(with event: NSEvent) {}
+    @objc private func mouseExited(with event: NSEvent) {
+        mouseInsideChangedHandler?(false)
+    }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         guard control === controls.addressField, commandSelector == #selector(NSResponder.insertNewline(_:)) else {
@@ -957,9 +957,9 @@ public final class AppKitPlatformOps: PlatformOps {
         handle.setMousePassthrough(enabled)
     }
 
-    public func onMouseEntered(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {
+    public func onMouseInsideChanged(_ window: WidgetWindowHandle, perform handler: @escaping (Bool) -> Void) {
         guard let handle = handle(for: window) else { return }
-        handle.setMouseEnteredHandler(handler)
+        handle.setMouseInsideChangedHandler(handler)
     }
 
     @discardableResult

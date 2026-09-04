@@ -30,11 +30,33 @@ public final class GhostModeController {
     /// The boss key's (ADR-0012) own bookkeeping: deliberate, persists until deliberately undone
     /// (or until Ghost Mode is left), and never decays on its own.
     private var isHidden = false
+    /// Whether the cursor is currently over the widget. Tracked in both modes so entering Ghost
+    /// Mode with the mouse already parked on the widget avoids straight away, rather than waiting
+    /// for the next crossing.
+    private var isMouseInside = false
+    /// Mouse-entered avoidance (ADR-0012), on by default. Independent of `isHidden` and settable
+    /// at runtime — the settings panel that exposes it to users is its own ticket, until then it
+    /// is only reachable by hand-editing the config file.
+    public var isMouseAvoidanceEnabled: Bool {
+        didSet {
+            // The only situation where flipping this changes anything: the mouse is sitting on
+            // the widget right now, in the mode where avoidance applies at all.
+            guard mode == .ghost, isMouseInside else { return }
+            applyEffectiveOpacity()
+        }
+    }
 
-    public init(platformOps: PlatformOps, window: WidgetWindowHandle, ghostOpacity: Double) {
+    public init(
+        platformOps: PlatformOps, window: WidgetWindowHandle, ghostOpacity: Double,
+        isMouseAvoidanceEnabled: Bool
+    ) {
         self.platformOps = platformOps
         self.window = window
         self.ghostOpacity = ghostOpacity
+        self.isMouseAvoidanceEnabled = isMouseAvoidanceEnabled
+        platformOps.onMouseInsideChanged(window) { [weak self] inside in
+            self?.handleMouseInsideChanged(inside)
+        }
     }
 
     public func toggle() {
@@ -62,11 +84,22 @@ public final class GhostModeController {
         applyEffectiveOpacity()
     }
 
-    /// `Hidden → 0`; `Ghost → 目标透明度`; `Normal → 1.0`. The single source of the window's
-    /// visibility, so no two features can disagree about it.
+    /// `Hidden 或避让触发 → 0`; `Ghost → 目标透明度`; `Normal → 1.0`. The single source of the
+    /// window's visibility, so no two features can disagree about it.
     private var effectiveOpacity: Double {
         guard mode == .ghost else { return 1.0 }
-        return isHidden ? 0 : ghostOpacity
+        if isHidden { return 0 }
+        return isMouseAvoidanceEnabled && isMouseInside ? 0 : ghostOpacity
+    }
+
+    /// Deliberately un-debounced (ADR-0012): whether brushing past the widget's edge actually
+    /// flickers is a question for real use, and guessing at it now would bake in a third
+    /// sub-state nobody can see.
+    private func handleMouseInsideChanged(_ inside: Bool) {
+        guard isMouseInside != inside else { return }
+        isMouseInside = inside
+        guard mode == .ghost, isMouseAvoidanceEnabled else { return }
+        applyEffectiveOpacity()
     }
 
     private func applyEffectiveOpacity() {
