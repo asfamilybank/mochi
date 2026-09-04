@@ -61,6 +61,17 @@ public protocol PlatformOps: AnyObject {
     /// (re-)injected after each navigation, not just the first.
     func onNavigationFinished(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void)
 
+    /// Registers a handler invoked whenever a navigation fails for a reason other than the user
+    /// cancelling it themselves (changing the address mid-load, clicking a new link) — the
+    /// passed string is already a user-facing description of the failure, ready to display as-is.
+    func onNavigationFailed(_ window: WidgetWindowHandle, perform handler: @escaping (String) -> Void)
+
+    /// Shows an error page in place of the loaded page (#38) — `message` is the description to
+    /// display, alongside the URL that failed. Mirrors `showEmptyPageContent`'s "shared
+    /// container, `isHidden` toggle" structure; hidden again once the page next finishes loading
+    /// successfully.
+    func showErrorPageContent(message: String, in window: WidgetWindowHandle)
+
     /// Registers a handler invoked whenever the loaded page's title changes (`WKWebView.title`
     /// KVO), `nil` while no page has reported one yet. Drives the window's dynamic title (#18,
     /// `AddressBarController`) independently of the Normal Mode toolbar's own Smart Address Field

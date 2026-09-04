@@ -66,6 +66,9 @@ public final class Orchestrator {
         platformOps.onNavigationFinished(window) { [weak self] in
             self?.injectConfiguredScripts()
         }
+        platformOps.onNavigationFailed(window) { [weak self] message in
+            self?.handleNavigationFailed(message)
+        }
         platformOps.showWindow(window)
 
         let ghostModeController = GhostModeController(
@@ -171,6 +174,11 @@ public final class Orchestrator {
         let clamped = min(max(currentZoom + step, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
         currentZoom = clamped
         platformOps.applyZoom(currentZoom, in: window)
+    }
+
+    private func handleNavigationFailed(_ message: String) {
+        guard let window else { return }
+        platformOps.showErrorPageContent(message: message, in: window)
     }
 
     private func injectConfiguredScripts() {

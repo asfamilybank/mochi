@@ -16,6 +16,10 @@ public enum DesignIcon: CaseIterable, Sendable {
     case search
     case ghost
     case moreHorizontal
+    /// The error page's (#38) failure glyph — no design file exists for it (see the file's own
+    /// doc comment on falling back to `docs/design-language.md` when one doesn't), so this
+    /// follows the same SF Symbols-style triangle-exclamation geometry by hand instead.
+    case warning
 
     /// The icon's outline as an unstroked/unfilled 24×24 path — the caller strokes or fills
     /// it using `DesignTokens`' icon colors.
@@ -28,6 +32,7 @@ public enum DesignIcon: CaseIterable, Sendable {
         case .search: return Self.searchPath()
         case .ghost: return Self.ghostPath()
         case .moreHorizontal: return Self.moreHorizontalPath()
+        case .warning: return Self.warningPath()
         }
     }
 
@@ -98,6 +103,21 @@ public enum DesignIcon: CaseIterable, Sendable {
         for cx: CGFloat in [6, 12, 18] {
             path.addEllipse(in: CGRect(x: cx - 1.6, y: 12 - 1.6, width: 3.2, height: 3.2))
         }
+        return path
+    }
+
+    private static func warningPath() -> CGPath {
+        let path = CGMutablePath()
+        // Rounded-corner triangle outline.
+        path.move(to: CGPoint(x: 12, y: 3.5))
+        path.addLine(to: CGPoint(x: 21.5, y: 19.5))
+        path.addLine(to: CGPoint(x: 2.5, y: 19.5))
+        path.closeSubpath()
+        // Exclamation mark: stem then a separate dot, matching the ghost glyph's two-eyes
+        // precedent for "more than one disconnected subpath in a single icon".
+        path.move(to: CGPoint(x: 12, y: 9))
+        path.addLine(to: CGPoint(x: 12, y: 14))
+        path.addEllipse(in: CGRect(x: 11.1, y: 16.2, width: 1.8, height: 1.8))
         return path
     }
 }

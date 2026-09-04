@@ -177,15 +177,25 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// `contentContainer` — exactly one of the two is visible at a time, toggled by `loadURL`/
     /// `showEmptyPage` rather than swapped in and out of the view hierarchy.
     private let emptyPageHostingView: NSHostingView<EmptyPageView>
+    /// The error page's (#38) native content — same "shared container, `isHidden` toggle"
+    /// structure as `emptyPageHostingView`, occupying the same slot.
+    private let errorPageHostingView: NSHostingView<ErrorPageView>
     private let addressFieldHoverTracker = HoverTracker()
     private var willCloseHandler: (() -> Void)?
     private var urlSubmittedHandler: ((URL) -> Void)?
     private var settingsRequestedHandler: (() -> Void)?
     private var navigationFinishedHandler: (() -> Void)?
+    private var navigationFailedHandler: ((String) -> Void)?
     private var mouseInsideChangedHandler: ((Bool) -> Void)?
     private var pageTitleChangedHandler: ((String?) -> Void)?
     private var loadingStateChangedHandler: ((Bool) -> Void)?
     private var loadingProgressChangedHandler: ((Double) -> Void)?
+    /// Set on `windowWillEnterFullScreen`, cleared on `windowDidExitFullScreen` — `window.frame`
+    /// itself is the screen-filling fullscreen frame for the whole time in between, so anything
+    /// reading a persistable window geometry (`frameToPersist`) needs this instead. Without it, a
+    /// persist that lands mid-fullscreen (e.g. ⌘Q) would save a frame that fills the screen, and
+    /// the next launch would start the window that way (#38).
+    private var frameBeforeFullscreen: NSRect?
     /// Whether a real navigation (`loadURL`) has ever happened — the Smart Address Field (#18)
     /// only kicks in once this flips `true`; before that, the Empty Page's (#16) fixed
     /// placeholder + freely-editable field is left untouched (story #12).
@@ -204,12 +214,15 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     private var accentColorObserver: NSObjectProtocol?
 
     fileprivate init(
-        window: NSWindow, webView: WKWebView, controls: ToolbarControls, emptyPageHostingView: NSHostingView<EmptyPageView>, progressBar: LoadingProgressBar
+        window: NSWindow, webView: WKWebView, controls: ToolbarControls,
+        emptyPageHostingView: NSHostingView<EmptyPageView>, errorPageHostingView: NSHostingView<ErrorPageView>,
+        progressBar: LoadingProgressBar
     ) {
         self.window = window
         self.webView = webView
         self.controls = controls
         self.emptyPageHostingView = emptyPageHostingView
+        self.errorPageHostingView = errorPageHostingView
         self.progressBar = progressBar
         self.defaultWindowBackgroundColor = window.backgroundColor
         super.init()
@@ -432,6 +445,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// navigation, so navigating away from the Empty Page always brings the page back on top.
     func loadURL(_ url: URL) {
         emptyPageHostingView.isHidden = true
+        errorPageHostingView.isHidden = true
         webView.isHidden = false
         hasNavigatedAtLeastOnce = true
         currentURL = url
@@ -447,12 +461,51 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         emptyPageHostingView.isHidden = false
     }
 
+    /// Switches the content area to the error page (#38), showing `message` alongside whatever
+    /// URL was loading. "重试" reloads `webView` directly rather than round-tripping through the
+    /// core — it's acting on the same web view this handle already owns, same as the toolbar's
+    /// embedded refresh button.
+    func showErrorPage(message: String) {
+        errorPageHostingView.rootView = ErrorPageView(
+            failedURL: currentURL?.absoluteString ?? "", message: message,
+            onRetry: { [weak self] in self?.webView.reload() }
+        )
+        webView.isHidden = true
+        errorPageHostingView.isHidden = false
+    }
+
     func setNavigationFinishedHandler(_ handler: @escaping () -> Void) {
         navigationFinishedHandler = handler
     }
 
+    func setNavigationFailedHandler(_ handler: @escaping (String) -> Void) {
+        navigationFailedHandler = handler
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        // A retry (which reloads `webView` directly, bypassing `loadURL`) needs the error page
+        // cleared here — `loadURL` only covers navigations that went through it.
+        errorPageHostingView.isHidden = true
+        webView.isHidden = false
         navigationFinishedHandler?()
+    }
+
+    /// Covers the most common real-world failure (DNS/offline) that `didFail` alone would miss —
+    /// it only fires for a navigation that *committed* first.
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        handleNavigationFailure(error)
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        handleNavigationFailure(error)
+    }
+
+    /// Filters out cancellation (`NSURLErrorCancelled`) — the user changing the address mid-load
+    /// or clicking a new link both abort the in-flight navigation this way, and neither should
+    /// flash an error page for what isn't really a failure.
+    private func handleNavigationFailure(_ error: Error) {
+        guard (error as NSError).code != NSURLErrorCancelled else { return }
+        navigationFailedHandler?(error.localizedDescription)
     }
 
     func setToolbarVisible(_ visible: Bool) {
@@ -461,6 +514,24 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
 
     func windowWillClose(_ notification: Notification) {
         willCloseHandler?()
+    }
+
+    /// The frame `captureWindowState` should persist — `window.frame` itself during element
+    /// fullscreen (#38), otherwise the frame from just before entering it.
+    var frameToPersist: NSRect {
+        frameBeforeFullscreen ?? window.frame
+    }
+
+    /// A page's own fullscreen button (enabled via `isElementFullscreenEnabled`, #38) puts the
+    /// *whole window* into native fullscreen on macOS — WebKit drives this through the window's
+    /// standard `toggleFullScreen:` machinery, not a separate view-level fullscreen concept, so
+    /// this ordinary `NSWindowDelegate` hook is where it's observable.
+    func windowWillEnterFullScreen(_ notification: Notification) {
+        frameBeforeFullscreen = window.frame
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+        frameBeforeFullscreen = nil
     }
 
     func setNativeChromeVisible(_ visible: Bool) {
@@ -658,19 +729,35 @@ public final class AppKitPlatformOps: PlatformOps {
 
     public func createWidgetWindow(initialFrame: WindowFrame) -> WidgetWindowHandle {
         let rect = NSRect(x: initialFrame.x, y: initialFrame.y, width: initialFrame.width, height: initialFrame.height)
-        let webView = WKWebView(frame: .zero)
+        // Element Fullscreen (#38) is off by default on macOS — without it, a page's own
+        // fullscreen button silently does nothing. Picture-in-Picture needs no configuration
+        // here at all: `allowsPictureInPictureMediaPlayback` is iOS-only (there is no macOS
+        // equivalent — checked against the WebKit headers), and macOS WKWebView already shows a
+        // native video element's own PiP control by default with nothing in this configuration
+        // disabling it.
+        let webViewConfiguration = WKWebViewConfiguration()
+        webViewConfiguration.preferences.isElementFullscreenEnabled = true
+        let webView = WKWebView(frame: .zero, configuration: webViewConfiguration)
         webView.translatesAutoresizingMaskIntoConstraints = false
 
         let emptyPageHostingView = NSHostingView(rootView: EmptyPageView())
         emptyPageHostingView.translatesAutoresizingMaskIntoConstraints = false
         emptyPageHostingView.isHidden = true
 
-        // `webView` and `emptyPageHostingView` (#16) share this container, each pinned to fill it
-        // completely — only one is ever visible at a time (see `loadURL`/`showEmptyPage`).
+        // The error page (#38) starts with placeholder content — `showErrorPage(message:)`
+        // replaces `rootView` with the real failure before ever making this visible.
+        let errorPageHostingView = NSHostingView(rootView: ErrorPageView(failedURL: "", message: "", onRetry: {}))
+        errorPageHostingView.translatesAutoresizingMaskIntoConstraints = false
+        errorPageHostingView.isHidden = true
+
+        // `webView`, `emptyPageHostingView` (#16), and `errorPageHostingView` (#38) share this
+        // container, each pinned to fill it completely — exactly one is ever visible at a time
+        // (see `loadURL`/`showEmptyPage`/`showErrorPage`).
         let contentContainer = NSView()
         contentContainer.translatesAutoresizingMaskIntoConstraints = false
         contentContainer.addSubview(webView)
         contentContainer.addSubview(emptyPageHostingView)
+        contentContainer.addSubview(errorPageHostingView)
         NSLayoutConstraint.activate([
             webView.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
@@ -680,6 +767,10 @@ public final class AppKitPlatformOps: PlatformOps {
             emptyPageHostingView.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
             emptyPageHostingView.topAnchor.constraint(equalTo: contentContainer.topAnchor),
             emptyPageHostingView.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor),
+            errorPageHostingView.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
+            errorPageHostingView.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
+            errorPageHostingView.topAnchor.constraint(equalTo: contentContainer.topAnchor),
+            errorPageHostingView.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor),
         ])
 
         let controls = makeToolbarControls()
@@ -722,7 +813,8 @@ public final class AppKitPlatformOps: PlatformOps {
 
         let handle = AppKitWidgetWindowHandle(
             window: window, webView: webView, controls: controls,
-            emptyPageHostingView: emptyPageHostingView, progressBar: progressBar
+            emptyPageHostingView: emptyPageHostingView, errorPageHostingView: errorPageHostingView,
+            progressBar: progressBar
         )
 
         let toolbar = NSToolbar(identifier: "MochiNormalModeToolbar")
@@ -875,7 +967,7 @@ public final class AppKitPlatformOps: PlatformOps {
         guard let handle = handle(for: window) else {
             return WindowState(frame: WindowFrame(x: 0, y: 0, width: 0, height: 0), zoom: 1.0)
         }
-        return WindowState(frame: WindowFrame(cgRect: handle.window.frame), zoom: handle.webView.pageZoom)
+        return WindowState(frame: WindowFrame(cgRect: handle.frameToPersist), zoom: handle.webView.pageZoom)
     }
 
     public func onWindowWillClose(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {
@@ -920,6 +1012,16 @@ public final class AppKitPlatformOps: PlatformOps {
     public func onNavigationFinished(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {
         guard let handle = handle(for: window) else { return }
         handle.setNavigationFinishedHandler(handler)
+    }
+
+    public func onNavigationFailed(_ window: WidgetWindowHandle, perform handler: @escaping (String) -> Void) {
+        guard let handle = handle(for: window) else { return }
+        handle.setNavigationFailedHandler(handler)
+    }
+
+    public func showErrorPageContent(message: String, in window: WidgetWindowHandle) {
+        guard let handle = handle(for: window) else { return }
+        handle.showErrorPage(message: message)
     }
 
     public func onPageTitleChanged(_ window: WidgetWindowHandle, perform handler: @escaping (String?) -> Void) {

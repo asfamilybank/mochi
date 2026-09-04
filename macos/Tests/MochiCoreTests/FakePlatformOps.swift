@@ -29,10 +29,12 @@ final class FakePlatformOps: PlatformOps {
     private(set) var accessibilityPermissionRequestCount = 0
     private(set) var forwardedKeystrokes: [Hotkey] = []
     private(set) var windowTitleChanges: [(title: String, windowID: Int)] = []
+    private(set) var errorPagesShown: [(message: String, windowID: Int)] = []
     private var willCloseHandlers: [Int: () -> Void] = [:]
     private var urlSubmittedHandlers: [Int: (URL) -> Void] = [:]
     private var settingsRequestedHandlers: [Int: () -> Void] = [:]
     private var navigationFinishedHandlers: [Int: () -> Void] = [:]
+    private var navigationFailedHandlers: [Int: (String) -> Void] = [:]
     private var mouseInsideChangedHandlers: [Int: (Bool) -> Void] = [:]
     private var pageTitleChangedHandlers: [Int: (String?) -> Void] = [:]
     private var loadingStateChangedHandlers: [Int: (Bool) -> Void] = [:]
@@ -128,6 +130,20 @@ final class FakePlatformOps: PlatformOps {
 
     func simulateNavigationFinished(windowID: Int = 1) {
         navigationFinishedHandlers[windowID]?()
+    }
+
+    func onNavigationFailed(_ window: WidgetWindowHandle, perform handler: @escaping (String) -> Void) {
+        let handle = window as! FakeWidgetWindowHandle
+        navigationFailedHandlers[handle.id] = handler
+    }
+
+    func simulateNavigationFailed(_ message: String, windowID: Int = 1) {
+        navigationFailedHandlers[windowID]?(message)
+    }
+
+    func showErrorPageContent(message: String, in window: WidgetWindowHandle) {
+        let handle = window as! FakeWidgetWindowHandle
+        errorPagesShown.append((message, handle.id))
     }
 
     func setNativeChromeVisible(_ visible: Bool, in window: WidgetWindowHandle) {

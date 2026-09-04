@@ -444,6 +444,33 @@ import Testing
         #expect(fake.contentOpacityChanges.isEmpty)
     }
 
+    // #38: navigation failures route through the core so the error page shows through
+    // `PlatformOps` rather than the platform layer deciding on its own to display it.
+
+    @Test func navigationFailureShowsAnErrorPageWithTheGivenMessageThroughPlatformOps() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        orchestrator.start(config: config)
+
+        fake.simulateNavigationFailed("无法连接到服务器")
+
+        #expect(fake.errorPagesShown.map(\.message) == ["无法连接到服务器"])
+        #expect(fake.errorPagesShown.map(\.windowID) == [1])
+    }
+
+    @Test func aSuccessfulNavigationAfterAFailureDoesNotShowTheErrorPageAgain() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        orchestrator.start(config: config)
+        fake.simulateNavigationFailed("无法连接到服务器")
+
+        fake.simulateNavigationFinished()
+
+        #expect(fake.errorPagesShown.count == 1)
+    }
+
     @Test func skipsAUserHotkeyMappingThatCollidesWithADefaultHotkeyInsteadOfDoubleRegisteringIt() {
         // Regression test: Carbon allows registering the same combo twice in-process, which would
         // make both the mapped page-keystroke forward and the default action fire on one press.
