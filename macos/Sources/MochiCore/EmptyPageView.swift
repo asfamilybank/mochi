@@ -53,8 +53,9 @@ struct EmptyPageView: View {
                 .tracking(0.4)
                 .foregroundStyle(color(palette.textSecondary))
             HStack(spacing: 16) {
+                // Only hotkeys that actually do something here: the Empty Page is Normal Mode
+                // content, and Hidden (⌥⌘H) is a deliberate no-op outside Ghost Mode (ADR-0012).
                 hotkeyBadge(HotkeyDisplay.describe(DefaultHotkeys.toggleGhostMode), label: "切换 Ghost Mode")
-                hotkeyBadge(HotkeyDisplay.describe(DefaultHotkeys.hideWidget), label: "隐藏 Widget")
             }
         }
         .opacity(0.55)

@@ -11,8 +11,8 @@ import Testing
     }
 
     @Test func everyIconStaysWithinTheTwentyFourByTwentyFourGrid() {
-        // A little slack for control points that briefly overshoot the grid (the pin's
-        // 45°-rotated corners, the ghost's scalloped hem control points).
+        // A little slack for control points that briefly overshoot the grid (the ghost's
+        // scalloped hem control points).
         let bounds = CGRect(x: -1, y: -1, width: 26, height: 26)
         for icon in DesignIcon.allCases {
             #expect(bounds.contains(icon.path.boundingBoxOfPath), "\(icon) escaped the 24x24 grid: \(icon.path.boundingBoxOfPath)")

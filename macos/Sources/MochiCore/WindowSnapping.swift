@@ -10,10 +10,10 @@ public enum WindowSnapping {
     /// (ADR-0012): it is a number nobody can judge by feel, so exposing it only invites fiddling.
     /// Tuning it means editing this line and rebuilding — the privilege of an app you wrote for
     /// yourself.
-    public static let defaultThreshold: Double = 16
+    public static let snapThreshold: Double = 16
 
     public static func snappedFrame(
-        _ frame: WindowFrame, toEdgesOf screens: [CGRect], threshold: Double = defaultThreshold
+        _ frame: WindowFrame, toEdgesOf screens: [CGRect], threshold: Double = snapThreshold
     ) -> WindowFrame {
         guard let screen = screens.first(where: { $0.intersects(frame.cgRect) }) ?? screens.first else {
             return frame

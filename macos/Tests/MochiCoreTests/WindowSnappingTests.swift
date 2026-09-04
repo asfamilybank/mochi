@@ -94,7 +94,7 @@ import Testing
         #expect(snapped == frame)
     }
 
-    @Test func defaultThresholdIsAPositiveValue() {
-        #expect(WindowSnapping.defaultThreshold > 0)
+    @Test func theSnapThresholdIsAPositiveValue() {
+        #expect(WindowSnapping.snapThreshold > 0)
     }
 }

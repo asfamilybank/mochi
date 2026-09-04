@@ -14,7 +14,6 @@ public enum DesignIcon: CaseIterable, Sendable {
     case refresh
     case lock
     case search
-    case pin
     case ghost
     case moreHorizontal
 
@@ -27,7 +26,6 @@ public enum DesignIcon: CaseIterable, Sendable {
         case .refresh: return Self.refreshPath()
         case .lock: return Self.lockPath()
         case .search: return Self.searchPath()
-        case .pin: return Self.pinPath()
         case .ghost: return Self.ghostPath()
         case .moreHorizontal: return Self.moreHorizontalPath()
         }
@@ -70,19 +68,6 @@ public enum DesignIcon: CaseIterable, Sendable {
         path.addEllipse(in: CGRect(x: 11 - 6.5, y: 11 - 6.5, width: 13, height: 13))
         path.move(to: CGPoint(x: 15.8, y: 15.8))
         path.addLine(to: CGPoint(x: 20, y: 20))
-        return path
-    }
-
-    private static func pinPath() -> CGPath {
-        // A capsule "pin head" + straight point, rotated 45° around the icon's center —
-        // matches the design canvas's `rotate(45 12 12)` transform.
-        let transform = CGAffineTransform(translationX: 12, y: 12)
-            .rotated(by: .pi / 4)
-            .translatedBy(x: -12, y: -12)
-        let path = CGMutablePath()
-        path.addRoundedRect(in: CGRect(x: 9, y: 3, width: 6, height: 9), cornerWidth: 3, cornerHeight: 3, transform: transform)
-        path.move(to: CGPoint(x: 12, y: 12), transform: transform)
-        path.addLine(to: CGPoint(x: 12, y: 21), transform: transform)
         return path
     }
 

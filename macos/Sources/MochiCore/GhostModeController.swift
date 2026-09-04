@@ -84,8 +84,8 @@ public final class GhostModeController {
         applyEffectiveOpacity()
     }
 
-    /// `Hidden 或避让触发 → 0`; `Ghost → 目标透明度`; `Normal → 1.0`. The single source of the
-    /// window's visibility, so no two features can disagree about it.
+    /// Hidden or avoidance → fully invisible; Ghost → its configured target; Normal → opaque.
+    /// The single source of the window's visibility, so no two features can disagree about it.
     private var effectiveOpacity: Double {
         guard mode == .ghost else { return 1.0 }
         if isHidden { return 0 }

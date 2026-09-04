@@ -19,21 +19,34 @@ import Testing
     /// `setContentOpacity` (ADR-0012). Driven as a table because it *is* a truth table: nothing
     /// else about the controller decides how visible the window is.
     @Test(arguments: [
-        (hidden: false, avoidance: false, mouseInside: false, expected: 0.2),
-        (hidden: false, avoidance: false, mouseInside: true, expected: 0.2),
-        (hidden: false, avoidance: true, mouseInside: false, expected: 0.2),
-        (hidden: false, avoidance: true, mouseInside: true, expected: 0.0),
-        (hidden: true, avoidance: false, mouseInside: false, expected: 0.0),
-        (hidden: true, avoidance: false, mouseInside: true, expected: 0.0),
-        (hidden: true, avoidance: true, mouseInside: false, expected: 0.0),
-        (hidden: true, avoidance: true, mouseInside: true, expected: 0.0),
+        (ghost: true, hidden: false, avoidance: false, mouseInside: false, expected: 0.2),
+        (ghost: true, hidden: false, avoidance: false, mouseInside: true, expected: 0.2),
+        (ghost: true, hidden: false, avoidance: true, mouseInside: false, expected: 0.2),
+        (ghost: true, hidden: false, avoidance: true, mouseInside: true, expected: 0.0),
+        (ghost: true, hidden: true, avoidance: false, mouseInside: false, expected: 0.0),
+        (ghost: true, hidden: true, avoidance: false, mouseInside: true, expected: 0.0),
+        (ghost: true, hidden: true, avoidance: true, mouseInside: false, expected: 0.0),
+        (ghost: true, hidden: true, avoidance: true, mouseInside: true, expected: 0.0),
+        // Normal Mode has no visibility concept of its own, so none of the other three
+        // dimensions may produce a single call — `nil` here means "the platform never heard
+        // about any of this", not "it was told an unchanged value".
+        (ghost: false, hidden: false, avoidance: false, mouseInside: false, expected: nil),
+        (ghost: false, hidden: false, avoidance: false, mouseInside: true, expected: nil),
+        (ghost: false, hidden: false, avoidance: true, mouseInside: false, expected: nil),
+        (ghost: false, hidden: false, avoidance: true, mouseInside: true, expected: nil),
+        (ghost: false, hidden: true, avoidance: false, mouseInside: false, expected: nil),
+        (ghost: false, hidden: true, avoidance: false, mouseInside: true, expected: nil),
+        (ghost: false, hidden: true, avoidance: true, mouseInside: false, expected: nil),
+        (ghost: false, hidden: true, avoidance: true, mouseInside: true, expected: nil),
     ])
-    func effectiveOpacityInGhostMode(
-        _ testCase: (hidden: Bool, avoidance: Bool, mouseInside: Bool, expected: Double)
+    func effectiveOpacity(
+        _ testCase: (ghost: Bool, hidden: Bool, avoidance: Bool, mouseInside: Bool, expected: Double?)
     ) {
         let (fake, _, controller) = makeSUT(ghostOpacity: 0.2, isMouseAvoidanceEnabled: testCase.avoidance)
-        controller.toggle()
 
+        if testCase.ghost {
+            controller.toggle()
+        }
         if testCase.hidden {
             controller.toggleHidden()
         }
@@ -191,7 +204,7 @@ import Testing
         #expect(fake.mousePassthroughChanges.map(\.enabled) == [true, false])
     }
 
-    @Test func enteringGhostModePinsTheWindowAndLeavingUnpinsIt() {
+    @Test func enteringGhostModeFloatsTheWindowAboveOthersAndLeavingStopsIt() {
         // Pin is internal to Ghost Mode (ADR-0012) — "float above other windows" only means
         // anything while invisibly overlaying them, so the state machine is its only driver.
         let (fake, _, controller) = makeSUT()
@@ -203,7 +216,7 @@ import Testing
         #expect(fake.pinnedChanges.map(\.windowID) == [1, 1])
     }
 
-    @Test func exitGhostModeUnpinsTheWindowLikeToggling() {
+    @Test func exitGhostModeDropsBackToTheNormalWindowLevelLikeToggling() {
         let (fake, _, controller) = makeSUT()
         controller.toggle()
 
@@ -212,7 +225,7 @@ import Testing
         #expect(fake.pinnedChanges.map(\.pinned) == [true, false])
     }
 
-    @Test func stayingInNormalModeNeverPinsTheWindow() {
+    @Test func stayingInNormalModeNeverFloatsTheWindow() {
         let (fake, _, controller) = makeSUT()
 
         controller.exitGhostMode()
