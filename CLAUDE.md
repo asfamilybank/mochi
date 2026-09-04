@@ -62,13 +62,8 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 - 跨导航持有派生状态（如页面标题/host）的 controller，每次真实导航要整体重置旧状态，不能只更新其中一个字段——否则会在新页面还没上报标题前，短暂展示上一个页面的残留信息。
 - 新增会写 `WidgetConfig` 的功能（如设置面板）时，构造函数接收 `currentConfig: () -> WidgetConfig` + `persist: (@escaping (WidgetConfig) -> WidgetConfig) -> Void` 这对 transform 闭包，直接传入 `AppDelegate` 已有的 `persist(_:)` 函数本体——不要让新类缓存自己的配置快照，否则会在多个写入源之间产生"用旧快照覆盖新状态"的竞态。
 - `GlobalHotkeyRegistry` 没有 unregister 能力：设置面板对热键映射表/内置脚本开关的增删改只能做到"立即持久化到配置文件"，运行中的 `Orchestrator`/`HotkeyForwarder`/脚本注入不会热更新，需要重启 Mochi 才生效——别假设这类编辑是实时生效的。
-- 实现某个 UI 功能前先查 `design/<name>/<TicketName>.dc.html`（如 #16 对应 `design/mochi/EmptyPage.dc.html`）是否有同名设计稿——`renderVals()` 里能量出精确的颜色/尺寸/旋转角度/透明度，原生视图应该照这些数值实现，而不是凭感觉估。
 - 同一窗口内容区要在 `WKWebView` 和原生 SwiftUI 内容（`NSHostingView`）之间切换显示时，把两者都放进一个共享的 `NSView` 容器、各自用 Auto Layout 四边 pin 满容器、用 `isHidden` 切换可见性——容器本身的 sizing 行为和裸 `webView` 一致，外层 `NSStackView` 布局不用跟着改。
 - 实现一个 ticket 前先搜一下 spec 里提到的新字段名/新类型（如 `grep -rn <name>`）——早前 session 实现相邻 ticket 时可能已经顺手把这个 ticket 的部分数据层/设置面板 UI 打好了（例如 #13 的 commit 里已经带了 #16 的 `startupTarget` 字段和设置面板三态选择器），不能假设从零开始。
-
-### 视觉设计（design/）
-
-`/design` 画布的 Design Components 工作文件在 `design/<name>/`（如 `design/mochi/`），改视觉稿改 `.dc.html` 源文件后重新 seed，不要手改发布出去的那份 `.html`。蒸馏后的规格记在 `docs/design-language.md`。
 
 ### 关闭 issue
 

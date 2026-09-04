@@ -4,8 +4,6 @@
 
 前提：最低支持 macOS 26（Tahoe），全面使用真 Liquid Glass 材质 API，不做旧系统的 vibrancy 降级方案，见 [ADR-0008](adr/0008-macos-26-liquid-glass-baseline.md)。
 
-视觉稿画布（可实时调浅色/深色、强调色、Ghost Mode 透明度）：[Mochi Liquid Glass](https://claude.ai/code/artifact/4b6c13a6-4cc3-4fb0-bebf-af8391d28a7f)。画布的 Design Components 源文件在 [design/mochi/](../design/mochi/)，改视觉稿直接改那几个 `.dc.html`，不要手改发布出去的那份。
-
 ## 材质与色彩
 
 - **玻璃材质**：Liquid Glass——`backdrop-filter: blur() saturate(180%)` 的模糊 + 饱和度提升，内嵌 1px 高光边（浅色顶部白色高光，深色顶部低透明度白色高光），外加轻微投影。用在空页面的抽象构图 panel 上。
@@ -86,5 +84,4 @@ Style reference: SF Symbols glyph style — geometric, even stroke weight, optic
 
 ## 有意不在这份文档里锁死的东西
 
-- **具体像素级数值**（圆角半径、间距、字号）——这些已经在 [design/mochi/](../design/mochi/) 的视觉稿里画成了实际数值，实现时直接量取稿子上的值，不在这里重复抄一遍数字，避免两处不同步。
 - **默认热键的具体按键组合**——[issue #1](https://github.com/asfamilybank/mochi/issues/1) 的 Further Notes 里已经写明这是故意不锁死的实现细节。
