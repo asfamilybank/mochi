@@ -9,7 +9,7 @@
 ## 材质与色彩
 
 - **玻璃材质**：Liquid Glass——`backdrop-filter: blur() saturate(180%)` 的模糊 + 饱和度提升，内嵌 1px 高光边（浅色顶部白色高光，深色顶部低透明度白色高光），外加轻微投影。用在空页面的抽象构图 panel 上。
-- **强调色**：跟随系统 accentColor（`NSColor.controlAccentColor` / SwiftUI `Color.accentColor`），不写死一个品牌色——用户在系统设置里选的强调色应该能同步影响 Pin/Ghost Mode 切换按钮的激活态染色。视觉稿里用一个可调色板模拟这几个 macOS 系统强调色选项，默认 **Orange `#FF9500`**：
+- **强调色**：跟随系统 accentColor（`NSColor.controlAccentColor` / SwiftUI `Color.accentColor`），不写死一个品牌色——用户在系统设置里选的强调色应该能同步影响加载进度条的填充色与工具栏控件的激活态染色。视觉稿里用一个可调色板模拟这几个 macOS 系统强调色选项，默认 **Orange `#FF9500`**：
   - Orange `#FF9500`（默认）
   - Blue `#007AFF`
   - Purple `#AF52DE`
@@ -31,17 +31,16 @@
 工具栏按钮清单（从左到右，[ADR-0011](adr/0011-normal-mode-toolbar-safari-alignment.md)）：
 1. 后退/前进——合并成一个原生 `NSSegmentedControl`（不是两个独立按钮），图标沿用现有手绘 SVG 图标集
 2. 地址栏——**智能双态**：标准 `NSSearchField`（不额外包自绘玻璃层，视觉上比周围行更"实"是系统原生效果）。页面加载完成且未交互时显示页面标题；鼠标悬停或点击时显示 URL（点击后可编辑，失焦或移出且非加载中则退回标题）；加载中无论是否有交互都恒定显示 URL。标题取不到时兜底显示域名，再取不到就留空。手动导航会覆盖持久化的"上次访问 URL"。空页面（未导航）状态不受这套切换影响，固定显示占位提示文字，直到用户真正导航一次。宽度改为 Safari 式的弹性伸缩（有 min/max，不再无脑撑满剩余空间）；尾部内嵌刷新图标（替代原来独立的刷新按钮，不做"加载中变停止按钮"这个中止导航能力），Empty Page 态下隐藏
-3. Pin 置顶切换（激活态：强调色染色玻璃背景 + 强调色描边 + 强调色图标，仿 macOS 选中态的染色玻璃效果）
-4. Ghost Mode 切换（尚未实现，见 ADR-0011 的范围排除说明）
-5. 设置（"更多"入口，⋯）
+3. Ghost Mode 切换（尚未实现，见 ADR-0011 的范围排除说明）
+4. 设置（"更多"入口，⋯）
 
-Pin 和设置各自独立、不共享背景胶囊。窗口变窄放不下时，接入原生 `NSToolbarItem.visibilityPriority` 自动收纳进"更多工具栏项"溢出菜单，优先级从高到低：地址栏 = 后退/前进分段控件 > Pin > 设置；窗口自身也有一个比 Safari 更小的最小宽度（440pt，按"只剩分段控件 + 地址栏最小宽度"反推）。设置先收、Pin 后收：为此设置项做成标准 `NSToolbarItem`（`image` + `action`），Pin 因为要保留强调色染色玻璃激活态仍是自绘视图——AppKit 会把相邻的一串自绘视图项一步全部收走，两个都自绘时逐个收纳做不到。实测"只剩 Pin"这一段只有约 4pt 宽（484–481pt），这是原生机制的上限，原因见 [ADR-0011](adr/0011-normal-mode-toolbar-safari-alignment.md) 的实测记录。地址栏宽度实测区间 200–320pt。
+置顶按钮已随 [ADR-0012](adr/0012-ghost-mode-as-pure-invisibility.md) 移除——置顶内化成了 Ghost Mode 的固有属性，不再是工具栏上的一个开关。窗口变窄放不下时，接入原生 `NSToolbarItem.visibilityPriority` 自动收纳进"更多工具栏项"溢出菜单：地址栏与后退/前进分段控件恒不收纳，设置是唯一会被收进溢出菜单的项；窗口自身也有一个比 Safari 更小的最小宽度（440pt，按"只剩分段控件 + 地址栏最小宽度"反推，不因为少了 Pin 而重新收紧）。设置项做成标准 `NSToolbarItem`（`image` + `action`）而非自绘视图——这原本是为了让它先于 Pin 收纳（AppKit 会把相邻的一串自绘视图项一步全部收走），Pin 移除后保留现状，代价是这一颗图标按 AppKit 自己的控件色与度量渲染而不是 `DesignTokens`。地址栏宽度实测区间 200–320pt。
 
 窗口标题（`NSWindow.title`，供 Mission Control/Cmd-Tab 使用）动态跟随页面标题，取不到时兜底域名，再取不到兜底 `"Mochi"`（这一级不能为空）——这是 `NSWindow.title` 这个供 Mission Control/Cmd-Tab 读取的元数据本身的兜底值，跟上面"标题文字不可视化渲染"是两回事，互不影响。
 
 见 [issue #4](https://github.com/asfamilybank/mochi/issues/4)。
 
-**Ghost Mode 纯净态**：完全无边框、无原生装饰、无工具栏，只剩网页内容，按目标透明度渐隐；鼠标移入窗口区域整个窗口直接消失。见 [issue #8](https://github.com/asfamilybank/mochi/issues/8)。
+**Ghost Mode 纯净态**：完全无边框、无原生装饰、无工具栏，只剩网页内容，按目标透明度渐隐；始终置顶（浮在其他应用窗口之上），鼠标移入窗口区域时让开、移出即恢复。见 [issue #8](https://github.com/asfamilybank/mochi/issues/8)、[ADR-0012](adr/0012-ghost-mode-as-pure-invisibility.md)。
 
 **空页面**（对标 Chrome 新标签页，见 [issue #16](https://github.com/asfamilybank/mochi/issues/16)）：完整的 Normal Mode 窗口（标题栏 + 全套工具栏），地址栏在空态下显示占位提示文字 + 放大镜图标（而不是锁形图标）。内容区是一个不依赖 App 图标的抽象 Liquid Glass 构图（两片半透明圆角面板叠加、轻微旋转错位），下方是一个视觉弱化（低透明度、小字号）的默认热键速览，不含独立的 URL 输入框——导航统一走工具栏自带的地址栏。
 

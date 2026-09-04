@@ -37,14 +37,6 @@ public enum DefaultHotkeys {
     /// "only the Ghost Mode hotkey or the tray icon" rule). `0x04` is `kVK_ANSI_H`.
     public static let quickHideWidget = Hotkey(keyCode: 0x04, modifierFlags: cmdOption)
 
-    /// ⌥⌘S — cycles the window between its default and compact preset sizes (#12), keeping the
-    /// frame's origin fixed (see `WindowPlacement.togglingSize`). `0x01` is `kVK_ANSI_S`.
-    public static let resizeWindow = Hotkey(keyCode: 0x01, modifierFlags: cmdOption)
-
-    /// ⌥⌘P — toggles Pin (always-on-top), independent of Normal/Ghost Mode (#12).
-    /// `0x23` is `kVK_ANSI_P`.
-    public static let togglePin = Hotkey(keyCode: 0x23, modifierFlags: cmdOption)
-
     /// Every default combo, for callers (the settings panel's mapping editor, #14) that need to
     /// check a candidate trigger against Mochi's own reserved hotkeys *before* attempting to
     /// register it — `GlobalHotkeyRegistry`'s underlying `RegisterEventHotKey` does not fail on an
@@ -52,6 +44,6 @@ public enum DefaultHotkeys {
     /// handler for the same combo instead — see `HotkeyForwarder`'s doc comment), so registration
     /// success/failure alone cannot be used to detect a collision with one of these.
     public static let all: [Hotkey] = [
-        toggleGhostMode, reloadPage, zoomIn, zoomOut, quickHideWidget, resizeWindow, togglePin,
+        toggleGhostMode, reloadPage, zoomIn, zoomOut, quickHideWidget,
     ]
 }

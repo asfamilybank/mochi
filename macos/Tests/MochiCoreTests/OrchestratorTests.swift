@@ -143,31 +143,6 @@ import Testing
         #expect(persistedURL == navigatedURL)
     }
 
-    @Test func appliesPersistedPinnedStateOnStartThroughPlatformOps() {
-        let fake = FakePlatformOps()
-        let orchestrator = Orchestrator(platformOps: fake)
-        let config = WidgetConfig(url: URL(string: "https://example.com")!, isPinned: true)
-
-        orchestrator.start(config: config)
-
-        #expect(fake.pinnedChanges.map(\.pinned) == [true])
-        #expect(fake.pinnedChanges.map(\.windowID) == [1])
-    }
-
-    @Test func togglingPinFromTheWindowPersistsTheNewState() {
-        let fake = FakePlatformOps()
-        var persistedPinned: Bool?
-        let orchestrator = Orchestrator(platformOps: fake, persistPinned: { pinned in
-            persistedPinned = pinned
-        })
-        let config = WidgetConfig(url: URL(string: "https://example.com")!)
-        orchestrator.start(config: config)
-
-        fake.simulatePinnedChanged(true)
-
-        #expect(persistedPinned == true)
-    }
-
     @Test func injectsBuiltInScriptsThroughPlatformOpsWhenNavigationFinishes() {
         let fake = FakePlatformOps()
         let orchestrator = Orchestrator(platformOps: fake)
@@ -242,8 +217,6 @@ import Testing
                 DefaultHotkeys.zoomIn,
                 DefaultHotkeys.zoomOut,
                 DefaultHotkeys.quickHideWidget,
-                DefaultHotkeys.resizeWindow,
-                DefaultHotkeys.togglePin,
             ])
     }
 
@@ -455,56 +428,6 @@ import Testing
         fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
 
         #expect(fake.windowHiddenChanges.map(\.hidden) == [true, false])
-    }
-
-    @Test func pressingResizeTogglesTheWindowBetweenCompactAndDefaultSizeThroughPlatformOps() {
-        let fake = FakePlatformOps()
-        fake.stubbedScreens = [CGRect(x: 0, y: 0, width: 1440, height: 900)]
-        fake.stubbedCapturedWindowState = WindowState(
-            frame: WindowFrame(x: 100, y: 100, width: WindowPlacement.defaultWidth, height: WindowPlacement.defaultHeight),
-            zoom: 1.0
-        )
-        let orchestrator = Orchestrator(platformOps: fake)
-        let config = WidgetConfig(url: URL(string: "https://example.com")!)
-        orchestrator.start(config: config)
-
-        fake.simulateHotkeyPressed(DefaultHotkeys.resizeWindow)
-
-        #expect(fake.windowFrameChanges.map(\.frame.width) == [WindowPlacement.compactWidth])
-        #expect(fake.windowFrameChanges.map(\.frame.height) == [WindowPlacement.compactHeight])
-    }
-
-    @Test func pressingResizeClampsAgainstTheScreenTheWindowIsActuallyOnRatherThanJustThePrimary() {
-        let fake = FakePlatformOps()
-        let primary = CGRect(x: 0, y: 0, width: 1440, height: 900)
-        let secondary = CGRect(x: 1440, y: 0, width: 800, height: 600)
-        fake.stubbedScreens = [primary, secondary]
-        fake.stubbedCapturedWindowState = WindowState(
-            frame: WindowFrame(x: 1440 + 700, y: 0, width: WindowPlacement.compactWidth, height: WindowPlacement.compactHeight),
-            zoom: 1.0
-        )
-        let orchestrator = Orchestrator(platformOps: fake)
-        let config = WidgetConfig(url: URL(string: "https://example.com")!)
-        orchestrator.start(config: config)
-
-        fake.simulateHotkeyPressed(DefaultHotkeys.resizeWindow)
-
-        let resized = fake.windowFrameChanges.first!.frame
-        #expect(resized.width == min(WindowPlacement.defaultWidth, Double(secondary.width)))
-        #expect(resized.x + resized.width <= Double(secondary.maxX))
-    }
-
-    @Test func pressingTogglePinFlipsPinnedStateAndPersistsItThroughPlatformOps() {
-        let fake = FakePlatformOps()
-        var persistedPinned: Bool?
-        let orchestrator = Orchestrator(platformOps: fake, persistPinned: { persistedPinned = $0 })
-        let config = WidgetConfig(url: URL(string: "https://example.com")!, isPinned: false)
-        orchestrator.start(config: config)
-
-        fake.simulateHotkeyPressed(DefaultHotkeys.togglePin)
-
-        #expect(fake.pinnedChanges.map(\.pinned).last == true)
-        #expect(persistedPinned == true)
     }
 
     @Test func skipsAUserHotkeyMappingThatCollidesWithADefaultHotkeyInsteadOfDoubleRegisteringIt() {

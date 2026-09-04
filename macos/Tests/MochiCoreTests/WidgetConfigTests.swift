@@ -76,7 +76,7 @@ import Testing
     }
 
     @Test func serializingThenReparsingRoundTripsAnAbsentURL() throws {
-        let original = WidgetConfig(url: nil, isPinned: true)
+        let original = WidgetConfig(url: nil, ghostOpacity: 0.3)
 
         let reparsed = try WidgetConfig.parse(original.serialized())
 
@@ -105,12 +105,10 @@ import Testing
         #expect(updated.windowState == config.windowState)
     }
 
-    @Test func isPinnedDefaultsToFalseWhenAbsent() throws {
-        let config = try WidgetConfig.parse("url = \"https://example.com\"")
-        #expect(config.isPinned == false)
-    }
-
-    @Test func parsesIsPinnedWhenPresent() throws {
+    @Test func ignoresALeftOverPinnedKeyInsteadOfThrowing() throws {
+        // Pin was internalized into Ghost Mode (ADR-0012) and its config field deleted. No
+        // migration code was written: TOML parsing is lenient about unknown keys, so an existing
+        // config file keeps loading and the stale key is simply dropped on the next write.
         let toml = """
         url = "https://example.com"
         pinned = true
@@ -118,24 +116,8 @@ import Testing
 
         let config = try WidgetConfig.parse(toml)
 
-        #expect(config.isPinned == true)
-    }
-
-    @Test func serializingThenReparsingRoundTripsIsPinned() throws {
-        let original = WidgetConfig(url: URL(string: "https://example.com")!, isPinned: true)
-
-        let reparsed = try WidgetConfig.parse(original.serialized())
-
-        #expect(reparsed == original)
-    }
-
-    @Test func updatingPinnedReturnsCopyWithNewPinnedStateOnly() {
-        let config = WidgetConfig(url: URL(string: "https://example.com")!)
-
-        let updated = config.updatingPinned(true)
-
-        #expect(updated.isPinned == true)
-        #expect(updated.url == config.url)
+        #expect(config.url == URL(string: "https://example.com")!)
+        #expect(!config.serialized().contains("pinned"))
     }
 
     @Test func customScriptIsNilWhenAbsent() throws {

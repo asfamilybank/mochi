@@ -79,6 +79,35 @@ import Testing
         #expect(fake.windowHiddenChanges.map(\.hidden) == [true, false])
     }
 
+    @Test func enteringGhostModePinsTheWindowAndLeavingUnpinsIt() {
+        // Pin is internal to Ghost Mode (ADR-0012) — "float above other windows" only means
+        // anything while invisibly overlaying them, so the state machine is its only driver.
+        let (fake, _, controller) = makeSUT()
+
+        controller.toggle()
+        controller.toggle()
+
+        #expect(fake.pinnedChanges.map(\.pinned) == [true, false])
+        #expect(fake.pinnedChanges.map(\.windowID) == [1, 1])
+    }
+
+    @Test func exitGhostModeUnpinsTheWindowLikeToggling() {
+        let (fake, _, controller) = makeSUT()
+        controller.toggle()
+
+        controller.exitGhostMode()
+
+        #expect(fake.pinnedChanges.map(\.pinned) == [true, false])
+    }
+
+    @Test func stayingInNormalModeNeverPinsTheWindow() {
+        let (fake, _, controller) = makeSUT()
+
+        controller.exitGhostMode()
+
+        #expect(fake.pinnedChanges.isEmpty)
+    }
+
     @Test func startsFreshInNormalModeEveryTimeRegardlessOfPriorSessions() {
         // There is no persisted-mode input to this initializer at all (ADR-0006: restart always
         // returns to Normal Mode) — a fresh instance is definitionally in `.normal`.

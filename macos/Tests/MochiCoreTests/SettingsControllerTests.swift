@@ -195,7 +195,7 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let succeeded = controller.updateHotkeyMapping(at: 0, trigger: DefaultHotkeys.togglePin, pageKeystroke: existing.pageKeystroke)
+        let succeeded = controller.updateHotkeyMapping(at: 0, trigger: DefaultHotkeys.zoomIn, pageKeystroke: existing.pageKeystroke)
 
         #expect(!succeeded)
         #expect(store.config.hotkeyMappings == [existing])

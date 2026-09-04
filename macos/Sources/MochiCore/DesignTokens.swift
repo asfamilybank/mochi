@@ -229,7 +229,7 @@ public enum DesignTokens {
 
     /// One control in a toolbar's fixed left-to-right button order.
     public enum ToolbarButton: Equatable, Sendable {
-        case back, forward, refresh, addressField, pin, ghostModeToggle, settings
+        case back, forward, refresh, addressField, ghostModeToggle, settings
     }
 
     /// Normal Mode's full toolbar in visual left-to-right order (ADR-0011). Two entries no longer
@@ -238,7 +238,7 @@ public enum DesignTokens {
     /// edge — which is why it now sits *after* `.addressField` rather than before it. This order
     /// is fixed by the design canvas, not a free choice.
     public static let normalModeToolbarOrder: [ToolbarButton] = [
-        .back, .forward, .addressField, .refresh, .pin, .ghostModeToggle, .settings,
+        .back, .forward, .addressField, .refresh, .ghostModeToggle, .settings,
     ]
 
     /// Which glyph the address bar's leading icon shows.

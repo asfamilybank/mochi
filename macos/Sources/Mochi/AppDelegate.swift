@@ -14,8 +14,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // crashing the app on launch, and `Orchestrator` resolves that into the Empty Page rather
         // than a blank/broken window. A config file that *exists* but fails to load is a
         // different case (corruption, a bad hand-edit) — surfaced via an alert rather than
-        // silently discarding the user's other settings (pin state, hotkey mappings, custom
-        // script, window geometry) the same way a load failure would, and rather than the old
+        // silently discarding the user's other settings (hotkey mappings, custom script, window
+        // geometry) the same way a load failure would, and rather than the old
         // `fatalError` crashing the app outright.
         let initialConfig: WidgetConfig
         if FileManager.default.fileExists(atPath: configURL.path) {
@@ -52,7 +52,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             platformOps: platformOps,
             persistWindowState: { windowState in persist { $0.updatingWindowState(windowState) } },
             persistURL: { url in persist { $0.updatingURL(url) } },
-            persistPinned: { isPinned in persist { $0.updatingPinned(isPinned) } },
             openSettings: { settingsWindowController.show() }
         )
         self.orchestrator = orchestrator

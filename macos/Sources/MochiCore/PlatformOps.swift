@@ -40,13 +40,11 @@ public protocol PlatformOps: AnyObject {
     /// address bar (as opposed to a programmatic `loadURL` call).
     func onURLSubmitted(_ window: WidgetWindowHandle, perform handler: @escaping (URL) -> Void)
 
-    /// Applies a pinned (always-on-top) state, independent of Normal/Ghost Mode. Used both to
-    /// restore a persisted pinned state on launch and to reflect toggles back into the window.
+    /// Applies an always-on-top window level. Driven exclusively by `GhostModeController`
+    /// (ADR-0012): Ghost Mode always floats, Normal Mode is a plain window at the normal level.
+    /// There is no user-facing Pin control to reflect back, so nothing else calls this and there
+    /// is nothing to persist.
     func setPinned(_ pinned: Bool, in window: WidgetWindowHandle)
-
-    /// Registers a handler invoked when the user toggles the window's Pin control, so the new
-    /// state can be persisted.
-    func onPinnedChanged(_ window: WidgetWindowHandle, perform handler: @escaping (Bool) -> Void)
 
     /// Registers a handler invoked when the user clicks the toolbar's settings entry (#13) —
     /// mirrors the tray icon's existing "打开设置" entry, giving Normal Mode a second way to reach
@@ -132,10 +130,6 @@ public protocol PlatformOps: AnyObject {
 
     /// Reloads the widget's currently-loaded page — the default 刷新页面 hotkey's (#12) action.
     func reloadPage(in window: WidgetWindowHandle)
-
-    /// Applies a new frame to the window in one step, used by the default 调整窗口尺寸 hotkey
-    /// (#12) to jump between preset sizes without an interactive drag/resize.
-    func setWindowFrame(_ frame: WindowFrame, in window: WidgetWindowHandle)
 
     /// Whether the process currently holds Accessibility permission — required for
     /// `forwardKeystroke` to have any effect (ADR-0003). Checked before every forwarding attempt

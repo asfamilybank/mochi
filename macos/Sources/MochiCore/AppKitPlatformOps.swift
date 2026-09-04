@@ -124,11 +124,6 @@ fileprivate struct ToolbarControls {
     /// The refresh affordance embedded at `addressField`'s trailing edge (ADR-0011) — a subview
     /// of the field, not a toolbar item of its own the way it used to be.
     let addressFieldRefreshButton: NSButton
-    /// Pin stays a custom view because its active state is a hand-drawn accent-tinted glass
-    /// capsule (`applyPinAppearance`) that a stock `NSToolbarItem` can't express. Settings has no
-    /// such need, so it is a plain image+action `NSToolbarItem` built in the toolbar delegate —
-    /// which is also what makes it collapse *before* Pin (ADR-0011).
-    let pinButton: NSButton
 }
 
 /// The Loading Progress Bar (#18): a thin line docked to the content area's top edge, overlaid
@@ -142,9 +137,9 @@ fileprivate struct LoadingProgressBar {
 
 /// Normal Mode's window chrome (ADR-0009, refined by ADR-0011): a native `NSToolbar` in
 /// `.unified` style — traffic lights, a back/forward segmented control, the Smart Address
-/// Field (with refresh embedded at its trailing edge), Pin, and settings all on one row, rendered
+/// Field (with refresh embedded at its trailing edge), and settings all on one row, rendered
 /// with the system's own Liquid Glass material — sitting above the WKWebView. No title text is
-/// drawn next to the traffic lights (`titleVisibility = .hidden`), and Pin/settings collapse into
+/// drawn next to the traffic lights (`titleVisibility = .hidden`), and settings collapses into
 /// the system's overflow menu as the window narrows (`NSToolbarItem.visibilityPriority`).
 ///
 /// Colors, corner radii, spacing, and the bespoke vector icon set all come from `DesignTokens`/
@@ -152,20 +147,20 @@ fileprivate struct LoadingProgressBar {
 final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDelegate, NSSearchFieldDelegate, WKNavigationDelegate {
     private static let navigationItemID = NSToolbarItem.Identifier("com.mochi.toolbar.navigation")
     private static let addressItemID = NSToolbarItem.Identifier("com.mochi.toolbar.address")
-    private static let pinItemID = NSToolbarItem.Identifier("com.mochi.toolbar.pin")
     private static let settingsItemID = NSToolbarItem.Identifier("com.mochi.toolbar.settings")
     /// The Normal Mode toolbar's fixed item order (`DesignTokens.normalModeToolbarOrder`, minus
     /// the not-yet-implemented Ghost Mode toggle button — see AppKitPlatformOps's doc comment).
-    /// Four items of our own, not six: back and forward share one segmented control, and refresh
-    /// is embedded in the address field rather than being an item of its own (ADR-0011).
+    /// Three items of our own: back and forward share one segmented control, and refresh is
+    /// embedded in the address field rather than being an item of its own (ADR-0011).
     ///
-    /// The single `.flexibleSpace` is what makes the address field's new bounded width read
-    /// correctly (ADR-0011): once the field stops stretching to fill everything left over, the
-    /// slack has to go somewhere, and parking all of it between the field and Pin keeps
-    /// Pin/settings flush with the window's trailing edge. Without it the whole row packs to the
-    /// left and leaves a dead gap after the settings button.
+    /// The single `.flexibleSpace` is what makes the address field's bounded width read correctly
+    /// (ADR-0011): once the field stops stretching to fill everything left over, the slack has to
+    /// go somewhere, and parking all of it between the field and the trailing button keeps that
+    /// button flush with the window's trailing edge. Without it the whole row packs to the left
+    /// and leaves a dead gap after the settings button. Still true now that Pin is gone
+    /// (ADR-0012) and settings is the only trailing item.
     private static let toolbarItemOrder: [NSToolbarItem.Identifier] = [
-        navigationItemID, addressItemID, .flexibleSpace, pinItemID, settingsItemID,
+        navigationItemID, addressItemID, .flexibleSpace, settingsItemID,
     ]
 
     /// Width the embedded refresh icon claims from the address field's text area — the icon plus
@@ -185,14 +180,12 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     private let addressFieldHoverTracker = HoverTracker()
     private var willCloseHandler: (() -> Void)?
     private var urlSubmittedHandler: ((URL) -> Void)?
-    private var pinnedChangedHandler: ((Bool) -> Void)?
     private var settingsRequestedHandler: (() -> Void)?
     private var navigationFinishedHandler: (() -> Void)?
     private var mouseEnteredHandler: (() -> Void)?
     private var pageTitleChangedHandler: ((String?) -> Void)?
     private var loadingStateChangedHandler: ((Bool) -> Void)?
     private var loadingProgressChangedHandler: ((Double) -> Void)?
-    private var isPinned = false
     /// Whether a real navigation (`loadURL`) has ever happened — the Smart Address Field (#18)
     /// only kicks in once this flips `true`; before that, the Empty Page's (#16) fixed
     /// placeholder + freely-editable field is left untouched (story #12).
@@ -232,26 +225,19 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         controls.navigationControl.action = #selector(navigationSegmentClicked(_:))
         controls.addressFieldRefreshButton.target = self
         controls.addressFieldRefreshButton.action = #selector(reload)
-        controls.pinButton.target = self
-        controls.pinButton.action = #selector(togglePinned)
-        controls.pinButton.wantsLayer = true
-        controls.pinButton.layer?.cornerRadius = DesignTokens.Layout.normalModeToolbarButtonDiameter / 2
         observeNavigationState()
         updateEmbeddedRefreshIconVisibility()
-        updatePinButtonAppearance()
         updateProgressBarColor()
-        // The Pin capsule's tint (and the progress bar's fill) are baked into CALayer colors (not
-        // dynamic NSColors), so unlike everywhere else in this file they need to be re-applied
-        // whenever the system accent color or the window's light/dark appearance changes, instead
-        // of re-resolving for free at draw time.
+        // The progress bar's fill is baked into a CALayer color (not a dynamic NSColor), so unlike
+        // everywhere else in this file it needs to be re-applied whenever the system accent color
+        // or the window's light/dark appearance changes, instead of re-resolving for free at draw
+        // time.
         appearanceObservation = window.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
-            self?.updatePinButtonAppearance()
             self?.updateProgressBarColor()
         }
         accentColorObserver = NotificationCenter.default.addObserver(
             forName: NSColor.systemColorsDidChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            self?.updatePinButtonAppearance()
             self?.updateProgressBarColor()
         }
     }
@@ -323,47 +309,14 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         webView.reload()
     }
 
-    @objc private func togglePinned() {
-        applyPinned(!isPinned)
-        pinnedChangedHandler?(isPinned)
-    }
-
-    /// Applies a pinned state to the window without notifying `pinnedChangedHandler` — used to
-    /// restore a persisted state on launch, where there is nothing new to persist back.
+    /// Ghost Mode's always-on-top level (ADR-0012). There is no toolbar control or persisted
+    /// state behind this any more — `GhostModeController` is the only caller.
     func setPinned(_ pinned: Bool) {
-        applyPinned(pinned)
-    }
-
-    private func applyPinned(_ pinned: Bool) {
-        isPinned = pinned
-        window.level = isPinned ? .floating : .normal
-        updatePinButtonAppearance()
-    }
-
-    /// The Pin toggle's active state: a tinted glass background + border + icon in the
-    /// system accent color, matching macOS's own selected-state glass tinting (design-language.md,
-    /// "工具栏与工具栏"). Inactive state falls back to the plain toolbar icon tint.
-    private func updatePinButtonAppearance() {
-        applyPinAppearance(to: controls.pinButton)
-    }
-
-    private func applyPinAppearance(to button: NSButton) {
-        guard let layer = button.layer else { return }
-        if isPinned {
-            let tint = DesignTokens.accentTint(DesignTokens.resolveSystemAccent())
-            layer.backgroundColor = NSColor(rgba: tint.background).cgColor
-            layer.borderWidth = 1
-            layer.borderColor = NSColor(rgba: tint.border).cgColor
-            button.contentTintColor = NSColor(rgba: tint.icon)
-        } else {
-            layer.backgroundColor = nil
-            layer.borderWidth = 0
-            button.contentTintColor = ToolbarStyle.iconTint()
-        }
+        window.level = pinned ? .floating : .normal
     }
 
     /// The Loading Progress Bar's fill color, system accent — baked into a `CALayer` (see the
-    /// class-level comment), so re-applied on every accent/appearance change alongside Pin.
+    /// class-level comment), so re-applied on every accent/appearance change.
     private func updateProgressBarColor() {
         progressBar.view.layer?.backgroundColor = NSColor(rgba: DesignTokens.resolveSystemAccent()).cgColor
     }
@@ -462,10 +415,6 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         urlSubmittedHandler = handler
     }
 
-    func setPinnedChangedHandler(_ handler: @escaping (Bool) -> Void) {
-        pinnedChangedHandler = handler
-    }
-
     func setSettingsRequestedHandler(_ handler: @escaping () -> Void) {
         settingsRequestedHandler = handler
     }
@@ -508,10 +457,6 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
 
     func setToolbarVisible(_ visible: Bool) {
         window.toolbar?.isVisible = visible
-    }
-
-    func setFrame(_ frame: WindowFrame) {
-        window.setFrame(NSRect(x: frame.x, y: frame.y, width: frame.width, height: frame.height), display: true)
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -634,11 +579,12 @@ extension AppKitWidgetWindowHandle: NSToolbarDelegate {
         let item = NSToolbarItem(itemIdentifier: itemIdentifier)
         // `visibilityPriority` is AppKit's own responsive-collapse mechanism (ADR-0011), not
         // custom layout code: as the window narrows, the toolbar sweeps its lowest-priority items
-        // into the system's "更多工具栏项" overflow popup first. Settings goes before Pin because
-        // pinning the window is Mochi's core interaction while settings is a low-frequency,
-        // app-level entry point; the address field and the navigation control sit at `.high` so
-        // they are never candidates. `label` is what an item is called once it lands in that menu
-        // — it stays invisible in the toolbar itself, which runs in `.iconOnly` display mode.
+        // into the system's "更多工具栏项" overflow popup first. Since Pin was internalized into
+        // Ghost Mode (ADR-0012) settings is the only collapsible item left — a low-frequency,
+        // app-level entry point — while the address field and the navigation control sit at
+        // `.high` so they are never candidates. `label` is what an item is called once it lands in
+        // that menu — it stays invisible in the toolbar itself, which runs in `.iconOnly` display
+        // mode.
         switch itemIdentifier {
         case Self.navigationItemID:
             item.view = controls.navigationControl
@@ -648,22 +594,15 @@ extension AppKitWidgetWindowHandle: NSToolbarDelegate {
             item.view = controls.addressField
             item.label = "地址"
             item.visibilityPriority = .high
-        case Self.pinItemID:
-            item.view = controls.pinButton
-            item.label = "置顶"
-            item.visibilityPriority = .standard
         case Self.settingsItemID:
-            // Deliberately a stock image+action item rather than a custom view: measured
-            // (ADR-0011), AppKit sheds a run of adjacent custom-view items into the overflow menu
-            // in a single step, so as long as settings was also a view it could never collapse
-            // *before* Pin no matter how their priorities were set. As a stock item it sheds on
-            // its own, which is what story #9/#10's ordering asks for. docs/design-language.md
-            // documents this entry as the "更多" (⋯) affordance, hence `.moreHorizontal`.
-            //
-            // The cost of not being a view: a stock item has no `contentTintColor` and no fixed
-            // box, so this one glyph renders at AppKit's own control tint and metrics rather than
-            // `DesignTokens`' `iconPrimary`/`normalModeToolbarButtonDiameter` like Pin beside it.
-            // That is inherent to the mechanism, not an oversight — see ADR-0011.
+            // A stock image+action item rather than a custom view. It was made one so it would
+            // shed into the overflow menu *before* Pin (ADR-0011: AppKit sheds a run of adjacent
+            // custom-view items in a single step, so two views could never collapse one at a
+            // time); Pin is gone now, but leaving this as a stock item keeps the shipped
+            // rendering — a stock item has no `contentTintColor` and no fixed box, so this glyph
+            // draws at AppKit's own control tint and metrics rather than `DesignTokens`'
+            // `iconPrimary`/`normalModeToolbarButtonDiameter`. docs/design-language.md documents
+            // this entry as the "更多" (⋯) affordance, hence `.moreHorizontal`.
             item.image = ToolbarStyle.templateImage(for: .moreHorizontal, accessibilityDescription: "设置")
             item.target = self
             item.action = #selector(handleSettingsRequested)
@@ -802,9 +741,9 @@ public final class AppKitPlatformOps: PlatformOps {
     /// Builds the Normal Mode toolbar's controls (ADR-0009/ADR-0011) — a standard `NSSearchField`
     /// for the Smart Address Field (no hand-drawn glass wrapper; its native rendering already looks
     /// "more solid" than the surrounding row, per design-language.md) with the refresh affordance
-    /// embedded at its trailing edge, a native segmented control for back/forward, and
-    /// bespoke-icon `NSButton`s for Pin and settings — all hosted as `NSToolbarItem` views by
-    /// `AppKitWidgetWindowHandle`'s `NSToolbarDelegate` conformance.
+    /// embedded at its trailing edge and a native segmented control for back/forward — all
+    /// hosted as `NSToolbarItem` views by `AppKitWidgetWindowHandle`'s `NSToolbarDelegate`
+    /// conformance. Settings is not here: it is a stock image+action item built in that delegate.
     private func makeToolbarControls() -> ToolbarControls {
         let addressField = AddressField()
         addressField.translatesAutoresizingMaskIntoConstraints = false
@@ -854,9 +793,7 @@ public final class AppKitPlatformOps: PlatformOps {
         return ToolbarControls(
             navigationControl: makeNavigationControl(),
             addressField: addressField,
-            addressFieldRefreshButton: addressFieldRefreshButton,
-            pinButton: toolbarButton(
-                icon: .pin, accessibilityDescription: "置顶", diameter: DesignTokens.Layout.normalModeToolbarButtonDiameter)
+            addressFieldRefreshButton: addressFieldRefreshButton
         )
     }
 
@@ -959,11 +896,6 @@ public final class AppKitPlatformOps: PlatformOps {
         handle.reload()
     }
 
-    public func setWindowFrame(_ frame: WindowFrame, in window: WidgetWindowHandle) {
-        guard let handle = handle(for: window) else { return }
-        handle.setFrame(frame)
-    }
-
     public func onURLSubmitted(_ window: WidgetWindowHandle, perform handler: @escaping (URL) -> Void) {
         guard let handle = handle(for: window) else { return }
         handle.setURLSubmittedHandler(handler)
@@ -972,11 +904,6 @@ public final class AppKitPlatformOps: PlatformOps {
     public func setPinned(_ pinned: Bool, in window: WidgetWindowHandle) {
         guard let handle = handle(for: window) else { return }
         handle.setPinned(pinned)
-    }
-
-    public func onPinnedChanged(_ window: WidgetWindowHandle, perform handler: @escaping (Bool) -> Void) {
-        guard let handle = handle(for: window) else { return }
-        handle.setPinnedChangedHandler(handler)
     }
 
     public func onSettingsRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {

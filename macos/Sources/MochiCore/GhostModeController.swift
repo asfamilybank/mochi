@@ -6,9 +6,14 @@ public enum WidgetMode: Equatable {
 }
 
 /// The Ghost Mode state machine (#8): a single hotkey flips between `.normal` and `.ghost`,
-/// where Ghost Mode bundles native-chrome visibility, toolbar visibility, content opacity, and
-/// mouse passthrough into one atomic transition (ADR-0006) — there is no way to reach a state
-/// with, say, passthrough on but the toolbar still showing.
+/// where Ghost Mode bundles native-chrome visibility, toolbar visibility, content opacity,
+/// mouse passthrough, and always-on-top into one atomic transition (ADR-0006/ADR-0012) — there
+/// is no way to reach a state with, say, passthrough on but the toolbar still showing.
+///
+/// Always-on-top is internal to this transition, not a standalone feature: floating above other
+/// windows only means anything while invisibly overlaying them, which is what Ghost Mode is
+/// (ADR-0012). Normal Mode is a plain window at the normal level, so this controller is the only
+/// caller of `setPinned` in the whole app.
 ///
 /// Always starts in `.normal` and is never told to restore a prior Ghost Mode — the caller
 /// (`Orchestrator`) constructs a fresh instance on every launch, which is what gives "restart
@@ -49,6 +54,7 @@ public final class GhostModeController {
         platformOps.setToolbarVisible(false, in: window)
         platformOps.setContentOpacity(ghostOpacity, in: window)
         platformOps.setMousePassthrough(true, in: window)
+        platformOps.setPinned(true, in: window)
     }
 
     private func leaveGhostMode() {
@@ -57,6 +63,7 @@ public final class GhostModeController {
         platformOps.setToolbarVisible(true, in: window)
         platformOps.setContentOpacity(1.0, in: window)
         platformOps.setMousePassthrough(false, in: window)
+        platformOps.setPinned(false, in: window)
         platformOps.setWindowHidden(false, in: window)
     }
 

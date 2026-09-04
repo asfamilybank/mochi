@@ -26,13 +26,11 @@ final class FakePlatformOps: PlatformOps {
     private(set) var trayMenuItems: [TrayMenuItem] = []
     private(set) var terminateAppCallCount = 0
     private(set) var reloadedWindowIDs: [Int] = []
-    private(set) var windowFrameChanges: [(frame: WindowFrame, windowID: Int)] = []
     private(set) var accessibilityPermissionRequestCount = 0
     private(set) var forwardedKeystrokes: [Hotkey] = []
     private(set) var windowTitleChanges: [(title: String, windowID: Int)] = []
     private var willCloseHandlers: [Int: () -> Void] = [:]
     private var urlSubmittedHandlers: [Int: (URL) -> Void] = [:]
-    private var pinnedChangedHandlers: [Int: (Bool) -> Void] = [:]
     private var settingsRequestedHandlers: [Int: () -> Void] = [:]
     private var navigationFinishedHandlers: [Int: () -> Void] = [:]
     private var mouseEnteredHandlers: [Int: () -> Void] = [:]
@@ -107,15 +105,6 @@ final class FakePlatformOps: PlatformOps {
     func setPinned(_ pinned: Bool, in window: WidgetWindowHandle) {
         let handle = window as! FakeWidgetWindowHandle
         pinnedChanges.append((pinned, handle.id))
-    }
-
-    func onPinnedChanged(_ window: WidgetWindowHandle, perform handler: @escaping (Bool) -> Void) {
-        let handle = window as! FakeWidgetWindowHandle
-        pinnedChangedHandlers[handle.id] = handler
-    }
-
-    func simulatePinnedChanged(_ pinned: Bool, windowID: Int = 1) {
-        pinnedChangedHandlers[windowID]?(pinned)
     }
 
     func onSettingsRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {
@@ -212,11 +201,6 @@ final class FakePlatformOps: PlatformOps {
     func reloadPage(in window: WidgetWindowHandle) {
         let handle = window as! FakeWidgetWindowHandle
         reloadedWindowIDs.append(handle.id)
-    }
-
-    func setWindowFrame(_ frame: WindowFrame, in window: WidgetWindowHandle) {
-        let handle = window as! FakeWidgetWindowHandle
-        windowFrameChanges.append((frame, handle.id))
     }
 
     func isAccessibilityTrusted() -> Bool {
