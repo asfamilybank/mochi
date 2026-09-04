@@ -814,11 +814,17 @@ public final class AppKitPlatformOps: PlatformOps {
         addressField.translatesAutoresizingMaskIntoConstraints = false
         addressField.placeholderString = "输入网址"
         addressField.lineBreakMode = .byTruncatingTail
+        // Low hugging priority (with no opposing upper-bound constraint) is what makes
+        // `NSToolbarItem` grow this field to fill the toolbar's spare width — per the
+        // `NSToolbarItem.minSize`/`maxSize` SDK header, the toolbar "automatically measure[s] the
+        // size of the view using constraints" rather than consulting those (deprecated) properties.
+        // An earlier attempt encoded "expand to fill" as its own `width == 10_000` constraint at
+        // `.defaultLow`, but with nothing else constraining the width from above, that constraint
+        // *was* the value the layout system's fitting-size measurement settled on — so the toolbar
+        // saw an item that wanted ~10,000pt, decided it could never fit, and swept it into the
+        // overflow menu outright instead of sizing it down to the required minimum (#23).
         addressField.setContentHuggingPriority(.defaultLow, for: .horizontal)
         addressField.widthAnchor.constraint(greaterThanOrEqualToConstant: 160).isActive = true
-        let expandingWidth = addressField.widthAnchor.constraint(equalToConstant: 10_000)
-        expandingWidth.priority = .defaultLow
-        expandingWidth.isActive = true
         addressField.heightAnchor.constraint(equalToConstant: DesignTokens.Layout.addressFieldHeight).isActive = true
         // The field's content is a title/URL the presenter computes, not a free-text search query
         // — the stock clear ("×") button would let AppKit blank `stringValue` directly, bypassing
