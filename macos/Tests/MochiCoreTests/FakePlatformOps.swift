@@ -20,6 +20,7 @@ final class FakePlatformOps: PlatformOps {
     private(set) var contentOpacityChanges: [(opacity: Double, windowID: Int)] = []
     private(set) var mousePassthroughChanges: [(enabled: Bool, windowID: Int)] = []
     private(set) var registeredHotkeys: [Hotkey] = []
+    private(set) var unregisteredHotkeys: [Hotkey] = []
     private(set) var presentedAlerts: [(title: String, message: String)] = []
     private(set) var snapEnabledChanges: [(enabled: Bool, windowID: Int)] = []
     private(set) var trayMenuItems: [TrayMenuItem] = []
@@ -173,6 +174,10 @@ final class FakePlatformOps: PlatformOps {
     func simulateHotkeyPressed(_ hotkey: Hotkey) {
         guard let index = registeredHotkeys.firstIndex(of: hotkey) else { return }
         hotkeyHandlers[index]()
+    }
+
+    func unregisterGlobalHotkey(_ hotkey: Hotkey) {
+        unregisteredHotkeys.append(hotkey)
     }
 
     func presentAlert(title: String, message: String) {

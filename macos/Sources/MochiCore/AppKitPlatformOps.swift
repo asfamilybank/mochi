@@ -967,6 +967,10 @@ public final class AppKitPlatformOps: PlatformOps {
         GlobalHotkeyRegistry.shared.register(hotkey, perform: handler)
     }
 
+    public func unregisterGlobalHotkey(_ hotkey: Hotkey) {
+        GlobalHotkeyRegistry.shared.unregister(hotkey)
+    }
+
     public func presentAlert(title: String, message: String) {
         let alert = NSAlert()
         alert.messageText = title

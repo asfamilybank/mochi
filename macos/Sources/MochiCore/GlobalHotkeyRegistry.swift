@@ -10,6 +10,8 @@ final class GlobalHotkeyRegistry {
     static let shared = GlobalHotkeyRegistry()
 
     private var handlers: [UInt32: () -> Void] = [:]
+    private var refs: [UInt32: EventHotKeyRef] = [:]
+    private var ids: [Hotkey: UInt32] = [:]
     private var nextHotkeyID: UInt32 = 1
     private var eventHandlerRef: EventHandlerRef?
     private static let signature: OSType = 0x4d6f4368  // 'MoCh'
@@ -30,11 +32,32 @@ final class GlobalHotkeyRegistry {
             0,
             &hotKeyRef
         )
-        guard status == noErr else { return false }
+        guard status == noErr, let hotKeyRef else { return false }
 
         handlers[hotkeyID] = handler
+        refs[hotkeyID] = hotKeyRef
+        ids[hotkey] = hotkeyID
         nextHotkeyID += 1
         return true
+    }
+
+    /// Hands `hotkey`'s combination back to the system so another app (or a later re-registration
+    /// of the same combo) can claim it. A safe no-op when `hotkey` was never registered — callers
+    /// don't need to track registration success themselves before unregistering.
+    func unregister(_ hotkey: Hotkey) {
+        guard let hotkeyID = ids.removeValue(forKey: hotkey) else { return }
+        if let ref = refs.removeValue(forKey: hotkeyID) {
+            UnregisterEventHotKey(ref)
+        }
+        handlers.removeValue(forKey: hotkeyID)
+    }
+
+    /// Test-only: fires the handler currently registered for `hotkey` as if its Carbon event had
+    /// arrived, without synthesizing a real key event (which a headless test process cannot do).
+    /// `internal` rather than `private` so `@testable import` can reach it.
+    func simulateHotkeyPressed(_ hotkey: Hotkey) {
+        guard let hotkeyID = ids[hotkey] else { return }
+        handlers[hotkeyID]?()
     }
 
     private func installEventHandlerIfNeeded() {

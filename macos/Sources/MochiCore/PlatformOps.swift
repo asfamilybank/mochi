@@ -115,6 +115,11 @@ public protocol PlatformOps: AnyObject {
     @discardableResult
     func registerGlobalHotkey(_ hotkey: Hotkey, perform handler: @escaping () -> Void) -> Bool
 
+    /// Hands `hotkey` back to the system so another app (or a later re-registration of the same
+    /// combo, e.g. after the user edits a mapping) can claim it. A safe no-op when `hotkey` isn't
+    /// currently registered.
+    func unregisterGlobalHotkey(_ hotkey: Hotkey)
+
     /// Surfaces a user-facing alert — used for conditions like a hotkey conflict that must not
     /// fail silently.
     func presentAlert(title: String, message: String)
