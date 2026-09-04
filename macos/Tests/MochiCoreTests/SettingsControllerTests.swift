@@ -154,7 +154,7 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let succeeded = controller.addHotkeyMapping(trigger: DefaultHotkeys.reloadPage, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
+        let succeeded = controller.addHotkeyMapping(trigger: DefaultHotkeys.hideWidget, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
 
         #expect(!succeeded)
         #expect(store.config.hotkeyMappings.isEmpty)
@@ -195,7 +195,7 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let succeeded = controller.updateHotkeyMapping(at: 0, trigger: DefaultHotkeys.zoomIn, pageKeystroke: existing.pageKeystroke)
+        let succeeded = controller.updateHotkeyMapping(at: 0, trigger: DefaultHotkeys.toggleGhostMode, pageKeystroke: existing.pageKeystroke)
 
         #expect(!succeeded)
         #expect(store.config.hotkeyMappings == [existing])

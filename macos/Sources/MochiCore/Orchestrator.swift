@@ -1,7 +1,7 @@
 import Foundation
 
 public final class Orchestrator {
-    /// The step `zoomIn`/`zoomOut` (#12) move by on each press, and the range they clamp to —
+    /// The step `zoomIn`/`zoomOut` (#37) move by on each call, and the range they clamp to —
     /// matching a typical browser's zoom-shortcut feel rather than a jump straight to the extreme.
     private static let zoomStep = 0.1
     private static let zoomRange = 0.25...5.0
@@ -93,20 +93,21 @@ public final class Orchestrator {
         ])
     }
 
-    /// Registers Ghost Mode's toggle hotkey and #12's utility hotkeys as a
+    /// Registers Ghost Mode's toggle hotkey and the boss key as a
     /// single batch, reusing `registerGlobalHotkey`'s existing conflict detection — failures are
     /// collected into one alert rather than one modal dialog per conflicting hotkey, since several
     /// could plausibly collide with other apps at once. Returns only the combos that actually
     /// registered successfully, for `HotkeyForwarder` to treat as reserved.
+    ///
+    /// Reload/zoom are *not* in this batch — #37 downgrades them from global hotkeys to local
+    /// menu shortcuts (⌘R/⌘±/⌘0), reachable only while Mochi is the key window, which needs no
+    /// Carbon registration at all.
     @discardableResult
     private func registerDefaultHotkeys(window: WidgetWindowHandle, ghostModeController: GhostModeController) -> Set<Hotkey> {
         let registrations: [(name: String, hotkey: Hotkey, action: () -> Void)] = [
             ("切换 Ghost Mode", DefaultHotkeys.toggleGhostMode, { [weak ghostModeController] in
                 ghostModeController?.toggle()
             }),
-            ("刷新页面", DefaultHotkeys.reloadPage, { [weak self] in self?.handleReloadHotkey() }),
-            ("放大网页", DefaultHotkeys.zoomIn, { [weak self] in self?.handleZoomHotkey(step: Self.zoomStep) }),
-            ("缩小网页", DefaultHotkeys.zoomOut, { [weak self] in self?.handleZoomHotkey(step: -Self.zoomStep) }),
             ("隐藏 Widget", DefaultHotkeys.hideWidget, { [weak ghostModeController] in
                 ghostModeController?.toggleHidden()
             }),
@@ -137,12 +138,35 @@ public final class Orchestrator {
         persistURL(url)
     }
 
-    private func handleReloadHotkey() {
+    /// Reloads the current page — #37's Display menu "刷新" (⌘R), reachable through the responder
+    /// chain since Mochi's main menu routes there rather than adding a `PlatformOps` method.
+    public func reloadPage() {
         guard let window else { return }
         platformOps.reloadPage(in: window)
     }
 
-    private func handleZoomHotkey(step: Double) {
+    public func zoomIn() {
+        applyZoomStep(Self.zoomStep)
+    }
+
+    public func zoomOut() {
+        applyZoomStep(-Self.zoomStep)
+    }
+
+    /// Resets to 100% — #37's Display menu "实际大小" (⌘0).
+    public func resetZoom() {
+        guard let window else { return }
+        currentZoom = 1.0
+        platformOps.applyZoom(currentZoom, in: window)
+    }
+
+    /// Opens the settings panel — #37's Mochi menu "设置…" (⌘,), the same callback the toolbar's
+    /// settings entry and the tray's "打开设置" item already share.
+    public func openSettingsPanel() {
+        openSettings()
+    }
+
+    private func applyZoomStep(_ step: Double) {
         guard let window else { return }
         let clamped = min(max(currentZoom + step, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
         currentZoom = clamped

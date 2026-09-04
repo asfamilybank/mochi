@@ -4,6 +4,7 @@ import MochiCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var orchestrator: Orchestrator?
     private var settingsWindowController: SettingsWindowController?
+    private var mainMenuBuilder: MainMenuBuilder?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let platformOps = AppKitPlatformOps()
@@ -55,6 +56,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             openSettings: { settingsWindowController.show() }
         )
         self.orchestrator = orchestrator
+
+        let mainMenuBuilder = MainMenuBuilder()
+        self.mainMenuBuilder = mainMenuBuilder
+        NSApp.mainMenu = mainMenuBuilder.build(orchestrator: orchestrator)
+
         orchestrator.start(config: initialConfig)
     }
 

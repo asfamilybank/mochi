@@ -213,9 +213,6 @@ import Testing
         #expect(
             fake.registeredHotkeys == [
                 DefaultHotkeys.toggleGhostMode,
-                DefaultHotkeys.reloadPage,
-                DefaultHotkeys.zoomIn,
-                DefaultHotkeys.zoomOut,
                 DefaultHotkeys.hideWidget,
             ])
     }
@@ -338,18 +335,21 @@ import Testing
         #expect(fake.terminateAppCallCount == 1)
     }
 
-    @Test func pressingTheReloadHotkeyReloadsThePageThroughPlatformOps() {
+    // #37: reload/zoom/settings are public operations the main menu calls directly — no longer
+    // reachable via a global hotkey (see `registersAllDefaultHotkeysOnStartInAFixedOrder`).
+
+    @Test func callingReloadPageReloadsThePageThroughPlatformOps() {
         let fake = FakePlatformOps()
         let orchestrator = Orchestrator(platformOps: fake)
         let config = WidgetConfig(url: URL(string: "https://example.com")!)
         orchestrator.start(config: config)
 
-        fake.simulateHotkeyPressed(DefaultHotkeys.reloadPage)
+        orchestrator.reloadPage()
 
         #expect(fake.reloadedWindowIDs == [1])
     }
 
-    @Test func pressingZoomInIncreasesZoomFromTheCurrentValueThroughPlatformOps() {
+    @Test func callingZoomInIncreasesZoomFromTheCurrentValueThroughPlatformOps() {
         let fake = FakePlatformOps()
         let orchestrator = Orchestrator(platformOps: fake)
         let config = WidgetConfig(
@@ -358,12 +358,12 @@ import Testing
         )
         orchestrator.start(config: config)
 
-        fake.simulateHotkeyPressed(DefaultHotkeys.zoomIn)
+        orchestrator.zoomIn()
 
         #expect(fake.appliedZooms.map(\.zoom).last!.isApproximatelyEqual(to: 1.1))
     }
 
-    @Test func pressingZoomOutDecreasesZoomFromTheCurrentValueThroughPlatformOps() {
+    @Test func callingZoomOutDecreasesZoomFromTheCurrentValueThroughPlatformOps() {
         let fake = FakePlatformOps()
         let orchestrator = Orchestrator(platformOps: fake)
         let config = WidgetConfig(
@@ -372,7 +372,7 @@ import Testing
         )
         orchestrator.start(config: config)
 
-        fake.simulateHotkeyPressed(DefaultHotkeys.zoomOut)
+        orchestrator.zoomOut()
 
         #expect(fake.appliedZooms.map(\.zoom).last!.isApproximatelyEqual(to: 0.9))
     }
@@ -386,10 +386,38 @@ import Testing
         )
         orchestrator.start(config: config)
 
-        fake.simulateHotkeyPressed(DefaultHotkeys.zoomIn)
-        fake.simulateHotkeyPressed(DefaultHotkeys.zoomIn)
+        orchestrator.zoomIn()
+        orchestrator.zoomIn()
 
         #expect(fake.appliedZooms.map(\.zoom).last! <= 5.0)
+    }
+
+    @Test func callingResetZoomSetsZoomBackToOneHundredPercentThroughPlatformOps() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(
+            url: URL(string: "https://example.com")!,
+            windowState: WindowState(frame: WindowFrame(x: 0, y: 0, width: 800, height: 600), zoom: 2.5)
+        )
+        orchestrator.start(config: config)
+
+        orchestrator.resetZoom()
+
+        #expect(fake.appliedZooms.map(\.zoom).last!.isApproximatelyEqual(to: 1.0))
+    }
+
+    @Test func callingOpenSettingsPanelInvokesTheInjectedCallback() {
+        let fake = FakePlatformOps()
+        var openSettingsCallCount = 0
+        let orchestrator = Orchestrator(platformOps: fake, openSettings: {
+            openSettingsCallCount += 1
+        })
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        orchestrator.start(config: config)
+
+        orchestrator.openSettingsPanel()
+
+        #expect(openSettingsCallCount == 1)
     }
 
     @Test func pressingHiddenInGhostModeTogglesTheWidgetInAndOutOfInvisibility() {
@@ -421,12 +449,12 @@ import Testing
         // make both the mapped page-keystroke forward and the default action fire on one press.
         let fake = FakePlatformOps()
         let orchestrator = Orchestrator(platformOps: fake)
-        let colliding = HotkeyMapping(trigger: DefaultHotkeys.reloadPage, pageKeystroke: Hotkey(keyCode: 1, modifierFlags: 0))
+        let colliding = HotkeyMapping(trigger: DefaultHotkeys.hideWidget, pageKeystroke: Hotkey(keyCode: 1, modifierFlags: 0))
         let config = WidgetConfig(url: URL(string: "https://example.com")!, hotkeyMappings: [colliding])
 
         orchestrator.start(config: config)
 
-        #expect(fake.registeredHotkeys.filter { $0 == DefaultHotkeys.reloadPage }.count == 1)
+        #expect(fake.registeredHotkeys.filter { $0 == DefaultHotkeys.hideWidget }.count == 1)
         #expect(fake.presentedAlerts.count == 1)
     }
 }

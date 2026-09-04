@@ -22,15 +22,6 @@ public enum DefaultHotkeys {
     /// ⌥⌘G — the default Normal/Ghost Mode toggle (#8). `0x05` is `kVK_ANSI_G`.
     public static let toggleGhostMode = Hotkey(keyCode: 0x05, modifierFlags: cmdOption)
 
-    /// ⌥⌘R — reloads the page (#12). `0x0F` is `kVK_ANSI_R`.
-    public static let reloadPage = Hotkey(keyCode: 0x0F, modifierFlags: cmdOption)
-
-    /// ⌥⌘= — zooms the page in (#12). `0x18` is `kVK_ANSI_Equal`.
-    public static let zoomIn = Hotkey(keyCode: 0x18, modifierFlags: cmdOption)
-
-    /// ⌥⌘- — zooms the page out (#12). `0x1B` is `kVK_ANSI_Minus`.
-    public static let zoomOut = Hotkey(keyCode: 0x1B, modifierFlags: cmdOption)
-
     /// ⌥⌘H — the boss key (ADR-0012): hides/unhides the widget while Ghost Mode is active,
     /// leaving the page running. A silent no-op in Normal Mode, which is a plain macOS window
     /// (`⌘M` already minimizes it). Same combo as the old Normal-Mode-only 快速隐藏, with both
@@ -44,6 +35,6 @@ public enum DefaultHotkeys {
     /// handler for the same combo instead — see `HotkeyForwarder`'s doc comment), so registration
     /// success/failure alone cannot be used to detect a collision with one of these.
     public static let all: [Hotkey] = [
-        toggleGhostMode, reloadPage, zoomIn, zoomOut, hideWidget,
+        toggleGhostMode, hideWidget,
     ]
 }
