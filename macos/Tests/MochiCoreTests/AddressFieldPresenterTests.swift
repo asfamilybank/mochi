@@ -78,6 +78,14 @@ import Testing
         #expect(withNeither.text == "")
     }
 
+    @Test func embeddedRefreshIconIsHiddenUntilTheFirstRealNavigation() {
+        #expect(AddressFieldPresenter.showsEmbeddedRefreshIcon(hasNavigatedAtLeastOnce: false) == false)
+    }
+
+    @Test func embeddedRefreshIconIsShownOnceANavigationHasHappened() {
+        #expect(AddressFieldPresenter.showsEmbeddedRefreshIcon(hasNavigatedAtLeastOnce: true) == true)
+    }
+
     @Test func windowTitleFallsBackFromTitleToHostToMochi() {
         #expect(AddressFieldPresenter.windowTitle(pageTitle: "Title", host: Self.host) == "Title")
         #expect(AddressFieldPresenter.windowTitle(pageTitle: nil, host: Self.host) == Self.host)

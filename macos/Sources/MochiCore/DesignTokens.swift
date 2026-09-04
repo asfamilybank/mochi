@@ -192,13 +192,39 @@ public enum DesignTokens {
         public static let toolbarButtonDiameter: Double = 30
         public static let toolbarCapsuleHeight: Double = toolbarButtonDiameter + toolbarInnerPaddingVertical * 2
 
-        /// The Normal Mode toolbar's own buttons (ADR-0009) — sized smaller than
-        /// `toolbarButtonDiameter` to fit the native `.unifiedCompact` toolbar row instead of a
-        /// hand-drawn capsule; exact value is an implementation-time estimate, not measured off
-        /// a design canvas.
-        public static let normalModeToolbarButtonDiameter: Double = 22
+        /// The Normal Mode toolbar's own buttons (ADR-0009) — the back/forward segments plus Pin
+        /// and settings. Sized against ADR-0011's Safari reference measurement (36×36 back/forward
+        /// buttons inside a 52pt unified row), replacing ADR-0009's original 22pt estimate. The
+        /// `DesignIcon` glyphs stay on their own 24×24 grid inside this hit area (the buttons use
+        /// `scaleProportionallyDown`, which never upscales), so this number is the button's box,
+        /// not the glyph's.
+        public static let normalModeToolbarButtonDiameter: Double = 36
 
-        public static let addressFieldHeight: Double = 24
+        /// Safari's own address-field height, measured for ADR-0011 (was 24pt before).
+        public static let addressFieldHeight: Double = 31
+
+        /// The Smart Address Field's elastic width bounds (ADR-0011) — it grows and shrinks
+        /// between these, rather than stretching to fill every point left over between its
+        /// neighbours the way it did before. The minimum is what still shows a readable host +
+        /// the embedded refresh icon; the maximum keeps a wide window from turning the field into
+        /// one enormous bar, matching Safari's own bounded behavior.
+        public static let addressFieldMinWidth: Double = 200
+        public static let addressFieldMaxWidth: Double = 320
+
+        /// The refresh affordance embedded at the address field's trailing edge (ADR-0011) —
+        /// smaller than a standalone toolbar button since it sits *inside* the field's 31pt box.
+        public static let addressFieldEmbeddedIconDiameter: Double = 20
+        public static let addressFieldEmbeddedIconTrailingPadding: Double = 4
+
+        /// Normal Mode's minimum window width — measured, not derived from Safari's 574pt (which
+        /// is calibrated to Safari's larger always-visible set, sidebar toggle included). Sweeping
+        /// the real window width one point at a time (ADR-0011) found that at 428pt AppKit stops
+        /// being able to fit the two items that must never collapse — the back/forward segmented
+        /// control and the address field at `addressFieldMinWidth` — and sweeps the address field
+        /// itself into the overflow menu. 440 is that threshold plus a small margin. Lowering this
+        /// below ~430 re-breaks "the address bar is never collapsed", so re-measure rather than
+        /// re-deriving it from the button sizes if any of them change.
+        public static let normalModeWindowMinWidth: Double = 440
 
         /// The Loading Progress Bar's (#18) fixed height — a thin line under the toolbar, not a
         /// full-height track, per docs/design-language.md.
@@ -221,10 +247,13 @@ public enum DesignTokens {
         case back, forward, refresh, addressField, pin, ghostModeToggle, settings
     }
 
-    /// Normal Mode's full toolbar: back, forward, refresh, address bar, Pin, Ghost Mode
-    /// toggle, settings — this order is fixed by the design canvas, not a free choice.
+    /// Normal Mode's full toolbar in visual left-to-right order (ADR-0011). Two entries no longer
+    /// map to a control of their own: `.back`/`.forward` render as the two segments of a single
+    /// `NSSegmentedControl`, and `.refresh` is the icon embedded at the address field's trailing
+    /// edge — which is why it now sits *after* `.addressField` rather than before it. This order
+    /// is fixed by the design canvas, not a free choice.
     public static let normalModeToolbarOrder: [ToolbarButton] = [
-        .back, .forward, .refresh, .addressField, .pin, .ghostModeToggle, .settings,
+        .back, .forward, .addressField, .refresh, .pin, .ghostModeToggle, .settings,
     ]
 
     /// Ghost Mode's summoned floating toolbar deliberately carries only three controls —

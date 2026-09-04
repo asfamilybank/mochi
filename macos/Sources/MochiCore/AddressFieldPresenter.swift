@@ -45,6 +45,15 @@ public enum AddressFieldPresenter {
         return DisplayState(text: nonEmpty(pageTitle) ?? nonEmpty(host) ?? "", isEditable: false)
     }
 
+    /// Whether the Smart Address Field's trailing embedded refresh affordance (#27) is shown.
+    /// Hidden on the Empty Page — before any real navigation there is nothing to reload, matching
+    /// that state's existing "no independent URL input" spirit — and shown from the first
+    /// navigation onward. Deliberately *not* a loading/stop toggle (ADR-0011): the icon means
+    /// "refresh" in every state, so `isLoading` is not an input here.
+    public static func showsEmbeddedRefreshIcon(hasNavigatedAtLeastOnce: Bool) -> Bool {
+        hasNavigatedAtLeastOnce
+    }
+
     /// `NSWindow.title`'s fallback chain (#18) — one level deeper than the address field's own
     /// default display, since a window title must never end up empty (Mission Control/Cmd-Tab).
     public static func windowTitle(pageTitle: String?, host: String?) -> String {

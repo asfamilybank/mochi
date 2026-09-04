@@ -24,20 +24,20 @@
 
 ## 窗口与工具栏
 
-**Normal Mode**：原生标题栏与自绘工具栏合并为同一行——traffic lights（关闭/最小化/最大化）与工具栏按钮、地址栏显示在同一水平高度，不再居中显示应用标题文字。技术上通过原生 `NSToolbar`（`titlebarAppearsTransparent` + `.unifiedCompact` 样式）实现，这一整行的 Liquid Glass 材质由系统原生渲染（macOS 26 上标准 AppKit 控件默认即真 Liquid Glass），不额外包自定义玻璃层；`NSGlassEffectView` 只保留给 Ghost Mode 召唤浮层、空页面抽象构图 panel 这两处脱离原生 chrome 的自绘内容。整体观感直接对标 Safari 的 unified toolbar，见 [ADR-0009](adr/0009-unified-native-toolbar-chrome.md)（取代 [ADR-0004](adr/0004-native-chrome-plus-custom-toolbar.md) 的两行式布局）。
+**Normal Mode**：原生标题栏与工具栏合并为同一行——traffic lights（关闭/最小化/最大化）与工具栏按钮、地址栏显示在同一水平高度，标题文字完全不可视化渲染（`NSWindow.titleVisibility = .hidden`）。技术上通过原生 `NSToolbar`（`titlebarAppearsTransparent` + `.unified` 样式，整行实测 52pt；`.unifiedCompact` 会把整行钉死在 40pt，见 ADR-0011 的实测记录）实现，这一整行的 Liquid Glass 材质由系统原生渲染（macOS 26 上标准 AppKit 控件默认即真 Liquid Glass），不额外包自定义玻璃层；`NSGlassEffectView` 只保留给 Ghost Mode 召唤浮层、空页面抽象构图 panel 这两处脱离原生 chrome 的自绘内容。整体观感直接对标 Safari 的 unified toolbar，见 [ADR-0009](adr/0009-unified-native-toolbar-chrome.md)（取代 [ADR-0004](adr/0004-native-chrome-plus-custom-toolbar.md) 的两行式布局）具体结构与响应式收纳细节见 [ADR-0011](adr/0011-normal-mode-toolbar-safari-alignment.md)。
 
 工具栏下方新增一条加载进度条：绑定 `WKWebView.estimatedProgress` 真实加载进度，2pt 高、系统强调色，从左到右填充，加载完成后短暂淡出消失，不加载时不占用界面空间（不是常驻灰色轨道）。
 
-工具栏按钮清单（从左到右）：
-1. 后退
-2. 前进
-3. 刷新
-4. 地址栏——**智能双态**：标准 `NSSearchField`（不额外包自绘玻璃层，视觉上比周围行更"实"是系统原生效果）。页面加载完成且未交互时显示页面标题；鼠标悬停或点击时显示 URL（点击后可编辑，失焦或移出且非加载中则退回标题）；加载中无论是否有交互都恒定显示 URL。标题取不到时兜底显示域名，再取不到就留空。手动导航会覆盖持久化的"上次访问 URL"。空页面（未导航）状态不受这套切换影响，固定显示占位提示文字，直到用户真正导航一次
-5. Pin 置顶切换（激活态：强调色染色玻璃背景 + 强调色描边 + 强调色图标，仿 macOS 选中态的染色玻璃效果）
-6. Ghost Mode 切换
-7. 设置（"更多"入口，⋯）
+工具栏按钮清单（从左到右，[ADR-0011](adr/0011-normal-mode-toolbar-safari-alignment.md)）：
+1. 后退/前进——合并成一个原生 `NSSegmentedControl`（不是两个独立按钮），图标沿用现有手绘 SVG 图标集
+2. 地址栏——**智能双态**：标准 `NSSearchField`（不额外包自绘玻璃层，视觉上比周围行更"实"是系统原生效果）。页面加载完成且未交互时显示页面标题；鼠标悬停或点击时显示 URL（点击后可编辑，失焦或移出且非加载中则退回标题）；加载中无论是否有交互都恒定显示 URL。标题取不到时兜底显示域名，再取不到就留空。手动导航会覆盖持久化的"上次访问 URL"。空页面（未导航）状态不受这套切换影响，固定显示占位提示文字，直到用户真正导航一次。宽度改为 Safari 式的弹性伸缩（有 min/max，不再无脑撑满剩余空间）；尾部内嵌刷新图标（替代原来独立的刷新按钮，不做"加载中变停止按钮"这个中止导航能力），Empty Page 态下隐藏
+3. Pin 置顶切换（激活态：强调色染色玻璃背景 + 强调色描边 + 强调色图标，仿 macOS 选中态的染色玻璃效果）
+4. Ghost Mode 切换（尚未实现，见 ADR-0011 的范围排除说明）
+5. 设置（"更多"入口，⋯）
 
-窗口标题（`NSWindow.title`，供 Mission Control/Cmd-Tab 使用）动态跟随页面标题，取不到时兜底域名，再取不到兜底 `"Mochi"`（这一级不能为空）。
+Pin 和设置各自独立、不共享背景胶囊。窗口变窄放不下时，接入原生 `NSToolbarItem.visibilityPriority` 自动收纳进"更多工具栏项"溢出菜单，优先级从高到低：地址栏 = 后退/前进分段控件 > Pin > 设置；窗口自身也有一个比 Safari 更小的最小宽度（440pt，按"只剩分段控件 + 地址栏最小宽度"反推）。实测 Pin 与设置是同一步一起收纳的，不是先后两步——原因见 [ADR-0011](adr/0011-normal-mode-toolbar-safari-alignment.md) 的实测记录。地址栏宽度实测区间 200–320pt。
+
+窗口标题（`NSWindow.title`，供 Mission Control/Cmd-Tab 使用）动态跟随页面标题，取不到时兜底域名，再取不到兜底 `"Mochi"`（这一级不能为空）——这是 `NSWindow.title` 这个供 Mission Control/Cmd-Tab 读取的元数据本身的兜底值，跟上面"标题文字不可视化渲染"是两回事，互不影响。
 
 见 [issue #4](https://github.com/asfamilybank/mochi/issues/4)。
 

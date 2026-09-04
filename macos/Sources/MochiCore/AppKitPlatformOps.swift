@@ -24,10 +24,6 @@ private enum ToolbarStyle {
         dynamicColor(light: DesignTokens.glassPalette(dark: false).iconPrimary, dark: DesignTokens.glassPalette(dark: true).iconPrimary)
     }
 
-    static func mutedIconTint() -> NSColor {
-        dynamicColor(light: DesignTokens.glassPalette(dark: false).iconMuted, dark: DesignTokens.glassPalette(dark: true).iconMuted)
-    }
-
     static func glassTint() -> NSColor {
         dynamicColor(light: DesignTokens.glassPalette(dark: false).glassFill, dark: DesignTokens.glassPalette(dark: true).glassFill)
     }
@@ -58,6 +54,21 @@ private extension NSColor {
     }
 }
 
+/// Reserves room at the trailing edge of the address field's text area for its embedded refresh
+/// affordance (ADR-0011), so a long title/URL truncates before it reaches the icon instead of
+/// sliding underneath it. `NSSearchField` exposes no view-level hook for that geometry — the cell
+/// owns it — which is why this is a cell subclass rather than a layout tweak on the field.
+private final class AddressFieldCell: NSSearchFieldCell {
+    /// Points shaved off the trailing edge of the text area; `0` while the icon is hidden.
+    var trailingInset: CGFloat = 0
+
+    override func searchTextRect(forBounds rect: NSRect) -> NSRect {
+        var textRect = super.searchTextRect(forBounds: rect)
+        textRect.size.width = max(0, textRect.width - trailingInset)
+        return textRect
+    }
+}
+
 /// A search field that reports the moment it's clicked, *before* AppKit's own `mouseDown`
 /// processing runs — needed so the Smart Address Field (#18) can flip into its editable state
 /// (`AddressFieldPresenter`) in time for that same click to place a cursor, rather than the user
@@ -65,10 +76,36 @@ private extension NSColor {
 private final class AddressField: NSSearchField {
     var onMouseDown: (() -> Void)?
 
+    /// `NSControl` builds its cell from this at `init(frame:)` time — the only way to get
+    /// `AddressFieldCell`'s text-rect inset in without swapping a live `cell` out from under
+    /// `NSSearchField`.
+    override class var cellClass: AnyClass? {
+        get { AddressFieldCell.self }
+        set {}
+    }
+
+    /// Drops the horizontal half of `NSTextField`'s content-derived intrinsic width, which the
+    /// field only reports once it actually holds text. `NSToolbarItem` derives its own `maxSize`
+    /// from the hosted view, and a present horizontal intrinsic makes it collapse that maximum
+    /// onto the fitting size — so without this the field is elastic between its min and max on
+    /// the Empty Page and then freezes at its *minimum* width from the first navigation onward
+    /// (measured, ADR-0011). The field's width is decided entirely by its own min/max constraints
+    /// plus how much room the toolbar has; its text should never be an input to that.
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: super.intrinsicContentSize.height)
+    }
+
     override func mouseDown(with event: NSEvent) {
         onMouseDown?()
         super.mouseDown(with: event)
     }
+}
+
+/// The back/forward segmented control's segment indices (ADR-0011) — shared between the factory
+/// that builds the control and the handle that enables and dispatches its segments.
+private enum NavigationSegment {
+    static let back = 0
+    static let forward = 1
 }
 
 /// Reports hover enter/exit for a single view via its own `NSTrackingArea`, decoupled from the
@@ -85,11 +122,13 @@ private final class HoverTracker: NSObject {
 /// The interactive controls hosted in the Normal Mode `NSToolbar` (ADR-0009). Bundled together
 /// because they're always constructed, wired, and handed off as one unit.
 fileprivate struct ToolbarControls {
-    let backButton: NSButton
-    let forwardButton: NSButton
-    let refreshButton: NSButton
-    let pinButton: NSButton
+    /// Back and forward as one joined native control (ADR-0011), not two independent buttons.
+    let navigationControl: NSSegmentedControl
     let addressField: AddressField
+    /// The refresh affordance embedded at `addressField`'s trailing edge (ADR-0011) — a subview
+    /// of the field, not a toolbar item of its own the way it used to be.
+    let addressFieldRefreshButton: NSButton
+    let pinButton: NSButton
     let settingsButton: NSButton
 }
 
@@ -114,24 +153,39 @@ fileprivate struct LoadingProgressBar {
     let widthConstraint: NSLayoutConstraint
 }
 
-/// Normal Mode's window chrome (ADR-0009): a native `NSToolbar` in `.unifiedCompact` style —
-/// traffic lights, back/forward/refresh, the Smart Address Field, Pin, and settings all on one
-/// row, rendered with the system's own Liquid Glass material — sitting above the WKWebView.
+/// Normal Mode's window chrome (ADR-0009, refined by ADR-0011): a native `NSToolbar` in
+/// `.unified` style — traffic lights, a back/forward segmented control, the Smart Address
+/// Field (with refresh embedded at its trailing edge), Pin, and settings all on one row, rendered
+/// with the system's own Liquid Glass material — sitting above the WKWebView. No title text is
+/// drawn next to the traffic lights (`titleVisibility = .hidden`), and Pin/settings collapse into
+/// the system's overflow menu as the window narrows (`NSToolbarItem.visibilityPriority`).
 ///
 /// Colors, corner radii, spacing, and the bespoke vector icon set all come from `DesignTokens`/
 /// `DesignIcon` (#17) — nothing here writes its own numbers.
 final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDelegate, NSSearchFieldDelegate, WKNavigationDelegate {
-    private static let backItemID = NSToolbarItem.Identifier("com.mochi.toolbar.back")
-    private static let forwardItemID = NSToolbarItem.Identifier("com.mochi.toolbar.forward")
-    private static let refreshItemID = NSToolbarItem.Identifier("com.mochi.toolbar.refresh")
+    private static let navigationItemID = NSToolbarItem.Identifier("com.mochi.toolbar.navigation")
     private static let addressItemID = NSToolbarItem.Identifier("com.mochi.toolbar.address")
     private static let pinItemID = NSToolbarItem.Identifier("com.mochi.toolbar.pin")
     private static let settingsItemID = NSToolbarItem.Identifier("com.mochi.toolbar.settings")
-    /// The Normal Mode toolbar's fixed button order (`DesignTokens.normalModeToolbarOrder`, minus
+    /// The Normal Mode toolbar's fixed item order (`DesignTokens.normalModeToolbarOrder`, minus
     /// the not-yet-implemented Ghost Mode toggle button — see AppKitPlatformOps's doc comment).
+    /// Four items of our own, not six: back and forward share one segmented control, and refresh
+    /// is embedded in the address field rather than being an item of its own (ADR-0011).
+    ///
+    /// The single `.flexibleSpace` is what makes the address field's new bounded width read
+    /// correctly (ADR-0011): once the field stops stretching to fill everything left over, the
+    /// slack has to go somewhere, and parking all of it between the field and Pin keeps
+    /// Pin/settings flush with the window's trailing edge. Without it the whole row packs to the
+    /// left and leaves a dead gap after the settings button.
     private static let toolbarItemOrder: [NSToolbarItem.Identifier] = [
-        backItemID, forwardItemID, refreshItemID, addressItemID, pinItemID, settingsItemID,
+        navigationItemID, addressItemID, .flexibleSpace, pinItemID, settingsItemID,
     ]
+
+    /// Width the embedded refresh icon claims from the address field's text area — the icon plus
+    /// the padding on either side of it.
+    private static let embeddedRefreshIconReservedWidth =
+        DesignTokens.Layout.addressFieldEmbeddedIconDiameter
+            + DesignTokens.Layout.addressFieldEmbeddedIconTrailingPadding * 2
 
     let window: NSWindow
     let webView: WKWebView
@@ -194,12 +248,10 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         controls.addressField.onMouseDown = { [weak self] in
             self?.beginEditingAddressField()
         }
-        controls.backButton.target = self
-        controls.backButton.action = #selector(goBack)
-        controls.forwardButton.target = self
-        controls.forwardButton.action = #selector(goForward)
-        controls.refreshButton.target = self
-        controls.refreshButton.action = #selector(reload)
+        controls.navigationControl.target = self
+        controls.navigationControl.action = #selector(navigationSegmentClicked(_:))
+        controls.addressFieldRefreshButton.target = self
+        controls.addressFieldRefreshButton.action = #selector(reload)
         controls.pinButton.target = self
         controls.pinButton.action = #selector(togglePinned)
         controls.pinButton.wantsLayer = true
@@ -217,6 +269,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         summonedControls.ghostModeToggleButton.wantsLayer = true
         summonedControls.ghostModeToggleButton.layer?.cornerRadius = DesignTokens.Layout.toolbarButtonDiameter / 2
         observeNavigationState()
+        updateEmbeddedRefreshIconVisibility()
         updatePinButtonAppearance()
         updateSummonedGhostModeToggleAppearance()
         updateProgressBarColor()
@@ -245,16 +298,16 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     }
 
     private func observeNavigationState() {
-        setNavigationButton(controls.backButton, enabled: webView.canGoBack)
-        setNavigationButton(controls.forwardButton, enabled: webView.canGoForward)
+        setNavigationSegment(NavigationSegment.back, enabled: webView.canGoBack)
+        setNavigationSegment(NavigationSegment.forward, enabled: webView.canGoForward)
         navigationObservations = [
             webView.observe(\.canGoBack, options: [.new]) { [weak self] _, change in
                 guard let self else { return }
-                self.setNavigationButton(self.controls.backButton, enabled: change.newValue ?? false)
+                self.setNavigationSegment(NavigationSegment.back, enabled: change.newValue ?? false)
             },
             webView.observe(\.canGoForward, options: [.new]) { [weak self] _, change in
                 guard let self else { return }
-                self.setNavigationButton(self.controls.forwardButton, enabled: change.newValue ?? false)
+                self.setNavigationSegment(NavigationSegment.forward, enabled: change.newValue ?? false)
             },
             webView.observe(\.url, options: [.new]) { [weak self] _, change in
                 guard let self else { return }
@@ -283,17 +336,19 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         ]
     }
 
-    private func setNavigationButton(_ button: NSButton, enabled: Bool) {
-        button.isEnabled = enabled
-        button.contentTintColor = enabled ? ToolbarStyle.iconTint() : ToolbarStyle.mutedIconTint()
+    /// Unlike the two standalone `NSButton`s this replaced — which had to be hand-tinted between
+    /// a muted icon tint to read as disabled — AppKit dims a disabled `NSSegmentedControl`
+    /// segment itself, so toggling `isEnabled` is the whole story here.
+    private func setNavigationSegment(_ segment: Int, enabled: Bool) {
+        controls.navigationControl.setEnabled(enabled, forSegment: segment)
     }
 
-    @objc private func goBack() {
-        webView.goBack()
-    }
-
-    @objc private func goForward() {
-        webView.goForward()
+    @objc private func navigationSegmentClicked(_ sender: NSSegmentedControl) {
+        switch sender.selectedSegment {
+        case NavigationSegment.back: webView.goBack()
+        case NavigationSegment.forward: webView.goForward()
+        default: break
+        }
     }
 
     /// Not `private` — shared as the target-action for both the Normal Mode toolbar's refresh
@@ -399,6 +454,19 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         controls.addressField.isEditable = state.isEditable
     }
 
+    /// Shows or hides the address field's embedded refresh affordance (ADR-0011) per
+    /// `AddressFieldPresenter`, keeping the text area's trailing inset in step so the two never
+    /// overlap. Driven purely by `hasNavigatedAtLeastOnce` — deliberately not by `isLoading`,
+    /// since this icon is not a stop/cancel toggle.
+    private func updateEmbeddedRefreshIconVisibility() {
+        let isVisible = AddressFieldPresenter.showsEmbeddedRefreshIcon(
+            hasNavigatedAtLeastOnce: hasNavigatedAtLeastOnce)
+        controls.addressFieldRefreshButton.isHidden = !isVisible
+        (controls.addressField.cell as? AddressFieldCell)?.trailingInset =
+            isVisible ? Self.embeddedRefreshIconReservedWidth : 0
+        controls.addressField.needsDisplay = true
+    }
+
     private func installAddressFieldHoverTracking() {
         addressFieldHoverTracker.onEnter = { [weak self] in
             self?.isHoveringAddressField = true
@@ -468,6 +536,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         hasNavigatedAtLeastOnce = true
         currentURL = url
         webView.load(URLRequest(url: url))
+        updateEmbeddedRefreshIconVisibility()
         updateAddressFieldDisplay()
     }
 
@@ -624,19 +693,30 @@ extension AppKitWidgetWindowHandle: NSToolbarDelegate {
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
         let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+        // `visibilityPriority` is AppKit's own responsive-collapse mechanism (ADR-0011), not
+        // custom layout code: as the window narrows, the toolbar sweeps its lowest-priority items
+        // into the system's "更多工具栏项" overflow popup first. Settings goes before Pin because
+        // pinning the window is Mochi's core interaction while settings is a low-frequency,
+        // app-level entry point; the address field and the navigation control sit at `.high` so
+        // they are never candidates. `label` is what an item is called once it lands in that menu
+        // — it stays invisible in the toolbar itself, which runs in `.iconOnly` display mode.
         switch itemIdentifier {
-        case Self.backItemID:
-            item.view = controls.backButton
-        case Self.forwardItemID:
-            item.view = controls.forwardButton
-        case Self.refreshItemID:
-            item.view = controls.refreshButton
+        case Self.navigationItemID:
+            item.view = controls.navigationControl
+            item.label = "后退/前进"
+            item.visibilityPriority = .high
         case Self.addressItemID:
             item.view = controls.addressField
+            item.label = "地址"
+            item.visibilityPriority = .high
         case Self.pinItemID:
             item.view = controls.pinButton
+            item.label = "置顶"
+            item.visibilityPriority = .standard
         case Self.settingsItemID:
             item.view = controls.settingsButton
+            item.label = "设置"
+            item.visibilityPriority = .low
         default:
             return nil
         }
@@ -750,7 +830,15 @@ public final class AppKitPlatformOps: PlatformOps {
         // ADR-0009: traffic lights + toolbar content share one native row, rendered with the
         // system's own Liquid Glass material — no `NSGlassEffectView` wrapper needed here.
         window.titlebarAppearsTransparent = true
-        window.toolbarStyle = .unifiedCompact
+        // ADR-0011: without this, `window.title`'s non-empty fallback ("Mochi") is drawn as visible
+        // text next to the traffic lights, contradicting ADR-0009's "title text is never rendered".
+        // The title itself stays set — Mission Control/Cmd-Tab read it (`AddressBarController`).
+        window.titleVisibility = .hidden
+        window.toolbarStyle = .unified
+        // Below this width the items that never collapse (the segmented control and the address
+        // field at its own minimum) stop fitting. Height is deliberately left unconstrained: this
+        // change bounds width only.
+        window.contentMinSize = NSSize(width: DesignTokens.Layout.normalModeWindowMinWidth, height: 0)
         window.contentView = rootView
 
         let handle = AppKitWidgetWindowHandle(
@@ -804,28 +892,35 @@ public final class AppKitPlatformOps: PlatformOps {
         )
     }
 
-    /// Builds the Normal Mode toolbar's controls (ADR-0009) — a standard `NSSearchField` for the
-    /// Smart Address Field (no hand-drawn glass wrapper; its native rendering already looks
-    /// "more solid" than the surrounding row, per design-language.md) and bespoke-icon
-    /// `NSButton`s for the rest, all hosted as `NSToolbarItem` views by
+    /// Builds the Normal Mode toolbar's controls (ADR-0009/ADR-0011) — a standard `NSSearchField`
+    /// for the Smart Address Field (no hand-drawn glass wrapper; its native rendering already looks
+    /// "more solid" than the surrounding row, per design-language.md) with the refresh affordance
+    /// embedded at its trailing edge, a native segmented control for back/forward, and
+    /// bespoke-icon `NSButton`s for Pin and settings — all hosted as `NSToolbarItem` views by
     /// `AppKitWidgetWindowHandle`'s `NSToolbarDelegate` conformance.
     private func makeToolbarControls() -> ToolbarControls {
         let addressField = AddressField()
         addressField.translatesAutoresizingMaskIntoConstraints = false
         addressField.placeholderString = "输入网址"
         addressField.lineBreakMode = .byTruncatingTail
-        // Low hugging priority (with no opposing upper-bound constraint) is what makes
-        // `NSToolbarItem` grow this field to fill the toolbar's spare width — per the
-        // `NSToolbarItem.minSize`/`maxSize` SDK header, the toolbar "automatically measure[s] the
-        // size of the view using constraints" rather than consulting those (deprecated) properties.
-        // An earlier attempt encoded "expand to fill" as its own `width == 10_000` constraint at
-        // `.defaultLow`, but with nothing else constraining the width from above, that constraint
-        // *was* the value the layout system's fitting-size measurement settled on — so the toolbar
-        // saw an item that wanted ~10,000pt, decided it could never fit, and swept it into the
-        // overflow menu outright instead of sizing it down to the required minimum (#23).
+        // Bounded elastic width (ADR-0011), replacing the earlier "fill every point left over
+        // between the neighbouring items": low hugging still lets `NSToolbarItem` grow the field
+        // into spare width — per the `NSToolbarItem.minSize`/`maxSize` SDK header, the toolbar
+        // "automatically measure[s] the size of the view using constraints" rather than consulting
+        // those (deprecated) properties — but the required upper bound stops that growth at
+        // `addressFieldMaxWidth`. Both bounds are required, so the layout system's fitting-size
+        // measurement stays inside them; the trap #23 fell into was a huge *low-priority*
+        // `width == 10_000` constraint with no upper bound, which became the fitting size itself,
+        // so the toolbar decided the item could never fit and swept it straight into the overflow
+        // menu instead of sizing it down to the required minimum.
         addressField.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        addressField.widthAnchor.constraint(greaterThanOrEqualToConstant: 160).isActive = true
-        addressField.heightAnchor.constraint(equalToConstant: DesignTokens.Layout.addressFieldHeight).isActive = true
+        NSLayoutConstraint.activate([
+            addressField.widthAnchor.constraint(
+                greaterThanOrEqualToConstant: DesignTokens.Layout.addressFieldMinWidth),
+            addressField.widthAnchor.constraint(
+                lessThanOrEqualToConstant: DesignTokens.Layout.addressFieldMaxWidth),
+            addressField.heightAnchor.constraint(equalToConstant: DesignTokens.Layout.addressFieldHeight),
+        ])
         // The field's content is a title/URL the presenter computes, not a free-text search query
         // — the stock clear ("×") button would let AppKit blank `stringValue` directly, bypassing
         // `AddressFieldPresenter` entirely.
@@ -834,22 +929,62 @@ public final class AppKitPlatformOps: PlatformOps {
         // URL box until `hasNavigatedAtLeastOnce` flips — see `AppKitWidgetWindowHandle.loadURL`.
         addressField.isEditable = true
 
+        // Refresh lives inside the field now (ADR-0011) rather than as a standalone
+        // `NSToolbarItem`: a plain subview pinned to the trailing edge, with `AddressFieldCell`
+        // shrinking the text area by the matching amount. Visibility (hidden until the first real
+        // navigation) is owned by `updateEmbeddedRefreshIconVisibility`.
+        let addressFieldRefreshButton = toolbarButton(
+            icon: .refresh, accessibilityDescription: "刷新",
+            diameter: DesignTokens.Layout.addressFieldEmbeddedIconDiameter)
+        addressField.addSubview(addressFieldRefreshButton)
+        NSLayoutConstraint.activate([
+            addressFieldRefreshButton.trailingAnchor.constraint(
+                equalTo: addressField.trailingAnchor,
+                constant: -DesignTokens.Layout.addressFieldEmbeddedIconTrailingPadding),
+            addressFieldRefreshButton.centerYAnchor.constraint(equalTo: addressField.centerYAnchor),
+        ])
+
         return ToolbarControls(
-            backButton: toolbarButton(
-                icon: .chevronLeft, accessibilityDescription: "后退", diameter: DesignTokens.Layout.normalModeToolbarButtonDiameter),
-            forwardButton: toolbarButton(
-                icon: .chevronRight, accessibilityDescription: "前进", diameter: DesignTokens.Layout.normalModeToolbarButtonDiameter),
-            refreshButton: toolbarButton(
-                icon: .refresh, accessibilityDescription: "刷新", diameter: DesignTokens.Layout.normalModeToolbarButtonDiameter),
+            navigationControl: makeNavigationControl(),
+            addressField: addressField,
+            addressFieldRefreshButton: addressFieldRefreshButton,
             pinButton: toolbarButton(
                 icon: .pin, accessibilityDescription: "置顶", diameter: DesignTokens.Layout.normalModeToolbarButtonDiameter),
-            addressField: addressField,
             // docs/design-language.md's toolbar button list documents the settings entry as the
             // "更多" (⋯) affordance, not a dedicated glyph — reusing `.moreHorizontal` here rather
             // than introducing a new icon.
             settingsButton: toolbarButton(
                 icon: .moreHorizontal, accessibilityDescription: "设置", diameter: DesignTokens.Layout.normalModeToolbarButtonDiameter)
         )
+    }
+
+    /// Back and forward as one joined native `NSSegmentedControl` (ADR-0011) instead of two
+    /// independent buttons, matching Safari's own control — still carrying Mochi's hand-drawn
+    /// `DesignIcon` glyphs, since a segmented control takes arbitrary `NSImage`s and nothing here
+    /// has to fall back to SF Symbols. `.momentary` tracking keeps both segments push-button-like:
+    /// neither stays visually "selected" after a click, since these aren't a mutually-exclusive
+    /// choice.
+    private func makeNavigationControl() -> NSSegmentedControl {
+        let control = NSSegmentedControl(
+            images: [
+                ToolbarStyle.templateImage(for: .chevronLeft, accessibilityDescription: "后退"),
+                ToolbarStyle.templateImage(for: .chevronRight, accessibilityDescription: "前进"),
+            ],
+            trackingMode: .momentary,
+            target: nil,
+            action: nil
+        )
+        control.translatesAutoresizingMaskIntoConstraints = false
+        control.segmentStyle = .automatic
+        for segment in 0..<control.segmentCount {
+            control.setWidth(DesignTokens.Layout.normalModeToolbarButtonDiameter, forSegment: segment)
+            control.setImageScaling(.scaleProportionallyDown, forSegment: segment)
+        }
+        control.setToolTip("后退", forSegment: NavigationSegment.back)
+        control.setToolTip("前进", forSegment: NavigationSegment.forward)
+        control.heightAnchor.constraint(
+            equalToConstant: DesignTokens.Layout.normalModeToolbarButtonDiameter).isActive = true
+        return control
     }
 
     private func makeLoadingProgressBar() -> LoadingProgressBar {
