@@ -21,7 +21,7 @@ final class FakePlatformOps: PlatformOps {
     private(set) var mousePassthroughChanges: [(enabled: Bool, windowID: Int)] = []
     private(set) var registeredHotkeys: [Hotkey] = []
     private(set) var presentedAlerts: [(title: String, message: String)] = []
-    private(set) var snapThresholdChanges: [(threshold: Double, windowID: Int)] = []
+    private(set) var snapEnabledChanges: [(enabled: Bool, windowID: Int)] = []
     private(set) var trayMenuItems: [TrayMenuItem] = []
     private(set) var terminateAppCallCount = 0
     private(set) var reloadedWindowIDs: [Int] = []
@@ -179,9 +179,9 @@ final class FakePlatformOps: PlatformOps {
         presentedAlerts.append((title, message))
     }
 
-    func setSnapThreshold(_ threshold: Double, in window: WidgetWindowHandle) {
+    func setSnapEnabled(_ enabled: Bool, in window: WidgetWindowHandle) {
         let handle = window as! FakeWidgetWindowHandle
-        snapThresholdChanges.append((threshold, handle.id))
+        snapEnabledChanges.append((enabled, handle.id))
     }
 
     func createTrayIcon(items: [TrayMenuItem]) {

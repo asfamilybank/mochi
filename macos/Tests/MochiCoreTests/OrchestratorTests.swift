@@ -253,14 +253,16 @@ import Testing
         #expect(fake.contentOpacityChanges.map(\.opacity) == [0.3])
     }
 
-    @Test func appliesConfiguredSnapThresholdOnStartThroughPlatformOps() {
+    @Test(arguments: [true, false])
+    func appliesTheConfiguredSnapPreferenceOnStartThroughPlatformOps(_ enabled: Bool) {
         let fake = FakePlatformOps()
         let orchestrator = Orchestrator(platformOps: fake)
-        let config = WidgetConfig(url: URL(string: "https://example.com")!, snapThreshold: 32)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!, isSnapEnabled: enabled)
 
         orchestrator.start(config: config)
 
-        #expect(fake.snapThresholdChanges.map(\.threshold) == [32])
+        #expect(fake.snapEnabledChanges.map(\.enabled) == [enabled])
+        #expect(fake.snapEnabledChanges.map(\.windowID) == [1])
     }
 
     @Test func createsTheTrayIconWithFourEntriesInOrderOnStart() {

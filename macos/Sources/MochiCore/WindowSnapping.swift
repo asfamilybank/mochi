@@ -6,6 +6,10 @@ import Foundation
 /// *current* position, which is what gives "drag past the threshold to release" its non-sticky
 /// feel without any extra locked/unlocked state to track.
 public enum WindowSnapping {
+    /// The distance an edge snaps from. Deliberately a constant rather than a config field
+    /// (ADR-0012): it is a number nobody can judge by feel, so exposing it only invites fiddling.
+    /// Tuning it means editing this line and rebuilding — the privilege of an app you wrote for
+    /// yourself.
     public static let defaultThreshold: Double = 16
 
     public static func snappedFrame(

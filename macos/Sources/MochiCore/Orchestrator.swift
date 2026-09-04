@@ -53,7 +53,7 @@ public final class Orchestrator {
             platformOps.applyZoom(zoom, in: window)
         }
         platformOps.setToolbarVisible(true, in: window)
-        platformOps.setSnapThreshold(config.snapThreshold, in: window)
+        platformOps.setSnapEnabled(config.isSnapEnabled, in: window)
         platformOps.onWindowWillClose(window) { [weak self] in
             self?.persistCurrentWindowState()
         }

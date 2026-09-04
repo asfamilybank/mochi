@@ -24,7 +24,9 @@ public struct WidgetConfig: Equatable {
     /// Ghost Mode's mouse-entered avoidance (ADR-0012), on by default. Only reachable by
     /// hand-editing the config file until the settings panel grows a switch for it.
     public var isMouseAvoidanceEnabled: Bool
-    public var snapThreshold: Double
+    /// Magnetic edge/corner snapping while dragging (#6), on by default. Same story as
+    /// `isMouseAvoidanceEnabled`: data layer here, settings-panel switch later.
+    public var isSnapEnabled: Bool
     public var hotkeyMappings: [HotkeyMapping]
     public var startupTarget: StartupTarget?
     /// Built-in scripts (`BuiltInScripts.all`) the user has turned off via the settings panel
@@ -35,7 +37,7 @@ public struct WidgetConfig: Equatable {
     public init(
         url: URL? = nil, windowState: WindowState? = nil, customScript: String? = nil,
         ghostOpacity: Double = WidgetConfig.defaultGhostOpacity, isMouseAvoidanceEnabled: Bool = true,
-        snapThreshold: Double = WindowSnapping.defaultThreshold,
+        isSnapEnabled: Bool = true,
         hotkeyMappings: [HotkeyMapping] = [], startupTarget: StartupTarget? = nil,
         disabledBuiltInScriptIDs: Set<String> = []
     ) {
@@ -44,7 +46,7 @@ public struct WidgetConfig: Equatable {
         self.customScript = customScript
         self.ghostOpacity = ghostOpacity
         self.isMouseAvoidanceEnabled = isMouseAvoidanceEnabled
-        self.snapThreshold = snapThreshold
+        self.isSnapEnabled = isSnapEnabled
         self.hotkeyMappings = hotkeyMappings
         self.startupTarget = startupTarget
         self.disabledBuiltInScriptIDs = disabledBuiltInScriptIDs
@@ -77,7 +79,7 @@ extension WidgetConfig {
             customScript: table["custom_script"]?.string,
             ghostOpacity: table["ghost_opacity"]?.double ?? defaultGhostOpacity,
             isMouseAvoidanceEnabled: table["mouse_avoidance_enabled"]?.bool ?? true,
-            snapThreshold: table["snap_threshold"]?.double ?? WindowSnapping.defaultThreshold,
+            isSnapEnabled: table["snap_enabled"]?.bool ?? true,
             hotkeyMappings: parseHotkeyMappings(from: table["hotkey_mappings"]?.array),
             startupTarget: parseStartupTarget(from: table["startup_target"]?.table),
             disabledBuiltInScriptIDs: Set(table["disabled_built_in_scripts"]?.array?.compactMap(\.string) ?? [])
@@ -160,7 +162,7 @@ extension WidgetConfig {
         }
         table["ghost_opacity"] = ghostOpacity
         table["mouse_avoidance_enabled"] = isMouseAvoidanceEnabled
-        table["snap_threshold"] = snapThreshold
+        table["snap_enabled"] = isSnapEnabled
         if let customScript {
             table["custom_script"] = customScript
         }

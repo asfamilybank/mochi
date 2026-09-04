@@ -119,8 +119,11 @@ public protocol PlatformOps: AnyObject {
     /// fail silently.
     func presentAlert(title: String, message: String)
 
-    /// Sets the magnetic edge/corner snap distance (#6) applied on every drag step.
-    func setSnapThreshold(_ threshold: Double, in window: WidgetWindowHandle)
+    /// Turns magnetic edge/corner snapping (#6) on or off for interactive drags. The distance it
+    /// snaps from is a `WindowSnapping` constant, not a setting — a knob whose effect nobody can
+    /// judge is worse than no knob (ADR-0012). Snapping is inherently Normal-Mode-only: it acts
+    /// during a manual drag, and a Ghost Mode window is click-through and usually invisible.
+    func setSnapEnabled(_ enabled: Bool, in window: WidgetWindowHandle)
 
     /// Creates the app's persistent menu-bar (tray) icon (#9) — present for the app's entire
     /// lifetime regardless of Normal/Ghost Mode — populated with `items` in order. Not tied to a

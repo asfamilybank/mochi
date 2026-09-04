@@ -494,8 +494,8 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         mouseInsideChangedHandler = handler
     }
 
-    func setSnapThreshold(_ threshold: Double) {
-        (window as? MochiWidgetWindow)?.snapThreshold = threshold
+    func setSnapEnabled(_ enabled: Bool) {
+        (window as? MochiWidgetWindow)?.isSnapEnabled = enabled
     }
 
     /// A tracking area on the whole content view is what lets Ghost Mode detect the mouse moving
@@ -619,16 +619,16 @@ extension AppKitWidgetWindowHandle: NSToolbarDelegate {
 /// the window, which fought AppKit's own drag loop (each one re-correcting the other) and caused
 /// visible jitter during a slow drag; this doesn't have a second authority to fight.
 final class MochiWidgetWindow: NSWindow {
-    var snapThreshold = WindowSnapping.defaultThreshold
+    var isSnapEnabled = true
 
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
         let constrained = super.constrainFrameRect(frameRect, to: screen)
+        guard isSnapEnabled else { return constrained }
         // Only snap a pure move — during an active resize the frame's size is still changing,
         // and naively adjusting the origin then would fight the edge the user is dragging.
         guard constrained.size == frame.size else { return constrained }
         let screens = NSScreen.screens.map(\.visibleFrame)
-        let snapped = WindowSnapping.snappedFrame(
-            WindowFrame(cgRect: constrained), toEdgesOf: screens, threshold: snapThreshold)
+        let snapped = WindowSnapping.snappedFrame(WindowFrame(cgRect: constrained), toEdgesOf: screens)
         return snapped.cgRect
     }
 }
@@ -975,9 +975,9 @@ public final class AppKitPlatformOps: PlatformOps {
         alert.runModal()
     }
 
-    public func setSnapThreshold(_ threshold: Double, in window: WidgetWindowHandle) {
+    public func setSnapEnabled(_ enabled: Bool, in window: WidgetWindowHandle) {
         guard let handle = handle(for: window) else { return }
-        handle.setSnapThreshold(threshold)
+        handle.setSnapEnabled(enabled)
     }
 
     /// The tray icon glyph is `DesignIcon.ghost` — Mochi's existing hand-drawn mascot vector —

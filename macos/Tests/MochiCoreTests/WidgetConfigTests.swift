@@ -192,12 +192,34 @@ import Testing
         #expect(reparsed == original)
     }
 
-    @Test func snapThresholdDefaultsToWindowSnappingsDefaultWhenAbsent() throws {
+    @Test func snapDefaultsToEnabledWhenAbsent() throws {
         let config = try WidgetConfig.parse("url = \"https://example.com\"")
-        #expect(config.snapThreshold == WindowSnapping.defaultThreshold)
+        #expect(config.isSnapEnabled == true)
     }
 
-    @Test func parsesSnapThresholdWhenPresent() throws {
+    @Test func parsesSnapEnabledWhenPresent() throws {
+        let toml = """
+        url = "https://example.com"
+        snap_enabled = false
+        """
+
+        let config = try WidgetConfig.parse(toml)
+
+        #expect(config.isSnapEnabled == false)
+    }
+
+    @Test func serializingThenReparsingRoundTripsSnapEnabled() throws {
+        let original = WidgetConfig(url: URL(string: "https://example.com")!, isSnapEnabled: false)
+
+        let reparsed = try WidgetConfig.parse(original.serialized())
+
+        #expect(reparsed == original)
+    }
+
+    @Test func ignoresALeftOverSnapThresholdKeyInsteadOfThrowing() throws {
+        // The threshold stopped being configurable (ADR-0012) — a knob whose effect nobody can
+        // judge. As with `pinned`, no migration: unknown keys are ignored on load and dropped on
+        // the next write.
         let toml = """
         url = "https://example.com"
         snap_threshold = 24.0
@@ -205,15 +227,8 @@ import Testing
 
         let config = try WidgetConfig.parse(toml)
 
-        #expect(config.snapThreshold == 24.0)
-    }
-
-    @Test func serializingThenReparsingRoundTripsSnapThreshold() throws {
-        let original = WidgetConfig(url: URL(string: "https://example.com")!, snapThreshold: 32)
-
-        let reparsed = try WidgetConfig.parse(original.serialized())
-
-        #expect(reparsed == original)
+        #expect(config.url == URL(string: "https://example.com")!)
+        #expect(!config.serialized().contains("snap_threshold"))
     }
 
     @Test func hotkeyMappingsIsEmptyWhenAbsent() throws {
