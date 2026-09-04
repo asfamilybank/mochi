@@ -84,9 +84,6 @@ public final class Orchestrator {
 
         let ghostModeController = GhostModeController(platformOps: platformOps, window: window, ghostOpacity: config.ghostOpacity)
         self.ghostModeController = ghostModeController
-        platformOps.onSummonedToolbarGhostModeToggleRequested(window) { [weak ghostModeController] in
-            ghostModeController?.toggle()
-        }
         // Registered before `HotkeyForwarder` so its claimed combos can be passed down as
         // `reservedTriggers` — a user-configured mapping colliding with one of these must be
         // skipped, not registered a second time alongside it (see `HotkeyForwarder`'s doc comment).
@@ -110,7 +107,7 @@ public final class Orchestrator {
         ])
     }
 
-    /// Registers Ghost Mode's toggle + summon-toolbar hotkeys and #12's six utility hotkeys as a
+    /// Registers Ghost Mode's toggle hotkey and #12's utility hotkeys as a
     /// single batch, reusing `registerGlobalHotkey`'s existing conflict detection — failures are
     /// collected into one alert rather than one modal dialog per conflicting hotkey, since several
     /// could plausibly collide with other apps at once. Returns only the combos that actually
@@ -121,9 +118,6 @@ public final class Orchestrator {
             ("切换 Ghost Mode", DefaultHotkeys.toggleGhostMode, { [weak self, weak ghostModeController] in
                 ghostModeController?.toggle()
                 self?.clearQuickHideIfNeeded()
-            }),
-            ("召唤工具栏", DefaultHotkeys.summonToolbar, { [weak ghostModeController] in
-                ghostModeController?.toggleSummonedToolbar()
             }),
             ("刷新页面", DefaultHotkeys.reloadPage, { [weak self] in self?.handleReloadHotkey() }),
             ("放大网页", DefaultHotkeys.zoomIn, { [weak self] in self?.handleZoomHotkey(step: Self.zoomStep) }),

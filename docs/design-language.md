@@ -8,7 +8,7 @@
 
 ## 材质与色彩
 
-- **玻璃材质**：Liquid Glass——`backdrop-filter: blur() saturate(180%)` 的模糊 + 饱和度提升，内嵌 1px 高光边（浅色顶部白色高光，深色顶部低透明度白色高光），外加轻微投影。用在自绘工具栏胶囊、Ghost Mode 召唤浮层、空页面的抽象构图panel上。
+- **玻璃材质**：Liquid Glass——`backdrop-filter: blur() saturate(180%)` 的模糊 + 饱和度提升，内嵌 1px 高光边（浅色顶部白色高光，深色顶部低透明度白色高光），外加轻微投影。用在空页面的抽象构图 panel 上。
 - **强调色**：跟随系统 accentColor（`NSColor.controlAccentColor` / SwiftUI `Color.accentColor`），不写死一个品牌色——用户在系统设置里选的强调色应该能同步影响 Pin/Ghost Mode 切换按钮的激活态染色。视觉稿里用一个可调色板模拟这几个 macOS 系统强调色选项，默认 **Orange `#FF9500`**：
   - Orange `#FF9500`（默认）
   - Blue `#007AFF`
@@ -24,7 +24,7 @@
 
 ## 窗口与工具栏
 
-**Normal Mode**：原生标题栏与工具栏合并为同一行——traffic lights（关闭/最小化/最大化）与工具栏按钮、地址栏显示在同一水平高度，标题文字完全不可视化渲染（`NSWindow.titleVisibility = .hidden`）。技术上通过原生 `NSToolbar`（`titlebarAppearsTransparent` + `.unified` 样式，整行实测 52pt；`.unifiedCompact` 会把整行钉死在 40pt，见 ADR-0011 的实测记录）实现，这一整行的 Liquid Glass 材质由系统原生渲染（macOS 26 上标准 AppKit 控件默认即真 Liquid Glass），不额外包自定义玻璃层；`NSGlassEffectView` 只保留给 Ghost Mode 召唤浮层、空页面抽象构图 panel 这两处脱离原生 chrome 的自绘内容。整体观感直接对标 Safari 的 unified toolbar，见 [ADR-0009](adr/0009-unified-native-toolbar-chrome.md)（取代 [ADR-0004](adr/0004-native-chrome-plus-custom-toolbar.md) 的两行式布局）具体结构与响应式收纳细节见 [ADR-0011](adr/0011-normal-mode-toolbar-safari-alignment.md)。
+**Normal Mode**：原生标题栏与工具栏合并为同一行——traffic lights（关闭/最小化/最大化）与工具栏按钮、地址栏显示在同一水平高度，标题文字完全不可视化渲染（`NSWindow.titleVisibility = .hidden`）。技术上通过原生 `NSToolbar`（`titlebarAppearsTransparent` + `.unified` 样式，整行实测 52pt；`.unifiedCompact` 会把整行钉死在 40pt，见 ADR-0011 的实测记录）实现，这一整行的 Liquid Glass 材质由系统原生渲染（macOS 26 上标准 AppKit 控件默认即真 Liquid Glass），不额外包自定义玻璃层；`NSGlassEffectView` 只保留给空页面抽象构图 panel 这一处脱离原生 chrome 的自绘内容。整体观感直接对标 Safari 的 unified toolbar，见 [ADR-0009](adr/0009-unified-native-toolbar-chrome.md)（取代 [ADR-0004](adr/0004-native-chrome-plus-custom-toolbar.md) 的两行式布局）具体结构与响应式收纳细节见 [ADR-0011](adr/0011-normal-mode-toolbar-safari-alignment.md)。
 
 工具栏下方新增一条加载进度条：绑定 `WKWebView.estimatedProgress` 真实加载进度，2pt 高、系统强调色，从左到右填充，加载完成后短暂淡出消失，不加载时不占用界面空间（不是常驻灰色轨道）。
 
@@ -42,8 +42,6 @@ Pin 和设置各自独立、不共享背景胶囊。窗口变窄放不下时，�
 见 [issue #4](https://github.com/asfamilybank/mochi/issues/4)。
 
 **Ghost Mode 纯净态**：完全无边框、无原生装饰、无工具栏，只剩网页内容，按目标透明度渐隐；鼠标移入窗口区域整个窗口直接消失。见 [issue #8](https://github.com/asfamilybank/mochi/issues/8)。
-
-**Ghost Mode 召唤工具栏**：固定在窗口顶部居中的悬浮 Liquid Glass 胶囊，不改变窗口尺寸，不影响底下内容的透明度（内容仍按 Ghost Mode 的目标透明度显示，只有工具栏本身是满不透明、可交互的）。只保留三个按钮——**Pin、Ghost Mode 切换、刷新**——刻意不含地址栏和前进/后退：召唤态是"临时应急操作"，不提供导航能力。见 [issue #10](https://github.com/asfamilybank/mochi/issues/10)。
 
 **空页面**（对标 Chrome 新标签页，见 [issue #16](https://github.com/asfamilybank/mochi/issues/16)）：完整的 Normal Mode 窗口（标题栏 + 全套工具栏），地址栏在空态下显示占位提示文字 + 放大镜图标（而不是锁形图标）。内容区是一个不依赖 App 图标的抽象 Liquid Glass 构图（两片半透明圆角面板叠加、轻微旋转错位），下方是一个视觉弱化（低透明度、小字号）的默认热键速览，不含独立的 URL 输入框——导航统一走工具栏自带的地址栏。
 

@@ -2,13 +2,11 @@
   "artboards": [
     { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1440, "h": 900 },
     { "file": "GhostMode.dc.html", "x": 1520, "y": 0, "w": 1440, "h": 900 },
-    { "file": "GhostToolbar.dc.html", "x": 0, "y": 1140, "w": 1440, "h": 900 },
     { "file": "EmptyPage.dc.html", "x": 1520, "y": 1140, "w": 1440, "h": 900 }
   ],
   "annotations": [
     { "id": "note-main", "x": 0, "y": -70, "w": 460, "text": "Normal Mode — 原生标题栏 + Liquid Glass 工具栏（可编辑地址栏 / 前进后退 / 刷新 / Pin / Ghost Mode 切换 / 设置）" },
     { "id": "note-ghost", "x": 1520, "y": -70, "w": 460, "text": "Ghost Mode 纯净态 — 无装饰，按目标透明度渐隐；鼠标移入窗口区域整个窗口消失，阴影随透明度一起变淡" },
-    { "id": "note-ghost-toolbar", "x": 0, "y": 960, "w": 460, "text": "Ghost Mode 召唤工具栏 — 临时浮层，只保留 Pin / Ghost Mode 切换 / 刷新，不含导航" },
     { "id": "note-empty", "x": 1520, "y": 960, "w": 460, "text": "空页面 — 无网址时的默认落地页，对标 Chrome 新标签页，可在设置里显式选为启动项" }
   ],
   "launch": { "view": "canvas" }

@@ -130,17 +130,6 @@ public protocol PlatformOps: AnyObject {
     /// Mode can leave every window fully hidden with no other way to reach a quit control.
     func terminateApp()
 
-    /// Shows/hides Ghost Mode's summoned toolbar overlay (#10) — a small floating capsule built
-    /// from its own button instances, independent of the Normal Mode toolbar, that floats above
-    /// the page without resizing or repositioning the window.
-    func setSummonedToolbarVisible(_ visible: Bool, in window: WidgetWindowHandle)
-
-    /// Registers a handler invoked when the user clicks the summoned toolbar's Ghost Mode toggle
-    /// button. Routed back through the caller (`GhostModeController.toggle()`) rather than
-    /// handled inside the window itself, since — unlike Pin/Refresh — the overlay view has no
-    /// self-contained notion of Ghost Mode to flip.
-    func onSummonedToolbarGhostModeToggleRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void)
-
     /// Reloads the widget's currently-loaded page — the default 刷新页面 hotkey's (#12) action.
     func reloadPage(in window: WidgetWindowHandle)
 

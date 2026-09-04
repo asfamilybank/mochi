@@ -78,20 +78,9 @@ import Testing
         ])
     }
 
-    @Test func ghostModeSummonedToolbarOmitsNavigationControls() {
-        #expect(DesignTokens.ghostModeSummonedToolbarOrder == [.pin, .ghostModeToggle, .refresh])
-        #expect(!DesignTokens.ghostModeSummonedToolbarOrder.contains(.addressField))
-        #expect(!DesignTokens.ghostModeSummonedToolbarOrder.contains(.back))
-        #expect(!DesignTokens.ghostModeSummonedToolbarOrder.contains(.forward))
-    }
-
     @Test func addressFieldGlyphSwitchesOnWhetherAPageIsLoaded() {
         #expect(DesignTokens.addressFieldGlyph(hasLoadedPage: true) == .lock)
         #expect(DesignTokens.addressFieldGlyph(hasLoadedPage: false) == .search)
-    }
-
-    @Test func toolbarCapsuleHeightIsDerivedFromButtonSizeAndPadding() {
-        #expect(DesignTokens.Layout.toolbarCapsuleHeight == 42)
     }
 
     @Test func fontFamilyIsTheSystemFontNotACustomBrandTypeface() {

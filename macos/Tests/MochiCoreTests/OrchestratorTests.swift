@@ -238,7 +238,6 @@ import Testing
         #expect(
             fake.registeredHotkeys == [
                 DefaultHotkeys.toggleGhostMode,
-                DefaultHotkeys.summonToolbar,
                 DefaultHotkeys.reloadPage,
                 DefaultHotkeys.zoomIn,
                 DefaultHotkeys.zoomOut,
@@ -364,46 +363,6 @@ import Testing
 
         #expect(fake.terminateAppCallCount == 1)
     }
-
-    // MARK: - #10: Ghost Mode toolbar summon
-
-    @Test func pressingTheSummonToolbarHotkeyDoesNothingInNormalMode() {
-        let fake = FakePlatformOps()
-        let orchestrator = Orchestrator(platformOps: fake)
-        let config = WidgetConfig(url: URL(string: "https://example.com")!)
-        orchestrator.start(config: config)
-
-        fake.simulateHotkeyPressed(DefaultHotkeys.summonToolbar)
-
-        #expect(fake.summonedToolbarVisibilityChanges.isEmpty)
-    }
-
-    @Test func pressingTheSummonToolbarHotkeyInGhostModeShowsTheOverlayAndDisablesPassthrough() {
-        let fake = FakePlatformOps()
-        let orchestrator = Orchestrator(platformOps: fake)
-        let config = WidgetConfig(url: URL(string: "https://example.com")!)
-        orchestrator.start(config: config)
-        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
-
-        fake.simulateHotkeyPressed(DefaultHotkeys.summonToolbar)
-
-        #expect(fake.summonedToolbarVisibilityChanges.map(\.visible) == [true])
-        #expect(fake.mousePassthroughChanges.map(\.enabled) == [true, false])
-    }
-
-    @Test func clickingTheSummonedToolbarsGhostModeToggleButtonTogglesGhostModeThroughPlatformOps() {
-        let fake = FakePlatformOps()
-        let orchestrator = Orchestrator(platformOps: fake)
-        let config = WidgetConfig(url: URL(string: "https://example.com")!, ghostOpacity: 0.3)
-        orchestrator.start(config: config)
-
-        fake.simulateSummonedToolbarGhostModeToggleRequested()
-
-        #expect(fake.mousePassthroughChanges.map(\.enabled) == [true])
-        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.3])
-    }
-
-    // MARK: - #12: default utility hotkeys
 
     @Test func pressingTheReloadHotkeyReloadsThePageThroughPlatformOps() {
         let fake = FakePlatformOps()

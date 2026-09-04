@@ -25,7 +25,6 @@ final class FakePlatformOps: PlatformOps {
     private(set) var snapThresholdChanges: [(threshold: Double, windowID: Int)] = []
     private(set) var trayMenuItems: [TrayMenuItem] = []
     private(set) var terminateAppCallCount = 0
-    private(set) var summonedToolbarVisibilityChanges: [(visible: Bool, windowID: Int)] = []
     private(set) var reloadedWindowIDs: [Int] = []
     private(set) var windowFrameChanges: [(frame: WindowFrame, windowID: Int)] = []
     private(set) var accessibilityPermissionRequestCount = 0
@@ -37,7 +36,6 @@ final class FakePlatformOps: PlatformOps {
     private var settingsRequestedHandlers: [Int: () -> Void] = [:]
     private var navigationFinishedHandlers: [Int: () -> Void] = [:]
     private var mouseEnteredHandlers: [Int: () -> Void] = [:]
-    private var summonedToolbarGhostModeToggleHandlers: [Int: () -> Void] = [:]
     private var pageTitleChangedHandlers: [Int: (String?) -> Void] = [:]
     private var loadingStateChangedHandlers: [Int: (Bool) -> Void] = [:]
     private var loadingProgressChangedHandlers: [Int: (Double) -> Void] = [:]
@@ -209,20 +207,6 @@ final class FakePlatformOps: PlatformOps {
 
     func terminateApp() {
         terminateAppCallCount += 1
-    }
-
-    func setSummonedToolbarVisible(_ visible: Bool, in window: WidgetWindowHandle) {
-        let handle = window as! FakeWidgetWindowHandle
-        summonedToolbarVisibilityChanges.append((visible, handle.id))
-    }
-
-    func onSummonedToolbarGhostModeToggleRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {
-        let handle = window as! FakeWidgetWindowHandle
-        summonedToolbarGhostModeToggleHandlers[handle.id] = handler
-    }
-
-    func simulateSummonedToolbarGhostModeToggleRequested(windowID: Int = 1) {
-        summonedToolbarGhostModeToggleHandlers[windowID]?()
     }
 
     func reloadPage(in window: WidgetWindowHandle) {

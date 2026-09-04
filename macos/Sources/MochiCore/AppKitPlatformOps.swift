@@ -24,10 +24,6 @@ private enum ToolbarStyle {
         dynamicColor(light: DesignTokens.glassPalette(dark: false).iconPrimary, dark: DesignTokens.glassPalette(dark: true).iconPrimary)
     }
 
-    static func glassTint() -> NSColor {
-        dynamicColor(light: DesignTokens.glassPalette(dark: false).glassFill, dark: DesignTokens.glassPalette(dark: true).glassFill)
-    }
-
     /// Renders a `DesignIcon`'s path as a stroked template image (uniform stroke weight, round
     /// caps/joins — matching `DesignIcon`'s own documented SF Symbols-style geometry), so
     /// `NSButton.contentTintColor` can tint it like any system template image.
@@ -135,18 +131,6 @@ fileprivate struct ToolbarControls {
     let pinButton: NSButton
 }
 
-/// Ghost Mode's summoned toolbar overlay's (#10) controls — a deliberately separate set of
-/// button instances from `ToolbarControls`, per the ticket's design decision that the overlay
-/// must not reuse the Normal Mode toolbar's component, even though both wire the same
-/// `togglePinned`/`reload` actions on `AppKitWidgetWindowHandle`. Order matches
-/// `DesignTokens.ghostModeSummonedToolbarOrder`. Unaffected by ADR-0009 — still its own floating
-/// `NSGlassEffectView` capsule, independent of the Normal Mode toolbar's native chrome.
-fileprivate struct SummonedToolbarControls {
-    let pinButton: NSButton
-    let ghostModeToggleButton: NSButton
-    let refreshButton: NSButton
-}
-
 /// The Loading Progress Bar (#18): a thin line docked to the content area's top edge, overlaid
 /// on top of `webView`/the Empty Page rather than reserving its own layout row — matching
 /// design-language.md's "不加载时不占用界面空间". `widthConstraint`'s `constant` is driven
@@ -193,8 +177,6 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     let window: NSWindow
     let webView: WKWebView
     private let controls: ToolbarControls
-    private let summonedToolbarContainer: NSView
-    private let summonedControls: SummonedToolbarControls
     private let progressBar: LoadingProgressBar
     /// The Empty Page's (#16) native content, occupying the same slot as `webView` inside
     /// `contentContainer` — exactly one of the two is visible at a time, toggled by `loadURL`/
@@ -207,7 +189,6 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     private var settingsRequestedHandler: (() -> Void)?
     private var navigationFinishedHandler: (() -> Void)?
     private var mouseEnteredHandler: (() -> Void)?
-    private var summonedGhostModeToggleHandler: (() -> Void)?
     private var pageTitleChangedHandler: ((String?) -> Void)?
     private var loadingStateChangedHandler: ((Bool) -> Void)?
     private var loadingProgressChangedHandler: ((Double) -> Void)?
@@ -230,15 +211,11 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     private var accentColorObserver: NSObjectProtocol?
 
     fileprivate init(
-        window: NSWindow, webView: WKWebView, controls: ToolbarControls,
-        summonedToolbarContainer: NSView, summonedControls: SummonedToolbarControls,
-        emptyPageHostingView: NSHostingView<EmptyPageView>, progressBar: LoadingProgressBar
+        window: NSWindow, webView: WKWebView, controls: ToolbarControls, emptyPageHostingView: NSHostingView<EmptyPageView>, progressBar: LoadingProgressBar
     ) {
         self.window = window
         self.webView = webView
         self.controls = controls
-        self.summonedToolbarContainer = summonedToolbarContainer
-        self.summonedControls = summonedControls
         self.emptyPageHostingView = emptyPageHostingView
         self.progressBar = progressBar
         self.defaultWindowBackgroundColor = window.backgroundColor
@@ -259,20 +236,9 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         controls.pinButton.action = #selector(togglePinned)
         controls.pinButton.wantsLayer = true
         controls.pinButton.layer?.cornerRadius = DesignTokens.Layout.normalModeToolbarButtonDiameter / 2
-        summonedControls.refreshButton.target = self
-        summonedControls.refreshButton.action = #selector(reload)
-        summonedControls.pinButton.target = self
-        summonedControls.pinButton.action = #selector(togglePinned)
-        summonedControls.pinButton.wantsLayer = true
-        summonedControls.pinButton.layer?.cornerRadius = DesignTokens.Layout.toolbarButtonDiameter / 2
-        summonedControls.ghostModeToggleButton.target = self
-        summonedControls.ghostModeToggleButton.action = #selector(handleSummonedGhostModeToggle)
-        summonedControls.ghostModeToggleButton.wantsLayer = true
-        summonedControls.ghostModeToggleButton.layer?.cornerRadius = DesignTokens.Layout.toolbarButtonDiameter / 2
         observeNavigationState()
         updateEmbeddedRefreshIconVisibility()
         updatePinButtonAppearance()
-        updateSummonedGhostModeToggleAppearance()
         updateProgressBarColor()
         // The Pin capsule's tint (and the progress bar's fill) are baked into CALayer colors (not
         // dynamic NSColors), so unlike everywhere else in this file they need to be re-applied
@@ -280,14 +246,12 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         // of re-resolving for free at draw time.
         appearanceObservation = window.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
             self?.updatePinButtonAppearance()
-            self?.updateSummonedGhostModeToggleAppearance()
             self?.updateProgressBarColor()
         }
         accentColorObserver = NotificationCenter.default.addObserver(
             forName: NSColor.systemColorsDidChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
             self?.updatePinButtonAppearance()
-            self?.updateSummonedGhostModeToggleAppearance()
             self?.updateProgressBarColor()
         }
     }
@@ -352,9 +316,9 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         }
     }
 
-    /// Not `private` — shared as the target-action for both the Normal Mode toolbar's refresh
-    /// button and the summoned overlay's own refresh button (#10), and called directly by
-    /// `AppKitPlatformOps.reloadPage(in:)` for the default 刷新页面 hotkey (#12).
+    /// Not `private` — the target-action for the Normal Mode toolbar's embedded refresh button,
+    /// and called directly by `AppKitPlatformOps.reloadPage(in:)` for the default 刷新页面
+    /// hotkey (#12).
     @objc func reload() {
         webView.reload()
     }
@@ -381,7 +345,6 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// "工具栏与工具栏"). Inactive state falls back to the plain toolbar icon tint.
     private func updatePinButtonAppearance() {
         applyPinAppearance(to: controls.pinButton)
-        applyPinAppearance(to: summonedControls.pinButton)
     }
 
     private func applyPinAppearance(to button: NSButton) {
@@ -397,19 +360,6 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
             layer.borderWidth = 0
             button.contentTintColor = ToolbarStyle.iconTint()
         }
-    }
-
-    /// The summoned overlay's Ghost Mode toggle button (#10) always renders in the same tinted
-    /// "active" style Pin uses when on — the overlay only ever appears while Ghost Mode already
-    /// is active (`GhostModeController.toggleSummonedToolbar`'s guard), so there is no "off" state
-    /// for this particular button to represent while it's visible at all.
-    private func updateSummonedGhostModeToggleAppearance() {
-        guard let layer = summonedControls.ghostModeToggleButton.layer else { return }
-        let tint = DesignTokens.accentTint(DesignTokens.resolveSystemAccent())
-        layer.backgroundColor = NSColor(rgba: tint.background).cgColor
-        layer.borderWidth = 1
-        layer.borderColor = NSColor(rgba: tint.border).cgColor
-        summonedControls.ghostModeToggleButton.contentTintColor = NSColor(rgba: tint.icon)
     }
 
     /// The Loading Progress Bar's fill color, system accent — baked into a `CALayer` (see the
@@ -558,18 +508,6 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
 
     func setToolbarVisible(_ visible: Bool) {
         window.toolbar?.isVisible = visible
-    }
-
-    func setSummonedToolbarVisible(_ visible: Bool) {
-        summonedToolbarContainer.isHidden = !visible
-    }
-
-    func setSummonedGhostModeToggleHandler(_ handler: @escaping () -> Void) {
-        summonedGhostModeToggleHandler = handler
-    }
-
-    @objc private func handleSummonedGhostModeToggle() {
-        summonedGhostModeToggleHandler?()
     }
 
     func setFrame(_ frame: WindowFrame) {
@@ -811,7 +749,6 @@ public final class AppKitPlatformOps: PlatformOps {
 
         let controls = makeToolbarControls()
         let progressBar = makeLoadingProgressBar()
-        let (summonedToolbarContainer, summonedControls) = makeSummonedToolbarOverlay()
 
         // The progress bar overlays the top edge of the content area (added after it, so it
         // draws on top) instead of occupying its own row — it takes no layout space while hidden.
@@ -819,10 +756,6 @@ public final class AppKitPlatformOps: PlatformOps {
         rootView.translatesAutoresizingMaskIntoConstraints = false
         rootView.addSubview(contentContainer)
         rootView.addSubview(progressBar.view)
-        // A plain `addSubview`, not part of any stack's managed layout — this floats above
-        // `webView` in z-order without joining layout, which is what lets it appear/disappear
-        // without resizing or reflowing the window's content (#10's AC).
-        rootView.addSubview(summonedToolbarContainer)
         NSLayoutConstraint.activate([
             contentContainer.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
             contentContainer.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
@@ -830,9 +763,6 @@ public final class AppKitPlatformOps: PlatformOps {
             contentContainer.bottomAnchor.constraint(equalTo: rootView.bottomAnchor),
             progressBar.view.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
             progressBar.view.topAnchor.constraint(equalTo: rootView.topAnchor),
-            summonedToolbarContainer.centerXAnchor.constraint(equalTo: rootView.centerXAnchor),
-            summonedToolbarContainer.topAnchor.constraint(
-                equalTo: rootView.topAnchor, constant: DesignTokens.Layout.ghostModeSummonedToolbarTopMargin),
         ])
 
         let window = MochiWidgetWindow(
@@ -857,7 +787,6 @@ public final class AppKitPlatformOps: PlatformOps {
 
         let handle = AppKitWidgetWindowHandle(
             window: window, webView: webView, controls: controls,
-            summonedToolbarContainer: summonedToolbarContainer, summonedControls: summonedControls,
             emptyPageHostingView: emptyPageHostingView, progressBar: progressBar
         )
 
@@ -868,42 +797,6 @@ public final class AppKitPlatformOps: PlatformOps {
         window.toolbar = toolbar
 
         return handle
-    }
-
-    /// Ghost Mode's summoned toolbar overlay (#10): a small floating glass capsule holding only
-    /// Pin, Ghost Mode toggle, and Refresh (`DesignTokens.ghostModeSummonedToolbarOrder`) — its
-    /// own dedicated view built from fresh button instances, independent of the Normal Mode
-    /// toolbar's (per the ticket's design decision), matching
-    /// `design/mochi/GhostToolbar.dc.html`'s layout. Starts hidden. Unaffected by ADR-0009.
-    private func makeSummonedToolbarOverlay() -> (container: NSView, controls: SummonedToolbarControls) {
-        let pinButton = toolbarButton(icon: .pin, accessibilityDescription: "置顶", diameter: DesignTokens.Layout.toolbarButtonDiameter)
-        let ghostModeToggleButton = toolbarButton(
-            icon: .ghost, accessibilityDescription: "退出 Ghost Mode", diameter: DesignTokens.Layout.toolbarButtonDiameter)
-        let refreshButton = toolbarButton(icon: .refresh, accessibilityDescription: "刷新", diameter: DesignTokens.Layout.toolbarButtonDiameter)
-
-        let buttonsStack = NSStackView(views: [pinButton, ghostModeToggleButton, refreshButton])
-        buttonsStack.translatesAutoresizingMaskIntoConstraints = false
-        buttonsStack.orientation = .horizontal
-        buttonsStack.spacing = DesignTokens.Layout.toolbarButtonSpacing
-        buttonsStack.edgeInsets = NSEdgeInsets(
-            top: DesignTokens.Layout.toolbarInnerPaddingVertical,
-            left: DesignTokens.Layout.toolbarInnerPaddingHorizontal,
-            bottom: DesignTokens.Layout.toolbarInnerPaddingVertical,
-            right: DesignTokens.Layout.toolbarInnerPaddingHorizontal
-        )
-
-        let glass = NSGlassEffectView()
-        glass.translatesAutoresizingMaskIntoConstraints = false
-        glass.cornerRadius = DesignTokens.Layout.toolbarCapsuleCornerRadius
-        glass.tintColor = ToolbarStyle.glassTint()
-        glass.contentView = buttonsStack
-        glass.heightAnchor.constraint(equalToConstant: DesignTokens.Layout.toolbarCapsuleHeight).isActive = true
-        glass.isHidden = true
-
-        return (
-            glass,
-            SummonedToolbarControls(pinButton: pinButton, ghostModeToggleButton: ghostModeToggleButton, refreshButton: refreshButton)
-        )
     }
 
     /// Builds the Normal Mode toolbar's controls (ADR-0009/ADR-0011) — a standard `NSSearchField`
@@ -1059,16 +952,6 @@ public final class AppKitPlatformOps: PlatformOps {
     public func setToolbarVisible(_ visible: Bool, in window: WidgetWindowHandle) {
         guard let handle = handle(for: window) else { return }
         handle.setToolbarVisible(visible)
-    }
-
-    public func setSummonedToolbarVisible(_ visible: Bool, in window: WidgetWindowHandle) {
-        guard let handle = handle(for: window) else { return }
-        handle.setSummonedToolbarVisible(visible)
-    }
-
-    public func onSummonedToolbarGhostModeToggleRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {
-        guard let handle = handle(for: window) else { return }
-        handle.setSummonedGhostModeToggleHandler(handler)
     }
 
     public func reloadPage(in window: WidgetWindowHandle) {

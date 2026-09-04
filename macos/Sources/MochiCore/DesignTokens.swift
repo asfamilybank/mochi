@@ -6,8 +6,8 @@ import Foundation
 
 /// Single source of truth for Mochi's Liquid Glass visual language: colors, materials,
 /// corner radii/spacing, the Ghost Mode shadow-vs-opacity formula, and accent-color
-/// resolution. Every native view (Normal Mode toolbar, Ghost Mode summoned overlay, tray
-/// icon, Empty Page) should read its numbers from here instead of writing its own.
+/// resolution. Every native view (Normal Mode toolbar, tray icon, Empty Page) should read its
+/// numbers from here instead of writing its own.
 ///
 /// Values are transcribed from `design/mochi/*.dc.html`'s `renderVals()` (the canvas is the
 /// primary source; docs/design-language.md is its prose summary) — see that doc for the
@@ -182,16 +182,6 @@ public enum DesignTokens {
     public enum Layout {
         public static let windowCornerRadius: Double = 14
 
-        /// Retained only for Ghost Mode's summoned toolbar overlay (ADR-0009) — the Normal Mode
-        /// toolbar itself no longer draws an independent glass capsule, since it now lives inside
-        /// the native `NSToolbar` row and its Liquid Glass material is rendered by the system.
-        public static let toolbarCapsuleCornerRadius: Double = 16
-        public static let toolbarInnerPaddingHorizontal: Double = 8
-        public static let toolbarInnerPaddingVertical: Double = 6
-        public static let toolbarButtonSpacing: Double = 4
-        public static let toolbarButtonDiameter: Double = 30
-        public static let toolbarCapsuleHeight: Double = toolbarButtonDiameter + toolbarInnerPaddingVertical * 2
-
         /// The Normal Mode toolbar's own buttons (ADR-0009) — the back/forward segments plus Pin
         /// and settings. Sized against ADR-0011's Safari reference measurement (36×36 back/forward
         /// buttons inside a 52pt unified row), replacing ADR-0009's original 22pt estimate. The
@@ -230,11 +220,6 @@ public enum DesignTokens {
         /// full-height track, per docs/design-language.md.
         public static let loadingProgressBarHeight: Double = 2
 
-        /// The summoned toolbar overlay's (#10) distance from the window's top edge — measured
-        /// off `design/mochi/GhostToolbar.dc.html`'s `top:14px`; the Normal Mode toolbar's own
-        /// row is a native `NSToolbar` (ADR-0009) and has no comparable token.
-        public static let ghostModeSummonedToolbarTopMargin: Double = 14
-
         public static let emptyPageGlassPanelCornerRadius: Double = 24
 
         /// The uniform stroke weight `DesignIcon` paths are drawn with — matching
@@ -254,13 +239,6 @@ public enum DesignTokens {
     /// is fixed by the design canvas, not a free choice.
     public static let normalModeToolbarOrder: [ToolbarButton] = [
         .back, .forward, .addressField, .refresh, .pin, .ghostModeToggle, .settings,
-    ]
-
-    /// Ghost Mode's summoned floating toolbar deliberately carries only three controls —
-    /// no address bar, no back/forward — since it's a temporary emergency-access surface,
-    /// not a navigation UI.
-    public static let ghostModeSummonedToolbarOrder: [ToolbarButton] = [
-        .pin, .ghostModeToggle, .refresh,
     ]
 
     /// Which glyph the address bar's leading icon shows.

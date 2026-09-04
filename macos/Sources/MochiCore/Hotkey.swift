@@ -22,10 +22,6 @@ public enum DefaultHotkeys {
     /// ⌥⌘G — the default Normal/Ghost Mode toggle (#8). `0x05` is `kVK_ANSI_G`.
     public static let toggleGhostMode = Hotkey(keyCode: 0x05, modifierFlags: cmdOption)
 
-    /// ⌥⌘T — Ghost Mode's secondary hotkey (#10) that temporarily summons the floating toolbar
-    /// overlay without leaving Ghost Mode. `0x11` is `kVK_ANSI_T`.
-    public static let summonToolbar = Hotkey(keyCode: 0x11, modifierFlags: cmdOption)
-
     /// ⌥⌘R — reloads the page (#12). `0x0F` is `kVK_ANSI_R`.
     public static let reloadPage = Hotkey(keyCode: 0x0F, modifierFlags: cmdOption)
 
@@ -56,6 +52,6 @@ public enum DefaultHotkeys {
     /// handler for the same combo instead — see `HotkeyForwarder`'s doc comment), so registration
     /// success/failure alone cannot be used to detect a collision with one of these.
     public static let all: [Hotkey] = [
-        toggleGhostMode, summonToolbar, reloadPage, zoomIn, zoomOut, quickHideWidget, resizeWindow, togglePin,
+        toggleGhostMode, reloadPage, zoomIn, zoomOut, quickHideWidget, resizeWindow, togglePin,
     ]
 }
