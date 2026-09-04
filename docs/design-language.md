@@ -35,7 +35,7 @@
 4. Ghost Mode 切换（尚未实现，见 ADR-0011 的范围排除说明）
 5. 设置（"更多"入口，⋯）
 
-Pin 和设置各自独立、不共享背景胶囊。窗口变窄放不下时，接入原生 `NSToolbarItem.visibilityPriority` 自动收纳进"更多工具栏项"溢出菜单，优先级从高到低：地址栏 = 后退/前进分段控件 > Pin > 设置；窗口自身也有一个比 Safari 更小的最小宽度（440pt，按"只剩分段控件 + 地址栏最小宽度"反推）。实测 Pin 与设置是同一步一起收纳的，不是先后两步——原因见 [ADR-0011](adr/0011-normal-mode-toolbar-safari-alignment.md) 的实测记录。地址栏宽度实测区间 200–320pt。
+Pin 和设置各自独立、不共享背景胶囊。窗口变窄放不下时，接入原生 `NSToolbarItem.visibilityPriority` 自动收纳进"更多工具栏项"溢出菜单，优先级从高到低：地址栏 = 后退/前进分段控件 > Pin > 设置；窗口自身也有一个比 Safari 更小的最小宽度（440pt，按"只剩分段控件 + 地址栏最小宽度"反推）。设置先收、Pin 后收：为此设置项做成标准 `NSToolbarItem`（`image` + `action`），Pin 因为要保留强调色染色玻璃激活态仍是自绘视图——AppKit 会把相邻的一串自绘视图项一步全部收走，两个都自绘时逐个收纳做不到。实测"只剩 Pin"这一段只有约 4pt 宽（484–481pt），这是原生机制的上限，原因见 [ADR-0011](adr/0011-normal-mode-toolbar-safari-alignment.md) 的实测记录。地址栏宽度实测区间 200–320pt。
 
 窗口标题（`NSWindow.title`，供 Mission Control/Cmd-Tab 使用）动态跟随页面标题，取不到时兜底域名，再取不到兜底 `"Mochi"`（这一级不能为空）——这是 `NSWindow.title` 这个供 Mission Control/Cmd-Tab 读取的元数据本身的兜底值，跟上面"标题文字不可视化渲染"是两回事，互不影响。
 

@@ -128,8 +128,11 @@ fileprivate struct ToolbarControls {
     /// The refresh affordance embedded at `addressField`'s trailing edge (ADR-0011) — a subview
     /// of the field, not a toolbar item of its own the way it used to be.
     let addressFieldRefreshButton: NSButton
+    /// Pin stays a custom view because its active state is a hand-drawn accent-tinted glass
+    /// capsule (`applyPinAppearance`) that a stock `NSToolbarItem` can't express. Settings has no
+    /// such need, so it is a plain image+action `NSToolbarItem` built in the toolbar delegate —
+    /// which is also what makes it collapse *before* Pin (ADR-0011).
     let pinButton: NSButton
-    let settingsButton: NSButton
 }
 
 /// Ghost Mode's summoned toolbar overlay's (#10) controls — a deliberately separate set of
@@ -256,8 +259,6 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         controls.pinButton.action = #selector(togglePinned)
         controls.pinButton.wantsLayer = true
         controls.pinButton.layer?.cornerRadius = DesignTokens.Layout.normalModeToolbarButtonDiameter / 2
-        controls.settingsButton.target = self
-        controls.settingsButton.action = #selector(handleSettingsRequested)
         summonedControls.refreshButton.target = self
         summonedControls.refreshButton.action = #selector(reload)
         summonedControls.pinButton.target = self
@@ -714,7 +715,20 @@ extension AppKitWidgetWindowHandle: NSToolbarDelegate {
             item.label = "置顶"
             item.visibilityPriority = .standard
         case Self.settingsItemID:
-            item.view = controls.settingsButton
+            // Deliberately a stock image+action item rather than a custom view: measured
+            // (ADR-0011), AppKit sheds a run of adjacent custom-view items into the overflow menu
+            // in a single step, so as long as settings was also a view it could never collapse
+            // *before* Pin no matter how their priorities were set. As a stock item it sheds on
+            // its own, which is what story #9/#10's ordering asks for. docs/design-language.md
+            // documents this entry as the "更多" (⋯) affordance, hence `.moreHorizontal`.
+            //
+            // The cost of not being a view: a stock item has no `contentTintColor` and no fixed
+            // box, so this one glyph renders at AppKit's own control tint and metrics rather than
+            // `DesignTokens`' `iconPrimary`/`normalModeToolbarButtonDiameter` like Pin beside it.
+            // That is inherent to the mechanism, not an oversight — see ADR-0011.
+            item.image = ToolbarStyle.templateImage(for: .moreHorizontal, accessibilityDescription: "设置")
+            item.target = self
+            item.action = #selector(handleSettingsRequested)
             item.label = "设置"
             item.visibilityPriority = .low
         default:
@@ -949,12 +963,7 @@ public final class AppKitPlatformOps: PlatformOps {
             addressField: addressField,
             addressFieldRefreshButton: addressFieldRefreshButton,
             pinButton: toolbarButton(
-                icon: .pin, accessibilityDescription: "置顶", diameter: DesignTokens.Layout.normalModeToolbarButtonDiameter),
-            // docs/design-language.md's toolbar button list documents the settings entry as the
-            // "更多" (⋯) affordance, not a dedicated glyph — reusing `.moreHorizontal` here rather
-            // than introducing a new icon.
-            settingsButton: toolbarButton(
-                icon: .moreHorizontal, accessibilityDescription: "设置", diameter: DesignTokens.Layout.normalModeToolbarButtonDiameter)
+                icon: .pin, accessibilityDescription: "置顶", diameter: DesignTokens.Layout.normalModeToolbarButtonDiameter)
         )
     }
 
