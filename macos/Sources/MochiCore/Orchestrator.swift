@@ -17,10 +17,6 @@ public final class Orchestrator {
     private var addressBarController: AddressBarController?
     private var hotkeyForwarder: HotkeyForwarder?
     private var currentZoom: Double = 1.0
-    /// Independent of Ghost Mode's own hidden state — only ever toggled while in Normal Mode
-    /// (see `handleQuickHideHotkey`), so it never fights ADR-0006's "only the Ghost Mode hotkey
-    /// or the tray icon" rule for restoring visibility out of Ghost Mode.
-    private var isQuickHidden = false
 
     public init(
         platformOps: PlatformOps,
@@ -84,13 +80,11 @@ public final class Orchestrator {
         )
 
         platformOps.createTrayIcon(items: [
-            TrayMenuItem(title: "退出 Ghost Mode") { [weak self, weak ghostModeController] in
+            TrayMenuItem(title: "退出 Ghost Mode") { [weak ghostModeController] in
                 ghostModeController?.exitGhostMode()
-                self?.clearQuickHideIfNeeded()
             },
-            TrayMenuItem(title: "切换 Ghost Mode") { [weak self, weak ghostModeController] in
+            TrayMenuItem(title: "切换 Ghost Mode") { [weak ghostModeController] in
                 ghostModeController?.toggle()
-                self?.clearQuickHideIfNeeded()
             },
             TrayMenuItem(title: "打开设置", action: openSettings),
             TrayMenuItem(title: "退出应用", action: platformOps.terminateApp),
@@ -105,15 +99,14 @@ public final class Orchestrator {
     @discardableResult
     private func registerDefaultHotkeys(window: WidgetWindowHandle, ghostModeController: GhostModeController) -> Set<Hotkey> {
         let registrations: [(name: String, hotkey: Hotkey, action: () -> Void)] = [
-            ("切换 Ghost Mode", DefaultHotkeys.toggleGhostMode, { [weak self, weak ghostModeController] in
+            ("切换 Ghost Mode", DefaultHotkeys.toggleGhostMode, { [weak ghostModeController] in
                 ghostModeController?.toggle()
-                self?.clearQuickHideIfNeeded()
             }),
             ("刷新页面", DefaultHotkeys.reloadPage, { [weak self] in self?.handleReloadHotkey() }),
             ("放大网页", DefaultHotkeys.zoomIn, { [weak self] in self?.handleZoomHotkey(step: Self.zoomStep) }),
             ("缩小网页", DefaultHotkeys.zoomOut, { [weak self] in self?.handleZoomHotkey(step: -Self.zoomStep) }),
-            ("快速隐藏 Widget", DefaultHotkeys.quickHideWidget, { [weak self, weak ghostModeController] in
-                self?.handleQuickHideHotkey(ghostModeController: ghostModeController)
+            ("隐藏 Widget", DefaultHotkeys.hideWidget, { [weak ghostModeController] in
+                ghostModeController?.toggleHidden()
             }),
         ]
 
@@ -152,26 +145,6 @@ public final class Orchestrator {
         let clamped = min(max(currentZoom + step, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
         currentZoom = clamped
         platformOps.applyZoom(currentZoom, in: window)
-    }
-
-    /// A no-op outside Normal Mode — Ghost Mode already owns the window's hidden state
-    /// exclusively (ADR-0006), so this never introduces a second, independent way to change
-    /// visibility while Ghost Mode is active.
-    private func handleQuickHideHotkey(ghostModeController: GhostModeController?) {
-        guard let window, ghostModeController?.mode == .normal else { return }
-        isQuickHidden.toggle()
-        platformOps.setWindowHidden(isQuickHidden, in: window)
-    }
-
-    /// Resets quick-hide's bookkeeping *and*, if it had actually hidden the window, restores
-    /// visibility before Ghost Mode's own opacity/passthrough take over — called wherever Ghost
-    /// Mode is entered or exited (hotkey and both tray items). Without the restore, a window
-    /// quick-hidden in Normal Mode would stay invisible at the platform level even after entering
-    /// Ghost Mode, which expects to start visible (only hiding once the mouse moves over it).
-    private func clearQuickHideIfNeeded() {
-        guard isQuickHidden, let window else { return }
-        isQuickHidden = false
-        platformOps.setWindowHidden(false, in: window)
     }
 
     private func injectConfiguredScripts() {

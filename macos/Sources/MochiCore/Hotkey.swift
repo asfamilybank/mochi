@@ -31,11 +31,11 @@ public enum DefaultHotkeys {
     /// ⌥⌘- — zooms the page out (#12). `0x1B` is `kVK_ANSI_Minus`.
     public static let zoomOut = Hotkey(keyCode: 0x1B, modifierFlags: cmdOption)
 
-    /// ⌥⌘H — quickly hides/unhides the widget window (#12), independent of Ghost Mode's own
-    /// hide/show state machine (a no-op while Ghost Mode is active — see `Orchestrator` — so it
-    /// never introduces a second, competing way to change visibility out from under ADR-0006's
-    /// "only the Ghost Mode hotkey or the tray icon" rule). `0x04` is `kVK_ANSI_H`.
-    public static let quickHideWidget = Hotkey(keyCode: 0x04, modifierFlags: cmdOption)
+    /// ⌥⌘H — the boss key (ADR-0012): hides/unhides the widget while Ghost Mode is active,
+    /// leaving the page running. A silent no-op in Normal Mode, which is a plain macOS window
+    /// (`⌘M` already minimizes it). Same combo as the old Normal-Mode-only 快速隐藏, with both
+    /// its meaning and its scope swapped. `0x04` is `kVK_ANSI_H`.
+    public static let hideWidget = Hotkey(keyCode: 0x04, modifierFlags: cmdOption)
 
     /// Every default combo, for callers (the settings panel's mapping editor, #14) that need to
     /// check a candidate trigger against Mochi's own reserved hotkeys *before* attempting to
@@ -44,6 +44,6 @@ public enum DefaultHotkeys {
     /// handler for the same combo instead — see `HotkeyForwarder`'s doc comment), so registration
     /// success/failure alone cannot be used to detect a collision with one of these.
     public static let all: [Hotkey] = [
-        toggleGhostMode, reloadPage, zoomIn, zoomOut, quickHideWidget,
+        toggleGhostMode, reloadPage, zoomIn, zoomOut, hideWidget,
     ]
 }

@@ -216,7 +216,7 @@ import Testing
                 DefaultHotkeys.reloadPage,
                 DefaultHotkeys.zoomIn,
                 DefaultHotkeys.zoomOut,
-                DefaultHotkeys.quickHideWidget,
+                DefaultHotkeys.hideWidget,
             ])
     }
 
@@ -290,14 +290,13 @@ import Testing
         let orchestrator = Orchestrator(platformOps: fake)
         let config = WidgetConfig(url: URL(string: "https://example.com")!, ghostOpacity: 0.2)
         orchestrator.start(config: config)
-        fake.simulateHotkeyPressed()
-        fake.simulateMouseEntered()
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+        fake.simulateHotkeyPressed(DefaultHotkeys.hideWidget)
 
         fake.trayMenuItems[0].action()
 
-        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 1.0])
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 0.0, 1.0])
         #expect(fake.mousePassthroughChanges.map(\.enabled) == [true, false])
-        #expect(fake.windowHiddenChanges.map(\.hidden) == [true, false])
     }
 
     @Test func trayToggleGhostModeEntryTogglesModeThroughPlatformOps() {
@@ -391,43 +390,28 @@ import Testing
         #expect(fake.appliedZooms.map(\.zoom).last! <= 5.0)
     }
 
-    @Test func pressingQuickHideInNormalModeTogglesWindowHiddenThroughPlatformOps() {
+    @Test func pressingHiddenInGhostModeTogglesTheWidgetInAndOutOfInvisibility() {
         let fake = FakePlatformOps()
         let orchestrator = Orchestrator(platformOps: fake)
-        let config = WidgetConfig(url: URL(string: "https://example.com")!)
-        orchestrator.start(config: config)
-
-        fake.simulateHotkeyPressed(DefaultHotkeys.quickHideWidget)
-        fake.simulateHotkeyPressed(DefaultHotkeys.quickHideWidget)
-
-        #expect(fake.windowHiddenChanges.map(\.hidden) == [true, false])
-    }
-
-    @Test func pressingQuickHideWhileInGhostModeDoesNothingSoItNeverFightsGhostModesOwnHiddenState() {
-        let fake = FakePlatformOps()
-        let orchestrator = Orchestrator(platformOps: fake)
-        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!, ghostOpacity: 0.2)
         orchestrator.start(config: config)
         fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
 
-        fake.simulateHotkeyPressed(DefaultHotkeys.quickHideWidget)
+        fake.simulateHotkeyPressed(DefaultHotkeys.hideWidget)
+        fake.simulateHotkeyPressed(DefaultHotkeys.hideWidget)
 
-        #expect(fake.windowHiddenChanges.isEmpty)
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 0.0, 0.2])
     }
 
-    @Test func togglingGhostModeWhileQuickHiddenRestoresWindowVisibilityBeforeGhostModeTakesOver() {
-        // Regression test: entering Ghost Mode used to only clear the `isQuickHidden` bookkeeping
-        // flag without ever telling the platform to un-hide the window, leaving the widget stuck
-        // invisible even while `mode == .ghost` expected to start out visible.
+    @Test func pressingHiddenInNormalModeDoesNothingAtAll() {
         let fake = FakePlatformOps()
         let orchestrator = Orchestrator(platformOps: fake)
         let config = WidgetConfig(url: URL(string: "https://example.com")!)
         orchestrator.start(config: config)
-        fake.simulateHotkeyPressed(DefaultHotkeys.quickHideWidget)  // hide in Normal Mode
 
-        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+        fake.simulateHotkeyPressed(DefaultHotkeys.hideWidget)
 
-        #expect(fake.windowHiddenChanges.map(\.hidden) == [true, false])
+        #expect(fake.contentOpacityChanges.isEmpty)
     }
 
     @Test func skipsAUserHotkeyMappingThatCollidesWithADefaultHotkeyInsteadOfDoubleRegisteringIt() {

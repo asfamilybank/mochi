@@ -54,6 +54,7 @@ struct EmptyPageView: View {
                 .foregroundStyle(color(palette.textSecondary))
             HStack(spacing: 16) {
                 hotkeyBadge(HotkeyDisplay.describe(DefaultHotkeys.toggleGhostMode), label: "切换 Ghost Mode")
+                hotkeyBadge(HotkeyDisplay.describe(DefaultHotkeys.hideWidget), label: "隐藏 Widget")
             }
         }
         .opacity(0.55)

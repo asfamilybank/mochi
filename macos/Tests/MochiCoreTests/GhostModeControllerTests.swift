@@ -11,12 +11,82 @@ import Testing
         return (fake, window, controller)
     }
 
+    /// The whole of Ghost Mode's visibility, as one value the controller computes and hands to
+    /// `setContentOpacity` (ADR-0012). Driven as a table because it *is* a truth table: nothing
+    /// else about the controller decides how visible the window is.
+    @Test(arguments: [
+        (hidden: false, expected: 0.2),
+        (hidden: true, expected: 0.0),
+    ])
+    func effectiveOpacityInGhostMode(_ testCase: (hidden: Bool, expected: Double)) {
+        let (fake, _, controller) = makeSUT(ghostOpacity: 0.2)
+        controller.toggle()
+
+        if testCase.hidden {
+            controller.toggleHidden()
+        }
+
+        #expect(fake.contentOpacityChanges.last?.opacity == testCase.expected)
+    }
+
+    @Test func pressingHiddenInNormalModeIsASilentNoOp() {
+        // Not "called with an unchanged value" — Normal Mode is a plain window with no bespoke
+        // visibility concept at all, so the platform layer must never hear about this press.
+        let (fake, _, controller) = makeSUT()
+
+        controller.toggleHidden()
+
+        #expect(fake.contentOpacityChanges.isEmpty)
+    }
+
+    @Test func pressingHiddenTwiceInGhostModeRestoresTheTargetOpacity() {
+        let (fake, _, controller) = makeSUT(ghostOpacity: 0.2)
+        controller.toggle()
+
+        controller.toggleHidden()
+        controller.toggleHidden()
+
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 0.0, 0.2])
+    }
+
+    @Test func leavingGhostModeClearsHiddenSoTheNextEntryIsVisible() {
+        // Otherwise "come back to normal" would leave an invisible Normal Mode window behind,
+        // and re-entering Ghost Mode would start out already hidden.
+        let (fake, _, controller) = makeSUT(ghostOpacity: 0.2)
+        controller.toggle()
+        controller.toggleHidden()
+
+        controller.toggle()
+        controller.toggle()
+
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 0.0, 1.0, 0.2])
+    }
+
+    @Test func leavingGhostModeFrontsAndActivatesTheWindow() {
+        // The one moment the user explicitly asked to interact with the widget — and the only
+        // moment it is allowed to take focus (ADR-0012).
+        let (fake, _, controller) = makeSUT()
+        controller.toggle()
+
+        controller.toggle()
+
+        #expect(fake.shownWindowIDs == [1])
+    }
+
+    @Test func enteringGhostModeNeverFrontsTheWindow() {
+        let (fake, _, controller) = makeSUT()
+
+        controller.toggle()
+
+        #expect(fake.shownWindowIDs.isEmpty)
+    }
+
     @Test func startsInNormalMode() {
         let (_, _, controller) = makeSUT()
         #expect(controller.mode == .normal)
     }
 
-    @Test func togglingFromNormalEntersGhostModeThroughAllFourBundledBehaviors() {
+    @Test func togglingFromNormalEntersGhostModeThroughAllBundledBehaviors() {
         let (fake, _, controller) = makeSUT(ghostOpacity: 0.2)
 
         controller.toggle()
@@ -26,6 +96,7 @@ import Testing
         #expect(fake.toolbarVisibilityChanges.map(\.visible) == [false])
         #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2])
         #expect(fake.mousePassthroughChanges.map(\.enabled) == [true])
+        #expect(fake.pinnedChanges.map(\.pinned) == [true])
     }
 
     @Test func togglingAgainExitsGhostModeAndRestoresEverything() {
@@ -39,44 +110,6 @@ import Testing
         #expect(fake.toolbarVisibilityChanges.map(\.visible) == [false, true])
         #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 1.0])
         #expect(fake.mousePassthroughChanges.map(\.enabled) == [true, false])
-    }
-
-    @Test func mouseEnteringWhileInGhostModeHidesTheWindow() {
-        let (fake, _, controller) = makeSUT()
-        controller.toggle()
-
-        fake.simulateMouseEntered()
-
-        #expect(fake.windowHiddenChanges.map(\.hidden) == [true])
-    }
-
-    @Test func mouseEnteringWhileInNormalModeDoesNothing() {
-        let (fake, _, _) = makeSUT()
-
-        fake.simulateMouseEntered()
-
-        #expect(fake.windowHiddenChanges.isEmpty)
-    }
-
-    @Test func mouseLeavingDoesNotAutomaticallyRestoreTheWindow() {
-        // No `onMouseExited`/similar is wired at all — the domain doc is explicit that leaving
-        // the area does not restore visibility, only toggling Ghost Mode off does.
-        let (fake, _, controller) = makeSUT()
-        controller.toggle()
-        fake.simulateMouseEntered()
-
-        #expect(fake.windowHiddenChanges.map(\.hidden) == [true])
-        #expect(fake.windowHiddenChanges.map(\.windowID) == [1])
-    }
-
-    @Test func exitingGhostModeAfterBeingHiddenByMouseEntryUnhidesTheWindow() {
-        let (fake, _, controller) = makeSUT()
-        controller.toggle()
-        fake.simulateMouseEntered()
-
-        controller.toggle()
-
-        #expect(fake.windowHiddenChanges.map(\.hidden) == [true, false])
     }
 
     @Test func enteringGhostModePinsTheWindowAndLeavingUnpinsIt() {
@@ -141,15 +174,15 @@ import Testing
         #expect(fake.mousePassthroughChanges.map(\.enabled) == [true, false])
     }
 
-    @Test func exitGhostModeUnhidesTheWindowEvenAfterBeingHiddenByMouseEntry() {
+    @Test func exitGhostModeRestoresVisibilityEvenWhileHidden() {
         // The defining scenario for #9: the window is fully invisible + click-through, and the
-        // tray is the only remaining way back — it must still unhide the window.
-        let (fake, _, controller) = makeSUT()
+        // tray is the only remaining way back — it must still bring the window back.
+        let (fake, _, controller) = makeSUT(ghostOpacity: 0.2)
         controller.toggle()
-        fake.simulateMouseEntered()
+        controller.toggleHidden()
 
         controller.exitGhostMode()
 
-        #expect(fake.windowHiddenChanges.map(\.hidden) == [true, false])
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 0.0, 1.0])
     }
 }

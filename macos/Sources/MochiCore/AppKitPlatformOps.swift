@@ -474,6 +474,10 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// `drawsBackground` is a private WKWebView property (ADR-0001) reached via KVC since it has
     /// no public accessor; it must be `false` for anything below full opacity to show through at
     /// all, on top of which `NSWindow.alphaValue` supplies the actual continuous target value.
+    ///
+    /// This is also how the widget goes fully invisible (`opacity == 0`, ADR-0012): deliberately
+    /// `alphaValue = 0` and not `orderOut`, which would let WebKit treat the window as occluded
+    /// and throttle the page.
     func setContentOpacity(_ opacity: Double) {
         let isFullyOpaque = opacity >= 1.0
         window.isOpaque = isFullyOpaque
@@ -484,14 +488,6 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
 
     func setMousePassthrough(_ enabled: Bool) {
         window.ignoresMouseEvents = enabled
-    }
-
-    func setWindowHidden(_ hidden: Bool) {
-        if hidden {
-            window.orderOut(nil)
-        } else {
-            window.makeKeyAndOrderFront(nil)
-        }
     }
 
     func setMouseEnteredHandler(_ handler: @escaping () -> Void) {
@@ -860,8 +856,13 @@ public final class AppKitPlatformOps: PlatformOps {
         handle.showEmptyPage()
     }
 
+    /// Fronts the window and activates the app. `NSApp.activate` is what makes this work from a
+    /// Ghost Mode exit triggered by a global hotkey or the tray, where Mochi is not the active
+    /// app — at launch (this method's only other caller) it was already active, which is why the
+    /// gap went unnoticed until ADR-0012 made "leaving Ghost Mode takes focus" a requirement.
     public func showWindow(_ window: WidgetWindowHandle) {
         guard let handle = handle(for: window) else { return }
+        NSApp.activate()
         handle.window.makeKeyAndOrderFront(nil)
     }
 
@@ -954,11 +955,6 @@ public final class AppKitPlatformOps: PlatformOps {
     public func setMousePassthrough(_ enabled: Bool, in window: WidgetWindowHandle) {
         guard let handle = handle(for: window) else { return }
         handle.setMousePassthrough(enabled)
-    }
-
-    public func setWindowHidden(_ hidden: Bool, in window: WidgetWindowHandle) {
-        guard let handle = handle(for: window) else { return }
-        handle.setWindowHidden(hidden)
     }
 
     public func onMouseEntered(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {

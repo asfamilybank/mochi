@@ -19,7 +19,6 @@ final class FakePlatformOps: PlatformOps {
     private(set) var nativeChromeVisibilityChanges: [(visible: Bool, windowID: Int)] = []
     private(set) var contentOpacityChanges: [(opacity: Double, windowID: Int)] = []
     private(set) var mousePassthroughChanges: [(enabled: Bool, windowID: Int)] = []
-    private(set) var windowHiddenChanges: [(hidden: Bool, windowID: Int)] = []
     private(set) var registeredHotkeys: [Hotkey] = []
     private(set) var presentedAlerts: [(title: String, message: String)] = []
     private(set) var snapThresholdChanges: [(threshold: Double, windowID: Int)] = []
@@ -143,11 +142,6 @@ final class FakePlatformOps: PlatformOps {
     func setMousePassthrough(_ enabled: Bool, in window: WidgetWindowHandle) {
         let handle = window as! FakeWidgetWindowHandle
         mousePassthroughChanges.append((enabled, handle.id))
-    }
-
-    func setWindowHidden(_ hidden: Bool, in window: WidgetWindowHandle) {
-        let handle = window as! FakeWidgetWindowHandle
-        windowHiddenChanges.append((hidden, handle.id))
     }
 
     func onMouseEntered(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {

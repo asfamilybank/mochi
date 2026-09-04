@@ -25,6 +25,8 @@ public protocol PlatformOps: AnyObject {
     /// this content again.
     func showEmptyPageContent(in window: WidgetWindowHandle)
 
+    /// Fronts the window *and* activates the app — used at launch and, per ADR-0012, on the one
+    /// other occasion the widget is allowed to take focus: leaving Ghost Mode.
     func showWindow(_ window: WidgetWindowHandle)
     func applyZoom(_ zoom: Double, in window: WidgetWindowHandle)
     func captureWindowState(of window: WidgetWindowHandle) -> WindowState
@@ -88,18 +90,18 @@ public protocol PlatformOps: AnyObject {
     /// which only ever hides the custom row and leaves native decorations alone.
     func setNativeChromeVisible(_ visible: Bool, in window: WidgetWindowHandle)
 
-    /// Sets the window's overall content opacity toward Ghost Mode's configured target (1.0 is
-    /// fully opaque Normal Mode). Implemented via `NSWindow.alphaValue` plus the WKWebView
-    /// `drawsBackground` private-API hack (ADR-0001) needed to let anything below alpha 1.0
-    /// show through at all.
+    /// Sets the window's overall content opacity — the single outlet for how visible the widget
+    /// is (ADR-0012), covering both Ghost Mode's configured target and fully invisible (`0`).
+    /// Implemented via `NSWindow.alphaValue` plus the WKWebView `drawsBackground` private-API hack
+    /// (ADR-0001) needed to let anything below alpha 1.0 show through at all.
+    ///
+    /// `0` must stay an alpha value rather than becoming an `orderOut`: a window ordered out is
+    /// judged occluded by WebKit, which throttles its timers and can stall video — and "the page
+    /// keeps running while hidden" is the whole point of the boss key.
     func setContentOpacity(_ opacity: Double, in window: WidgetWindowHandle)
 
     /// Enables/disables `NSWindow.ignoresMouseEvents` — Ghost Mode's click-through behavior.
     func setMousePassthrough(_ enabled: Bool, in window: WidgetWindowHandle)
-
-    /// Fully hides/unhides the window (content stops rendering while hidden, per the domain
-    /// doc) — distinct from mouse passthrough, which stays interactive-but-invisible-to-clicks.
-    func setWindowHidden(_ hidden: Bool, in window: WidgetWindowHandle)
 
     /// Registers a handler invoked when the mouse enters the widget's area, regardless of mode —
     /// callers are responsible for ignoring it outside Ghost Mode.
