@@ -102,6 +102,7 @@ public final class SettingsController {
     ///   check — `nil` when adding a brand new mapping, where every existing entry counts.
     private func isReservedInProcess(_ trigger: Hotkey, ignoringMappingAt editedIndex: Int?) -> Bool {
         if DefaultHotkeys.all.contains(trigger) { return true }
+        if DefaultHotkeys.reservedLocalMenuShortcuts.contains(trigger) { return true }
         return currentConfig().hotkeyMappings.enumerated().contains { offset, mapping in
             offset != editedIndex && mapping.trigger == trigger
         }

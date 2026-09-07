@@ -21,6 +21,11 @@ final class GlobalHotkeyRegistry {
     @discardableResult
     func register(_ hotkey: Hotkey, perform handler: @escaping () -> Void) -> Bool {
         installEventHandlerIfNeeded()
+        // A second `register` for a combo already claimed by this process must release the first
+        // registration's Carbon ref before replacing it — otherwise it's orphaned in `refs` under
+        // an `id` `ids[hotkey]` can no longer reach, leaking the OS-level hotkey for the rest of
+        // the process's life (code review finding, #36/#44 review).
+        unregister(hotkey)
 
         let hotkeyID = nextHotkeyID
         var hotKeyRef: EventHotKeyRef?

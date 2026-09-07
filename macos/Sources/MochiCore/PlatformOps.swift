@@ -60,6 +60,13 @@ public protocol PlatformOps: AnyObject {
     /// currently active" to reflect.
     func onGhostModeToggleRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void)
 
+    /// Hands focus back to whatever app was active before Mochi. Needed only on the one Ghost
+    /// Mode entry path (#44) where Mochi is guaranteed to already be active — the toolbar button,
+    /// unlike the default hotkey and the tray icon, requires Mochi to be frontmost just to have
+    /// been clicked at all — so `Orchestrator` calls this from its `onGhostModeToggleRequested`
+    /// handler specifically, mirroring how `showWindow` is the one call site that takes focus.
+    func deactivateApp()
+
     /// Evaluates `source` in the page's JavaScript context. Callers are expected to only call
     /// this once a page has finished loading (see `onNavigationFinished`).
     func injectScript(_ source: String, in window: WidgetWindowHandle)

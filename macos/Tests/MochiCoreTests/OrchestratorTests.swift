@@ -359,6 +359,29 @@ private struct GhostModeEntrySignature: Equatable {
         #expect(fake.pinnedChanges.map(\.pinned) == [true, false])
     }
 
+    @Test func toolbarButtonGivesUpFocusOnEnteringGhostModeThroughPlatformOps() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        orchestrator.start(config: config)
+
+        fake.simulateGhostModeToggleRequested()
+
+        #expect(fake.deactivateAppCallCount == 1)
+    }
+
+    @Test func theHotkeyAndTrayGhostModeEntriesDoNotGiveUpFocus() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        orchestrator.start(config: config)
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+        fake.trayMenuItems[1].action()
+
+        #expect(fake.deactivateAppCallCount == 0)
+    }
+
     @Test func trayOpenSettingsEntryInvokesTheInjectedCallback() {
         let fake = FakePlatformOps()
         var openSettingsCallCount = 0

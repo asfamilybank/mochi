@@ -441,15 +441,15 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         ghostModeToggleRequestedHandler = handler
     }
 
-    /// The one entry path (of the three: hotkey, tray, this button) where Mochi is guaranteed to
-    /// already be active — clicking a toolbar button requires it. `NSApp.deactivate()` hands
-    /// activation back to whatever app the system considers next in line (typically whatever was
-    /// frontmost a moment ago), matching #44's "the button click itself must not become the
-    /// reason Mochi keeps focus" requirement. Purely a platform-layer side effect: the handler
-    /// call above is the only part of this that's routed through — and observable at — the core.
+    /// Giving up focus on this entry path (#44) is `Orchestrator`'s call, made via
+    /// `PlatformOps.deactivateApp()` in its `onGhostModeToggleRequested` handler, not this view's
+    /// — mirrors how taking focus back (`showWindow`'s `NSApp.activate()`) is routed through
+    /// `PlatformOps` rather than decided by whichever view happens to trigger it (code review
+    /// finding, #44 review: the original version called `NSApp.deactivate()` straight from this
+    /// `@objc` action, an untestable platform-only special case for a concern everything else in
+    /// this codebase treats as core-owned policy).
     @objc private func handleGhostModeToggleRequested() {
         ghostModeToggleRequestedHandler?()
-        NSApp.deactivate()
     }
 
     func injectScript(_ source: String) {
@@ -471,20 +471,32 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     }
 
     /// Switches the content area to the Empty Page's native content, hiding `webView` — the
-    /// counterpart to `loadURL`.
+    /// counterpart to `loadURL`. Also resets `errorPageHostingView` like every other transition
+    /// between this shared container's three layers does, even though no caller reaches this
+    /// while an error page is showing today — leaving it out here was a real inconsistency the
+    /// next caller could trip over (code review finding, #38 review).
     func showEmptyPage() {
         webView.isHidden = true
+        errorPageHostingView.isHidden = true
         emptyPageHostingView.isHidden = false
     }
 
     /// Switches the content area to the error page (#38), showing `message` alongside whatever
-    /// URL was loading. "重试" reloads `webView` directly rather than round-tripping through the
-    /// core — it's acting on the same web view this handle already owns, same as the toolbar's
-    /// embedded refresh button.
+    /// URL was loading. "重试" re-issues `loadURL` for the failed URL directly rather than
+    /// round-tripping through the core — it's acting on the same web view this handle already
+    /// owns, same as the toolbar's embedded refresh button. Deliberately `loadURL`, not
+    /// `webView.reload()`: `reload()` needs an existing *committed* navigation to act on, so it
+    /// silently no-ops when the very first navigation Mochi ever attempts is the one that failed
+    /// (code review finding, #38 review) — `loadURL` has no such precondition and also correctly
+    /// re-hides this same error page on the retry attempt.
     func showErrorPage(message: String) {
+        let failedURL = currentURL
         errorPageHostingView.rootView = ErrorPageView(
-            failedURL: currentURL?.absoluteString ?? "", message: message,
-            onRetry: { [weak self] in self?.webView.reload() }
+            failedURL: failedURL?.absoluteString ?? "", message: message,
+            onRetry: { [weak self] in
+                guard let failedURL else { return }
+                self?.loadURL(failedURL)
+            }
         )
         webView.isHidden = true
         errorPageHostingView.isHidden = false
@@ -547,6 +559,16 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     }
 
     func windowDidExitFullScreen(_ notification: Notification) {
+        frameBeforeFullscreen = nil
+    }
+
+    /// Covers the abort path `windowDidExitFullScreen` never reaches: if entering fullscreen is
+    /// cancelled partway (a distinct `NSWindowDelegate` callback, taking the window directly
+    /// rather than a `Notification`), the window never successfully entered fullscreen, so it
+    /// never later exits either — leaving `frameBeforeFullscreen` stuck forever and
+    /// `frameToPersist`/`captureWindowState` returning a stale frame until the app restarts
+    /// (code review finding, #38 review).
+    func windowDidFailToEnterFullScreen(_ failedWindow: NSWindow) {
         frameBeforeFullscreen = nil
     }
 
@@ -733,26 +755,11 @@ final class MochiWidgetWindow: NSWindow {
     }
 }
 
-/// Bridges a `TrayMenuItem`'s closure to the `@objc`/target-action mechanism `NSMenuItem`
-/// requires. `NSMenuItem.target` doesn't retain its target, so `AppKitPlatformOps` must keep
-/// these alive itself for as long as the tray menu exists.
-private final class TrayMenuItemTarget: NSObject {
-    private let action: () -> Void
-
-    init(action: @escaping () -> Void) {
-        self.action = action
-    }
-
-    @objc func invoke() {
-        action()
-    }
-}
-
 public final class AppKitPlatformOps: PlatformOps {
-    /// Retains the tray icon's `NSStatusItem` and its menu's `TrayMenuItemTarget`s for as long as
-    /// the tray exists — `NSStatusBar` doesn't keep the status item alive on its own, and
+    /// Retains the tray icon's `NSStatusItem` and its menu's `MenuItemActionTarget`s for as long
+    /// as the tray exists — `NSStatusBar` doesn't keep the status item alive on its own, and
     /// `NSMenuItem.target` doesn't retain its target either.
-    private var tray: (statusItem: NSStatusItem, targets: [TrayMenuItemTarget])?
+    private var tray: (statusItem: NSStatusItem, targets: [MenuItemActionTarget])?
 
     public init() {}
 
@@ -1038,6 +1045,10 @@ public final class AppKitPlatformOps: PlatformOps {
         handle.setGhostModeToggleRequestedHandler(handler)
     }
 
+    public func deactivateApp() {
+        NSApp.deactivate()
+    }
+
     public func injectScript(_ source: String, in window: WidgetWindowHandle) {
         guard let handle = handle(for: window) else { return }
         handle.injectScript(source)
@@ -1130,11 +1141,11 @@ public final class AppKitPlatformOps: PlatformOps {
         statusItem.button?.image = ToolbarStyle.templateImage(for: .ghost, accessibilityDescription: "Mochi")
 
         let menu = NSMenu()
-        var targets: [TrayMenuItemTarget] = []
+        var targets: [MenuItemActionTarget] = []
         for item in items {
-            let target = TrayMenuItemTarget(action: item.action)
+            let target = MenuItemActionTarget(action: item.action)
             targets.append(target)
-            let menuItem = NSMenuItem(title: item.title, action: #selector(TrayMenuItemTarget.invoke), keyEquivalent: "")
+            let menuItem = NSMenuItem(title: item.title, action: #selector(MenuItemActionTarget.invoke), keyEquivalent: "")
             menuItem.target = target
             menu.addItem(menuItem)
         }

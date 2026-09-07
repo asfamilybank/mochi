@@ -162,6 +162,23 @@ import Testing
         #expect(fake.presentedAlerts.count == 1)
     }
 
+    @Test func addingAMappingWhoseTriggerCollidesWithAFixedLocalMenuShortcutFailsWithoutTouchingTheOS() {
+        // Regression test: Carbon's RegisterEventHotKey has no visibility into MainMenuBuilder's
+        // local NSMenuItem key equivalents, so this collision must be caught the same way as a
+        // collision with a default global hotkey — not left to registration success/failure.
+        let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
+        let fake = FakePlatformOps()
+        let controller = makeController(store: store, platformOps: fake)
+
+        let succeeded = controller.addHotkeyMapping(
+            trigger: DefaultHotkeys.reservedLocalMenuShortcuts[0], pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
+
+        #expect(!succeeded)
+        #expect(store.config.hotkeyMappings.isEmpty)
+        #expect(fake.registeredHotkeys.isEmpty)
+        #expect(fake.presentedAlerts.count == 1)
+    }
+
     @Test func addingAMappingWhoseTriggerAlreadyExistsInTheMappingTableFailsWithoutTouchingTheOS() {
         let existing = HotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0), pageKeystroke: Hotkey(keyCode: 9, modifierFlags: 0))
         let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!, hotkeyMappings: [existing]))

@@ -145,18 +145,3 @@ final class MainMenuBuilder {
         return item
     }
 }
-
-/// Keeps a menu item's closure alive and gives it something to serve as `NSMenuItem.target` —
-/// mirrors `AppKitPlatformOps`'s private `TrayMenuItemTarget`, which solves the exact same
-/// non-retaining-target problem for the tray icon's menu.
-private final class MenuItemActionTarget: NSObject {
-    private let action: () -> Void
-
-    init(action: @escaping () -> Void) {
-        self.action = action
-    }
-
-    @objc func invoke() {
-        action()
-    }
-}

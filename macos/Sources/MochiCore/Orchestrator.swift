@@ -76,11 +76,12 @@ public final class Orchestrator {
             isMouseAvoidanceEnabled: config.isMouseAvoidanceEnabled)
         self.ghostModeController = ghostModeController
         // The toolbar button (#44) calls the exact same entry point as the default hotkey and
-        // tray icon below — no shortcut path of its own. Giving up focus on this specific entry
-        // path (the only one where Mochi is guaranteed to already be active) is a platform-only
-        // concern handled entirely inside `AppKitPlatformOps`, invisible here.
-        platformOps.onGhostModeToggleRequested(window) { [weak ghostModeController] in
+        // tray icon below — no shortcut path of its own — plus one thing only this path needs:
+        // giving up focus, since a toolbar click is the one Ghost Mode entry route where Mochi is
+        // guaranteed to already be active.
+        platformOps.onGhostModeToggleRequested(window) { [weak self, weak ghostModeController] in
             ghostModeController?.toggle()
+            self?.platformOps.deactivateApp()
         }
         // Registered before `HotkeyForwarder` so its claimed combos can be passed down as
         // `reservedTriggers` — a user-configured mapping colliding with one of these must be

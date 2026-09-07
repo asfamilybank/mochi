@@ -37,4 +37,23 @@ public enum DefaultHotkeys {
     public static let all: [Hotkey] = [
         toggleGhostMode, hideWidget,
     ]
+
+    /// Plain `⌘`, no `⌥` — shared by every fixed local menu shortcut below.
+    private static let cmd: UInt32 = 0x0100
+
+    /// The fixed local menu shortcuts #37 built into `MainMenuBuilder` (⌘R/⌘+/⌘-/⌘0/⌘,) — never
+    /// routed through `GlobalHotkeyRegistry` at all (a local `NSMenuItem` key equivalent only
+    /// dispatches through the responder chain while Mochi is the key window), but still listed
+    /// here so a user-configured hotkey-forwarding mapping (#14) can't silently claim the same
+    /// combo: Carbon's `RegisterEventHotKey` has no visibility into AppKit's local key-equivalent
+    /// dispatch, so without this a mapping's trigger and one of these shortcuts would both fire
+    /// on a single keypress whenever Mochi has focus (code review finding, #36/#37/#38/#44
+    /// review).
+    public static let reservedLocalMenuShortcuts: [Hotkey] = [
+        Hotkey(keyCode: 0x0F, modifierFlags: cmd),  // ⌘R 刷新, kVK_ANSI_R
+        Hotkey(keyCode: 0x18, modifierFlags: cmd),  // ⌘+ 放大, kVK_ANSI_Equal
+        Hotkey(keyCode: 0x1B, modifierFlags: cmd),  // ⌘- 缩小, kVK_ANSI_Minus
+        Hotkey(keyCode: 0x1D, modifierFlags: cmd),  // ⌘0 实际大小, kVK_ANSI_0
+        Hotkey(keyCode: 0x2B, modifierFlags: cmd),  // ⌘, 设置…, kVK_ANSI_Comma
+    ]
 }
