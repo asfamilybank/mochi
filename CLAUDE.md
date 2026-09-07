@@ -52,6 +52,8 @@ commit message 里用 `Closes #<n>` 关闭多个 issue 时，逗号列表（`Clo
 
 拆出来的子 issue 可能只在 body 里用 "## Parent #29" / "## Blocked by #35" 记归属和依赖，并没有建 GitHub 原生 parent/sub-issue 或 `blocked_by` 关系（#29→#35/#39/#40/#41/#43 就是这样）——`gh api graphql` 查 `parent`/`subIssues` 返回全空不等于没拆，得读 body 里的这两节。
 
+反过来的遗漏也会发生：顶层 spec/parent issue 的全部子票都已 CLOSED，父票本身却还挂着 `ready-for-agent` 显示 OPEN（真实案例：#30/#31/#32/#33/#34 分别被 #37+#42/#38/#36+#45/#46/#44 完整覆盖并关闭，父票没人顺手关）。领 `ready-for-agent` 票前，如果它的标题/内容和某个已 CLOSED 的 issue 高度重合，或 Implementation Decisions/Out of Scope 里点名的子任务全部已关闭，先怀疑它是这种遗留的父票，逐条核对 AC 被覆盖后按下方「关闭 issue」一节的方式一并关闭，不要真的从零重新实现一遍。
+
 领 `ready-for-agent` 票、准备动手实现前先 `git status`/`git diff HEAD`——工作区可能已经躺着前序 session 写完但没提交的完整实现（真实案例：#42/#45/#46 合计 20 个文件近 1900 行改动，`swift build`/`swift test` 全绿，就是没 commit）。先跑一遍构建和测试确认改动完整、再对照 issue AC 走一遍 code review，比假设"没提交=没人做"从头重写快得多。
 
 ### Triage labels
