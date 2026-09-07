@@ -75,6 +75,13 @@ public final class Orchestrator {
             platformOps: platformOps, window: window, ghostOpacity: config.ghostOpacity,
             isMouseAvoidanceEnabled: config.isMouseAvoidanceEnabled)
         self.ghostModeController = ghostModeController
+        // The toolbar button (#44) calls the exact same entry point as the default hotkey and
+        // tray icon below — no shortcut path of its own. Giving up focus on this specific entry
+        // path (the only one where Mochi is guaranteed to already be active) is a platform-only
+        // concern handled entirely inside `AppKitPlatformOps`, invisible here.
+        platformOps.onGhostModeToggleRequested(window) { [weak ghostModeController] in
+            ghostModeController?.toggle()
+        }
         // Registered before `HotkeyForwarder` so its claimed combos can be passed down as
         // `reservedTriggers` — a user-configured mapping colliding with one of these must be
         // skipped, not registered a second time alongside it (see `HotkeyForwarder`'s doc comment).

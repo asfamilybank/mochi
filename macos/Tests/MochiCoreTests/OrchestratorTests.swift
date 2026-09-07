@@ -3,6 +3,15 @@ import Testing
 
 @testable import MochiCore
 
+/// The observable shape of one Ghost Mode entry — plain `Equatable` arrays rather than the
+/// `FakePlatformOps` tuple-arrays it's built from, which aren't `Equatable` themselves (per
+/// `FakePlatformOps`'s own doc comment on labeled-tuple arrays).
+private struct GhostModeEntrySignature: Equatable {
+    let passthrough: [Bool]
+    let opacity: [Double]
+    let pinned: [Bool]
+}
+
 @Suite struct OrchestratorTests {
     @Test func startsWidgetWindowUsingPersistedFrameAndLoadsConfiguredURL() {
         let fake = FakePlatformOps()
@@ -308,6 +317,46 @@ import Testing
 
         #expect(fake.mousePassthroughChanges.map(\.enabled) == [true])
         #expect(fake.contentOpacityChanges.map(\.opacity) == [0.3])
+    }
+
+    // #44: the toolbar's Ghost Mode button must converge on the exact same entry point as the
+    // default hotkey and the tray icon — no simplified path of its own.
+
+    @Test func toolbarButtonEntersGhostModeIdenticallyToTheHotkeyAndTheTray() {
+        let config = WidgetConfig(url: URL(string: "https://example.com")!, ghostOpacity: 0.4)
+
+        func captureEntrySignature(_ trigger: (FakePlatformOps) -> Void) -> GhostModeEntrySignature {
+            let fake = FakePlatformOps()
+            let orchestrator = Orchestrator(platformOps: fake)
+            orchestrator.start(config: config)
+            trigger(fake)
+            return GhostModeEntrySignature(
+                passthrough: fake.mousePassthroughChanges.map(\.enabled),
+                opacity: fake.contentOpacityChanges.map(\.opacity),
+                pinned: fake.pinnedChanges.map(\.pinned)
+            )
+        }
+
+        let viaButton = captureEntrySignature { $0.simulateGhostModeToggleRequested() }
+        let viaHotkey = captureEntrySignature { $0.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode) }
+        let viaTray = captureEntrySignature { $0.trayMenuItems[1].action() }
+
+        #expect(viaButton == viaHotkey)
+        #expect(viaButton == viaTray)
+    }
+
+    @Test func toolbarButtonTogglesBackToNormalModeWhenAlreadyInGhostModeLikeTheHotkey() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!, ghostOpacity: 0.4)
+        orchestrator.start(config: config)
+        fake.simulateGhostModeToggleRequested()
+
+        fake.simulateGhostModeToggleRequested()
+
+        #expect(fake.mousePassthroughChanges.map(\.enabled) == [true, false])
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.4, 1.0])
+        #expect(fake.pinnedChanges.map(\.pinned) == [true, false])
     }
 
     @Test func trayOpenSettingsEntryInvokesTheInjectedCallback() {

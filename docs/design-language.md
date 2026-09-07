@@ -7,7 +7,7 @@
 ## 材质与色彩
 
 - **玻璃材质**：Liquid Glass——`backdrop-filter: blur() saturate(180%)` 的模糊 + 饱和度提升，内嵌 1px 高光边（浅色顶部白色高光，深色顶部低透明度白色高光），外加轻微投影。用在空页面的抽象构图 panel 上。
-- **强调色**：跟随系统 accentColor（`NSColor.controlAccentColor` / SwiftUI `Color.accentColor`），不写死一个品牌色——用户在系统设置里选的强调色应该能同步影响加载进度条的填充色与工具栏控件的激活态染色。视觉稿里用一个可调色板模拟这几个 macOS 系统强调色选项，默认 **Orange `#FF9500`**：
+- **强调色**：跟随系统 accentColor（`NSColor.controlAccentColor` / SwiftUI `Color.accentColor`），不写死一个品牌色——用户在系统设置里选的强调色应该能同步影响加载进度条的填充色。工具栏眼下没有任何控件带激活态染色（Pin 已随 ADR-0012 移除，Ghost Mode 切换按钮见下方"没有激活态可显示"）。视觉稿里用一个可调色板模拟这几个 macOS 系统强调色选项，默认 **Orange `#FF9500`**：
   - Orange `#FF9500`（默认）
   - Blue `#007AFF`
   - Purple `#AF52DE`
@@ -29,7 +29,7 @@
 工具栏按钮清单（从左到右，[ADR-0011](adr/0011-normal-mode-toolbar-safari-alignment.md)）：
 1. 后退/前进——合并成一个原生 `NSSegmentedControl`（不是两个独立按钮），图标沿用现有手绘 SVG 图标集
 2. 地址栏——**智能双态**：标准 `NSSearchField`（不额外包自绘玻璃层，视觉上比周围行更"实"是系统原生效果）。页面加载完成且未交互时显示页面标题；鼠标悬停或点击时显示 URL（点击后可编辑，失焦或移出且非加载中则退回标题）；加载中无论是否有交互都恒定显示 URL。标题取不到时兜底显示域名，再取不到就留空。手动导航会覆盖持久化的"上次访问 URL"。空页面（未导航）状态不受这套切换影响，固定显示占位提示文字，直到用户真正导航一次。宽度改为 Safari 式的弹性伸缩（有 min/max，不再无脑撑满剩余空间）；尾部内嵌刷新图标（替代原来独立的刷新按钮，不做"加载中变停止按钮"这个中止导航能力），Empty Page 态下隐藏
-3. Ghost Mode 切换（尚未实现，见 ADR-0011 的范围排除说明）
+3. Ghost Mode 切换——单向的"进入"按钮，不是开关：点击直接从 Normal Mode 进入 Ghost Mode，没有激活态可显示（Ghost Mode 会把整条工具栏一起隐藏，用户不可能看到这颗按钮处于"已激活"的样子）
 4. 设置（"更多"入口，⋯）
 
 置顶按钮已随 [ADR-0012](adr/0012-ghost-mode-as-pure-invisibility.md) 移除——置顶内化成了 Ghost Mode 的固有属性，不再是工具栏上的一个开关。窗口变窄放不下时，接入原生 `NSToolbarItem.visibilityPriority` 自动收纳进"更多工具栏项"溢出菜单：地址栏与后退/前进分段控件恒不收纳，设置是唯一会被收进溢出菜单的项；窗口自身也有一个比 Safari 更小的最小宽度（440pt，按"只剩分段控件 + 地址栏最小宽度"反推，不因为少了 Pin 而重新收紧）。设置项做成标准 `NSToolbarItem`（`image` + `action`）而非自绘视图——这原本是为了让它先于 Pin 收纳（AppKit 会把相邻的一串自绘视图项一步全部收走），Pin 移除后保留现状，代价是这一颗图标按 AppKit 自己的控件色与度量渲染而不是 `DesignTokens`。地址栏宽度实测区间 200–320pt。

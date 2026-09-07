@@ -53,6 +53,13 @@ public protocol PlatformOps: AnyObject {
     /// the same settings panel.
     func onSettingsRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void)
 
+    /// Registers a handler invoked when the toolbar's Ghost Mode entry button (#44) is clicked.
+    /// A one-way "enter" affordance, not a toggle the button tracks state for itself — the
+    /// handler routes back to the same `GhostModeController` entry point the default hotkey and
+    /// tray icon already call, since this view has no self-held notion of "is Ghost Mode
+    /// currently active" to reflect.
+    func onGhostModeToggleRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void)
+
     /// Evaluates `source` in the page's JavaScript context. Callers are expected to only call
     /// this once a page has finished loading (see `onNavigationFinished`).
     func injectScript(_ source: String, in window: WidgetWindowHandle)

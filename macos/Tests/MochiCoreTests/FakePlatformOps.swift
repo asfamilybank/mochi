@@ -35,6 +35,7 @@ final class FakePlatformOps: PlatformOps {
     private var settingsRequestedHandlers: [Int: () -> Void] = [:]
     private var navigationFinishedHandlers: [Int: () -> Void] = [:]
     private var navigationFailedHandlers: [Int: (String) -> Void] = [:]
+    private var ghostModeToggleRequestedHandlers: [Int: () -> Void] = [:]
     private var mouseInsideChangedHandlers: [Int: (Bool) -> Void] = [:]
     private var pageTitleChangedHandlers: [Int: (String?) -> Void] = [:]
     private var loadingStateChangedHandlers: [Int: (Bool) -> Void] = [:]
@@ -116,6 +117,15 @@ final class FakePlatformOps: PlatformOps {
 
     func simulateSettingsRequested(windowID: Int = 1) {
         settingsRequestedHandlers[windowID]?()
+    }
+
+    func onGhostModeToggleRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {
+        let handle = window as! FakeWidgetWindowHandle
+        ghostModeToggleRequestedHandlers[handle.id] = handler
+    }
+
+    func simulateGhostModeToggleRequested(windowID: Int = 1) {
+        ghostModeToggleRequestedHandlers[windowID]?()
     }
 
     func injectScript(_ source: String, in window: WidgetWindowHandle) {

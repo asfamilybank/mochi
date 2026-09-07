@@ -147,20 +147,20 @@ fileprivate struct LoadingProgressBar {
 final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDelegate, NSSearchFieldDelegate, WKNavigationDelegate {
     private static let navigationItemID = NSToolbarItem.Identifier("com.mochi.toolbar.navigation")
     private static let addressItemID = NSToolbarItem.Identifier("com.mochi.toolbar.address")
+    private static let ghostModeItemID = NSToolbarItem.Identifier("com.mochi.toolbar.ghostMode")
     private static let settingsItemID = NSToolbarItem.Identifier("com.mochi.toolbar.settings")
-    /// The Normal Mode toolbar's fixed item order (`DesignTokens.normalModeToolbarOrder`, minus
-    /// the not-yet-implemented Ghost Mode toggle button — see AppKitPlatformOps's doc comment).
+    /// The Normal Mode toolbar's fixed item order (`DesignTokens.normalModeToolbarOrder`).
     /// Three items of our own: back and forward share one segmented control, and refresh is
     /// embedded in the address field rather than being an item of its own (ADR-0011).
     ///
     /// The single `.flexibleSpace` is what makes the address field's bounded width read correctly
     /// (ADR-0011): once the field stops stretching to fill everything left over, the slack has to
-    /// go somewhere, and parking all of it between the field and the trailing button keeps that
-    /// button flush with the window's trailing edge. Without it the whole row packs to the left
-    /// and leaves a dead gap after the settings button. Still true now that Pin is gone
-    /// (ADR-0012) and settings is the only trailing item.
+    /// go somewhere, and parking all of it between the field and the trailing items keeps them
+    /// flush with the window's trailing edge. Without it the whole row packs to the left and
+    /// leaves a dead gap after the trailing items. Ghost Mode (#44) sits between that space and
+    /// settings — always visible while settings is the one item allowed to collapse.
     private static let toolbarItemOrder: [NSToolbarItem.Identifier] = [
-        navigationItemID, addressItemID, .flexibleSpace, settingsItemID,
+        navigationItemID, addressItemID, .flexibleSpace, ghostModeItemID, settingsItemID,
     ]
 
     /// Width the embedded refresh icon claims from the address field's text area — the icon plus
@@ -184,6 +184,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     private var willCloseHandler: (() -> Void)?
     private var urlSubmittedHandler: ((URL) -> Void)?
     private var settingsRequestedHandler: (() -> Void)?
+    private var ghostModeToggleRequestedHandler: (() -> Void)?
     private var navigationFinishedHandler: (() -> Void)?
     private var navigationFailedHandler: ((String) -> Void)?
     private var mouseInsideChangedHandler: ((Bool) -> Void)?
@@ -436,6 +437,21 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         settingsRequestedHandler?()
     }
 
+    func setGhostModeToggleRequestedHandler(_ handler: @escaping () -> Void) {
+        ghostModeToggleRequestedHandler = handler
+    }
+
+    /// The one entry path (of the three: hotkey, tray, this button) where Mochi is guaranteed to
+    /// already be active — clicking a toolbar button requires it. `NSApp.deactivate()` hands
+    /// activation back to whatever app the system considers next in line (typically whatever was
+    /// frontmost a moment ago), matching #44's "the button click itself must not become the
+    /// reason Mochi keeps focus" requirement. Purely a platform-layer side effect: the handler
+    /// call above is the only part of this that's routed through — and observable at — the core.
+    @objc private func handleGhostModeToggleRequested() {
+        ghostModeToggleRequestedHandler?()
+        NSApp.deactivate()
+    }
+
     func injectScript(_ source: String) {
         webView.evaluateJavaScript(source, completionHandler: nil)
     }
@@ -646,12 +662,13 @@ extension AppKitWidgetWindowHandle: NSToolbarDelegate {
         let item = NSToolbarItem(itemIdentifier: itemIdentifier)
         // `visibilityPriority` is AppKit's own responsive-collapse mechanism (ADR-0011), not
         // custom layout code: as the window narrows, the toolbar sweeps its lowest-priority items
-        // into the system's "更多工具栏项" overflow popup first. Since Pin was internalized into
-        // Ghost Mode (ADR-0012) settings is the only collapsible item left — a low-frequency,
-        // app-level entry point — while the address field and the navigation control sit at
-        // `.high` so they are never candidates. `label` is what an item is called once it lands in
-        // that menu — it stays invisible in the toolbar itself, which runs in `.iconOnly` display
-        // mode.
+        // into the system's "更多工具栏项" overflow popup first. Three tiers (#44): settings
+        // collapses first (`.low`) — a low-frequency, app-level entry point with two other
+        // affordances (⌘, and the tray) — Ghost Mode sits above it at the default `.standard` so
+        // it survives longer, and the address field/navigation control sit at `.high` so they are
+        // never candidates at all. `label` is what an item is called once it lands in the
+        // overflow menu — it stays invisible in the toolbar itself, which runs in `.iconOnly`
+        // display mode.
         switch itemIdentifier {
         case Self.navigationItemID:
             item.view = controls.navigationControl
@@ -661,6 +678,18 @@ extension AppKitWidgetWindowHandle: NSToolbarDelegate {
             item.view = controls.addressField
             item.label = "地址"
             item.visibilityPriority = .high
+        case Self.ghostModeItemID:
+            // A stock image+action item, not a custom view (#44) — deliberately, since this
+            // button never has an active state to reflect: Ghost Mode hides the whole toolbar the
+            // moment it's entered, so nobody could ever see it drawn "on". Same reasoning as
+            // settings below, just for a different reason (that one has no active state to begin
+            // with; this one has one it can never display).
+            item.image = ToolbarStyle.templateImage(for: .ghost, accessibilityDescription: "进入 Ghost Mode")
+            item.target = self
+            item.action = #selector(handleGhostModeToggleRequested)
+            item.toolTip = "进入 Ghost Mode"
+            item.label = "Ghost Mode"
+            item.visibilityPriority = .standard
         case Self.settingsItemID:
             // A stock image+action item rather than a custom view. It was made one so it would
             // shed into the overflow menu *before* Pin (ADR-0011: AppKit sheds a run of adjacent
@@ -1002,6 +1031,11 @@ public final class AppKitPlatformOps: PlatformOps {
     public func onSettingsRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {
         guard let handle = handle(for: window) else { return }
         handle.setSettingsRequestedHandler(handler)
+    }
+
+    public func onGhostModeToggleRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {
+        guard let handle = handle(for: window) else { return }
+        handle.setGhostModeToggleRequestedHandler(handler)
     }
 
     public func injectScript(_ source: String, in window: WidgetWindowHandle) {
