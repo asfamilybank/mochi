@@ -21,11 +21,11 @@ public struct WidgetConfig: Equatable {
     public var windowState: WindowState?
     public var customScript: String?
     public var ghostOpacity: Double
-    /// Ghost Mode's mouse-entered avoidance (ADR-0012), on by default. Only reachable by
-    /// hand-editing the config file until the settings panel grows a switch for it.
+    /// Ghost Mode's mouse-entered avoidance (ADR-0012), on by default. Edited from the settings
+    /// panel's 窗口与外观 tab (#46); read at the moment of each visibility decision, never cached.
     public var isMouseAvoidanceEnabled: Bool
-    /// Magnetic edge/corner snapping while dragging (#6), on by default. Same story as
-    /// `isMouseAvoidanceEnabled`: data layer here, settings-panel switch later.
+    /// Magnetic edge/corner snapping while dragging (#6), on by default. Edited from the same
+    /// 窗口与外观 tab and re-applied to the live window on every change (#46).
     public var isSnapEnabled: Bool
     public var hotkeyMappings: [HotkeyMapping]
     public var startupTarget: StartupTarget?
@@ -33,13 +33,20 @@ public struct WidgetConfig: Equatable {
     /// (#15) — identified by `BuiltInScript.id` rather than storing an "enabled" flag per script,
     /// so a script added in a later app update defaults to enabled without needing a migration.
     public var disabledBuiltInScriptIDs: Set<String>
+    /// The user's *explicit* rebindings of Mochi's two global hotkeys (#45), keyed by action —
+    /// same shape as `disabledBuiltInScriptIDs`: only what the user changed is stored, an absent
+    /// key means "use `HotkeyAction.defaultHotkey`". So a later change to a default needs no
+    /// migration and the file never fills up with entries that just restate the defaults. Read
+    /// through `hotkey(for:)`, never directly.
+    public var hotkeyOverrides: [HotkeyAction: Hotkey]
 
     public init(
         url: URL? = nil, windowState: WindowState? = nil, customScript: String? = nil,
         ghostOpacity: Double = WidgetConfig.defaultGhostOpacity, isMouseAvoidanceEnabled: Bool = true,
         isSnapEnabled: Bool = true,
         hotkeyMappings: [HotkeyMapping] = [], startupTarget: StartupTarget? = nil,
-        disabledBuiltInScriptIDs: Set<String> = []
+        disabledBuiltInScriptIDs: Set<String> = [],
+        hotkeyOverrides: [HotkeyAction: Hotkey] = [:]
     ) {
         self.url = url
         self.windowState = windowState
@@ -50,6 +57,13 @@ public struct WidgetConfig: Equatable {
         self.hotkeyMappings = hotkeyMappings
         self.startupTarget = startupTarget
         self.disabledBuiltInScriptIDs = disabledBuiltInScriptIDs
+        self.hotkeyOverrides = hotkeyOverrides
+    }
+
+    /// The combo currently in effect for `action`: the user's override if there is one, else the
+    /// built-in default.
+    public func hotkey(for action: HotkeyAction) -> Hotkey {
+        hotkeyOverrides[action] ?? action.defaultHotkey
     }
 }
 
@@ -82,7 +96,8 @@ extension WidgetConfig {
             isSnapEnabled: table["snap_enabled"]?.bool ?? true,
             hotkeyMappings: parseHotkeyMappings(from: table["hotkey_mappings"]?.array),
             startupTarget: parseStartupTarget(from: table["startup_target"]?.table),
-            disabledBuiltInScriptIDs: Set(table["disabled_built_in_scripts"]?.array?.compactMap(\.string) ?? [])
+            disabledBuiltInScriptIDs: Set(table["disabled_built_in_scripts"]?.array?.compactMap(\.string) ?? []),
+            hotkeyOverrides: parseHotkeyOverrides(from: table["hotkeys"]?.table)
         )
     }
 
@@ -144,6 +159,22 @@ extension WidgetConfig {
         return Hotkey(keyCode: keyCode, modifierFlags: modifierFlags)
     }
 
+    /// `[hotkeys]` (#45): one sub-table per overridden action, keyed by `HotkeyAction.rawValue`.
+    /// Same leniency as `parseHotkeyMappings`: an unknown action identifier (a typo, or an action
+    /// a later version removed) is ignored, and a malformed entry falls back to that action's
+    /// default rather than throwing — an override that can't be parsed must never brick the app.
+    private static func parseHotkeyOverrides(from table: TOMLTable?) -> [HotkeyAction: Hotkey] {
+        guard let table else { return [:] }
+        var overrides: [HotkeyAction: Hotkey] = [:]
+        for action in HotkeyAction.allCases {
+            guard let entry = table[action.rawValue]?.table,
+                let hotkey = parseKeystroke(keyCodeKey: "key_code", modifiersKey: "modifiers", in: entry)
+            else { continue }
+            overrides[action] = hotkey
+        }
+        return overrides
+    }
+
     private static func parseWindowState(from table: TOMLTable?) -> WindowState? {
         guard let table,
             let x = table["x"]?.double,
@@ -200,6 +231,16 @@ extension WidgetConfig {
         if !disabledBuiltInScriptIDs.isEmpty {
             table["disabled_built_in_scripts"] = TOMLArray(disabledBuiltInScriptIDs.sorted())
         }
+        if !hotkeyOverrides.isEmpty {
+            let hotkeysTable = TOMLTable()
+            for (action, hotkey) in hotkeyOverrides.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+                let entry = TOMLTable()
+                entry["key_code"] = Int(hotkey.keyCode)
+                entry["modifiers"] = Int(hotkey.modifierFlags)
+                hotkeysTable[action.rawValue] = entry
+            }
+            table["hotkeys"] = hotkeysTable
+        }
         return table.convert()
     }
 
@@ -250,6 +291,30 @@ extension WidgetConfig {
     public func updatingDisabledBuiltInScriptIDs(_ disabledBuiltInScriptIDs: Set<String>) -> WidgetConfig {
         var copy = self
         copy.disabledBuiltInScriptIDs = disabledBuiltInScriptIDs
+        return copy
+    }
+
+    public func updatingMouseAvoidanceEnabled(_ enabled: Bool) -> WidgetConfig {
+        var copy = self
+        copy.isMouseAvoidanceEnabled = enabled
+        return copy
+    }
+
+    public func updatingSnapEnabled(_ enabled: Bool) -> WidgetConfig {
+        var copy = self
+        copy.isSnapEnabled = enabled
+        return copy
+    }
+
+    /// Rebinding an action back to its own default drops the entry instead of storing it — the
+    /// override table records only what differs from the defaults (see `hotkeyOverrides`).
+    public func updatingHotkeyOverride(_ action: HotkeyAction, to hotkey: Hotkey) -> WidgetConfig {
+        var copy = self
+        if hotkey == action.defaultHotkey {
+            copy.hotkeyOverrides.removeValue(forKey: action)
+        } else {
+            copy.hotkeyOverrides[action] = hotkey
+        }
         return copy
     }
 }

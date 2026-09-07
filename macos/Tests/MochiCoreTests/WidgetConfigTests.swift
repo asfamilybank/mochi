@@ -443,4 +443,97 @@ import Testing
         #expect(updated.hotkeyMappings == [mapping])
         #expect(updated.url == config.url)
     }
+
+    // #45: the action-hotkey override table
+
+    @Test func hotkeyOverridesIsEmptyWhenAbsentSoBothActionsUseTheirDefaults() throws {
+        let config = try WidgetConfig.parse("")
+
+        #expect(config.hotkeyOverrides.isEmpty)
+        #expect(config.hotkey(for: .toggleGhostMode) == DefaultHotkeys.toggleGhostMode)
+        #expect(config.hotkey(for: .hideWidget) == DefaultHotkeys.hideWidget)
+    }
+
+    @Test func parsesAHotkeyOverrideWhenPresent() throws {
+        let toml = """
+        [hotkeys.toggle_ghost_mode]
+        key_code = 17
+        modifiers = 2304
+        """
+
+        let config = try WidgetConfig.parse(toml)
+
+        #expect(config.hotkey(for: .toggleGhostMode) == Hotkey(keyCode: 17, modifierFlags: 2304))
+        #expect(config.hotkey(for: .hideWidget) == DefaultHotkeys.hideWidget)
+    }
+
+    @Test func skipsAMalformedHotkeyOverrideAndKeepsTheOthers() throws {
+        let toml = """
+        [hotkeys.toggle_ghost_mode]
+        key_code = -1
+        modifiers = 2304
+
+        [hotkeys.hide_widget]
+        key_code = 11
+        modifiers = 2304
+        """
+
+        let config = try WidgetConfig.parse(toml)
+
+        #expect(config.hotkey(for: .toggleGhostMode) == DefaultHotkeys.toggleGhostMode)
+        #expect(config.hotkey(for: .hideWidget) == Hotkey(keyCode: 11, modifierFlags: 2304))
+    }
+
+    @Test func ignoresAnUnknownHotkeyActionIdentifierInsteadOfThrowing() throws {
+        let toml = """
+        [hotkeys.summon_toolbar]
+        key_code = 17
+        modifiers = 2304
+        """
+
+        let config = try WidgetConfig.parse(toml)
+
+        #expect(config.hotkeyOverrides.isEmpty)
+    }
+
+    @Test func serializingThenReparsingRoundTripsHotkeyOverrides() throws {
+        let original = WidgetConfig(
+            hotkeyOverrides: [
+                .toggleGhostMode: Hotkey(keyCode: 17, modifierFlags: 2304),
+                .hideWidget: Hotkey(keyCode: 11, modifierFlags: 4352),
+            ])
+
+        let reparsed = try WidgetConfig.parse(original.serialized())
+
+        #expect(reparsed == original)
+    }
+
+    @Test func updatingAHotkeyOverrideToTheDefaultRemovesTheEntry() {
+        let config = WidgetConfig(hotkeyOverrides: [.toggleGhostMode: Hotkey(keyCode: 17, modifierFlags: 2304)])
+
+        let updated = config.updatingHotkeyOverride(.toggleGhostMode, to: DefaultHotkeys.toggleGhostMode)
+
+        #expect(updated.hotkeyOverrides.isEmpty)
+        #expect(updated.serialized().contains("hotkeys") == false)
+    }
+
+    @Test func updatingAHotkeyOverrideToANonDefaultStoresIt() {
+        let config = WidgetConfig()
+        let custom = Hotkey(keyCode: 17, modifierFlags: 2304)
+
+        let updated = config.updatingHotkeyOverride(.hideWidget, to: custom)
+
+        #expect(updated.hotkeyOverrides == [.hideWidget: custom])
+        #expect(updated.hotkey(for: .hideWidget) == custom)
+    }
+
+    @Test func updatingSnapAndMouseAvoidanceReturnCopiesWithOnlyThatFieldChanged() {
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+
+        let snapOff = config.updatingSnapEnabled(false)
+        let avoidanceOff = config.updatingMouseAvoidanceEnabled(false)
+
+        #expect(snapOff.isSnapEnabled == false && snapOff.isMouseAvoidanceEnabled == true && snapOff.url == config.url)
+        #expect(avoidanceOff.isMouseAvoidanceEnabled == false && avoidanceOff.isSnapEnabled == true)
+    }
 }

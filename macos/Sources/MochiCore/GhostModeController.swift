@@ -20,12 +20,20 @@ public enum WidgetMode: Equatable {
 /// into one `effectiveOpacity` and the platform layer just applies it (ADR-0012).
 ///
 /// Always starts in `.normal` and is never told to restore a prior Ghost Mode — the caller
-/// (`Orchestrator`) constructs a fresh instance on every launch, which is what gives "restart
-/// always returns to Normal Mode" (ADR-0006) for free, with no persisted-state path to bypass.
+/// (`Orchestrator`) constructs a fresh instance every time the widget window is opened, which is
+/// what gives both "restart always returns to Normal Mode" (ADR-0006) and "reopening the closed
+/// widget returns to Normal Mode" (#42) for free, with no persisted-state path to bypass.
+///
+/// Reads the target opacity and the avoidance preference from `currentConfig` *at the moment
+/// each is needed* rather than capturing them at construction (#46) — that is what makes a
+/// settings-panel edit take effect without a restart, and it needs no notification for the
+/// common case (the next Ghost Mode entry, the next mouse crossing simply see the new value).
+/// `reapplyConfiguration()` covers the one case where nothing else would trigger a re-read: an
+/// edit made while already sitting in Ghost Mode.
 public final class GhostModeController {
     private let platformOps: PlatformOps
     private let window: WidgetWindowHandle
-    private let ghostOpacity: Double
+    private let currentConfig: () -> WidgetConfig
     public private(set) var mode: WidgetMode = .normal
     /// The boss key's (ADR-0012) own bookkeeping: deliberate, persists until deliberately undone
     /// (or until Ghost Mode is left), and never decays on its own.
@@ -34,29 +42,27 @@ public final class GhostModeController {
     /// Mode with the mouse already parked on the widget avoids straight away, rather than waiting
     /// for the next crossing.
     private var isMouseInside = false
-    /// Mouse-entered avoidance (ADR-0012), on by default. Independent of `isHidden` and settable
-    /// at runtime — the settings panel that exposes it to users is its own ticket, until then it
-    /// is only reachable by hand-editing the config file.
-    public var isMouseAvoidanceEnabled: Bool {
-        didSet {
-            // The only situation where flipping this changes anything: the mouse is sitting on
-            // the widget right now, in the mode where avoidance applies at all.
-            guard mode == .ghost, isMouseInside else { return }
-            applyEffectiveOpacity()
-        }
-    }
+    /// Mouse-entered avoidance (ADR-0012), on by default. Independent of `isHidden`; read live
+    /// from the config so the settings panel's switch applies at the next visibility decision.
+    private var isMouseAvoidanceEnabled: Bool { currentConfig().isMouseAvoidanceEnabled }
 
-    public init(
-        platformOps: PlatformOps, window: WidgetWindowHandle, ghostOpacity: Double,
-        isMouseAvoidanceEnabled: Bool
-    ) {
+    public init(platformOps: PlatformOps, window: WidgetWindowHandle, currentConfig: @escaping () -> WidgetConfig) {
         self.platformOps = platformOps
         self.window = window
-        self.ghostOpacity = ghostOpacity
-        self.isMouseAvoidanceEnabled = isMouseAvoidanceEnabled
+        self.currentConfig = currentConfig
         platformOps.onMouseInsideChanged(window) { [weak self] inside in
             self?.handleMouseInsideChanged(inside)
         }
+    }
+
+    /// Pushes the current config's opacity/avoidance values down right now — for an edit made
+    /// *while in Ghost Mode*, where otherwise nothing would happen until the next mode change or
+    /// mouse crossing and the user dragging the opacity slider would see no change (#46). A
+    /// silent no-op in Normal Mode: the window is opaque there regardless of any setting, and the
+    /// platform must not be told to change an opacity it never had.
+    public func reapplyConfiguration() {
+        guard mode == .ghost else { return }
+        applyEffectiveOpacity()
     }
 
     public func toggle() {
@@ -89,7 +95,7 @@ public final class GhostModeController {
     private var effectiveOpacity: Double {
         guard mode == .ghost else { return 1.0 }
         if isHidden { return 0 }
-        return isMouseAvoidanceEnabled && isMouseInside ? 0 : ghostOpacity
+        return isMouseAvoidanceEnabled && isMouseInside ? 0 : currentConfig().ghostOpacity
     }
 
     /// Deliberately un-debounced (ADR-0012): whether brushing past the widget's edge actually

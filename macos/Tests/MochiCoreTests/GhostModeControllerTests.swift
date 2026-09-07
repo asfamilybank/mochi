@@ -3,16 +3,25 @@ import Testing
 
 @testable import MochiCore
 
+/// Stands in for `AppDelegate`'s live `currentConfig` — mutable from the test so the "read at
+/// the point of use, never cached" rule (#46) can be pinned down by changing a value *after* the
+/// controller was constructed.
+private final class ConfigStore {
+    var config: WidgetConfig
+    init(ghostOpacity: Double, isMouseAvoidanceEnabled: Bool) {
+        config = WidgetConfig(ghostOpacity: ghostOpacity, isMouseAvoidanceEnabled: isMouseAvoidanceEnabled)
+    }
+}
+
 @Suite struct GhostModeControllerTests {
     private func makeSUT(
         ghostOpacity: Double = 0.2, isMouseAvoidanceEnabled: Bool = true
-    ) -> (FakePlatformOps, WidgetWindowHandle, GhostModeController) {
+    ) -> (FakePlatformOps, ConfigStore, GhostModeController) {
         let fake = FakePlatformOps()
+        let store = ConfigStore(ghostOpacity: ghostOpacity, isMouseAvoidanceEnabled: isMouseAvoidanceEnabled)
         let window = fake.createWidgetWindow(initialFrame: WindowFrame(x: 0, y: 0, width: 100, height: 100))
-        let controller = GhostModeController(
-            platformOps: fake, window: window, ghostOpacity: ghostOpacity,
-            isMouseAvoidanceEnabled: isMouseAvoidanceEnabled)
-        return (fake, window, controller)
+        let controller = GhostModeController(platformOps: fake, window: window, currentConfig: { store.config })
+        return (fake, store, controller)
     }
 
     /// The whole of Ghost Mode's visibility, as one value the controller computes and hands to
@@ -101,24 +110,81 @@ import Testing
         #expect(fake.contentOpacityChanges.last?.opacity == 0.0)
     }
 
-    @Test func turningAvoidanceOffWhileTheMouseIsInsideRestoresVisibilityImmediately() {
-        let (fake, _, controller) = makeSUT(ghostOpacity: 0.2)
+    // #46: config is read when needed, never captured at construction.
+
+    @Test func turningAvoidanceOffWhileTheMouseIsInsideRestoresVisibilityOnReapply() {
+        let (fake, store, controller) = makeSUT(ghostOpacity: 0.2)
         controller.toggle()
         fake.simulateMouseInsideChanged(true)
 
-        controller.isMouseAvoidanceEnabled = false
+        store.config.isMouseAvoidanceEnabled = false
+        controller.reapplyConfiguration()
 
         #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 0.0, 0.2])
     }
 
-    @Test func turningAvoidanceOnWhileTheMouseIsInsideStepsAsideImmediately() {
-        let (fake, _, controller) = makeSUT(ghostOpacity: 0.2, isMouseAvoidanceEnabled: false)
+    @Test func turningAvoidanceOnWhileTheMouseIsInsideStepsAsideOnReapply() {
+        let (fake, store, controller) = makeSUT(ghostOpacity: 0.2, isMouseAvoidanceEnabled: false)
         controller.toggle()
         fake.simulateMouseInsideChanged(true)
 
-        controller.isMouseAvoidanceEnabled = true
+        store.config.isMouseAvoidanceEnabled = true
+        controller.reapplyConfiguration()
 
         #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 0.0])
+    }
+
+    @Test func avoidanceIsReadAtTheNextMouseCrossingWithoutAnyReapply() {
+        let (fake, store, controller) = makeSUT(ghostOpacity: 0.2)
+        controller.toggle()
+        store.config.isMouseAvoidanceEnabled = false
+
+        fake.simulateMouseInsideChanged(true)
+
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2])
+    }
+
+    @Test func entersGhostModeAtTheOpacityConfiguredAtThatMomentNotAtConstruction() {
+        // The single most important #46 assertion: this fails the moment someone captures
+        // `ghostOpacity` in `init` again.
+        let (fake, store, controller) = makeSUT(ghostOpacity: 0.2)
+        store.config.ghostOpacity = 0.5
+
+        controller.toggle()
+
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.5])
+    }
+
+    @Test func reapplyConfigurationPushesANewOpacityDownWhileInGhostMode() {
+        let (fake, store, controller) = makeSUT(ghostOpacity: 0.2)
+        controller.toggle()
+        store.config.ghostOpacity = 0.7
+
+        controller.reapplyConfiguration()
+
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 0.7])
+    }
+
+    @Test func reapplyConfigurationInNormalModeNeverTouchesOpacity() {
+        // Not "called with 1.0" — Normal Mode is opaque regardless of any setting, so the platform
+        // must not hear about the change at all.
+        let (fake, store, controller) = makeSUT(ghostOpacity: 0.2)
+        store.config.ghostOpacity = 0.7
+
+        controller.reapplyConfiguration()
+
+        #expect(fake.contentOpacityChanges.isEmpty)
+    }
+
+    @Test func reapplyConfigurationWhileHiddenKeepsTheWindowHidden() {
+        let (fake, store, controller) = makeSUT(ghostOpacity: 0.2)
+        controller.toggle()
+        controller.toggleHidden()
+        store.config.ghostOpacity = 0.7
+
+        controller.reapplyConfiguration()
+
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 0.0, 0.0])
     }
 
     @Test func pressingHiddenInNormalModeIsASilentNoOp() {

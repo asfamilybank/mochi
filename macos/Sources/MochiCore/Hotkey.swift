@@ -28,16 +28,6 @@ public enum DefaultHotkeys {
     /// its meaning and its scope swapped. `0x04` is `kVK_ANSI_H`.
     public static let hideWidget = Hotkey(keyCode: 0x04, modifierFlags: cmdOption)
 
-    /// Every default combo, for callers (the settings panel's mapping editor, #14) that need to
-    /// check a candidate trigger against Mochi's own reserved hotkeys *before* attempting to
-    /// register it — `GlobalHotkeyRegistry`'s underlying `RegisterEventHotKey` does not fail on an
-    /// in-process duplicate registration (it happily installs a second, independently-firing
-    /// handler for the same combo instead — see `HotkeyForwarder`'s doc comment), so registration
-    /// success/failure alone cannot be used to detect a collision with one of these.
-    public static let all: [Hotkey] = [
-        toggleGhostMode, hideWidget,
-    ]
-
     /// Plain `⌘`, no `⌥` — shared by every fixed local menu shortcut below.
     private static let cmd: UInt32 = 0x0100
 
@@ -56,4 +46,32 @@ public enum DefaultHotkeys {
         Hotkey(keyCode: 0x1D, modifierFlags: cmd),  // ⌘0 实际大小, kVK_ANSI_0
         Hotkey(keyCode: 0x2B, modifierFlags: cmd),  // ⌘, 设置…, kVK_ANSI_Comma
     ]
+}
+
+/// The two actions Mochi binds a *global* (Carbon-registered) hotkey to — and, since #45, the only
+/// two: reload/zoom/settings are fixed local menu shortcuts (#37) and deliberately not
+/// customizable, matching Chrome.
+///
+/// Each case's `rawValue` is the stable string identifier the config file stores an override
+/// under (`[hotkeys]` table) — an explicit constant per case, never the case's declaration order
+/// or an integer index, so reordering or adding cases can't silently rebind a user's saved combo.
+public enum HotkeyAction: String, CaseIterable, Hashable {
+    case toggleGhostMode = "toggle_ghost_mode"
+    case hideWidget = "hide_widget"
+
+    /// The built-in combo that applies when the user hasn't overridden this action
+    /// (`WidgetConfig.hotkey(for:)`).
+    public var defaultHotkey: Hotkey {
+        switch self {
+        case .toggleGhostMode: DefaultHotkeys.toggleGhostMode
+        case .hideWidget: DefaultHotkeys.hideWidget
+        }
+    }
+
+    public var displayName: String {
+        switch self {
+        case .toggleGhostMode: "切换 Ghost Mode"
+        case .hideWidget: "隐藏 Widget"
+        }
+    }
 }

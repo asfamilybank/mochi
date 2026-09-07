@@ -21,9 +21,20 @@ final class FakePlatformOps: PlatformOps {
     private(set) var mousePassthroughChanges: [(enabled: Bool, windowID: Int)] = []
     private(set) var registeredHotkeys: [Hotkey] = []
     private(set) var unregisteredHotkeys: [Hotkey] = []
+    /// The interleaved register/unregister sequence — for assertions where the *order* of the two
+    /// is the point (release the old combo before claiming the new one, #45/#46).
+    private(set) var hotkeyCallOrder: [HotkeyCall] = []
+
+    enum HotkeyCall: Equatable {
+        case register(Hotkey)
+        case unregister(Hotkey)
+    }
     private(set) var presentedAlerts: [(title: String, message: String)] = []
     private(set) var snapEnabledChanges: [(enabled: Bool, windowID: Int)] = []
     private(set) var trayMenuItems: [TrayMenuItem] = []
+    private(set) var createTrayIconCallCount = 0
+    private(set) var closedWindowIDs: [Int] = []
+    private var reopenRequestedHandler: (() -> Void)?
     private(set) var terminateAppCallCount = 0
     private(set) var reloadedWindowIDs: [Int] = []
     private(set) var accessibilityPermissionRequestCount = 0
@@ -41,9 +52,12 @@ final class FakePlatformOps: PlatformOps {
     private var pageTitleChangedHandlers: [Int: (String?) -> Void] = [:]
     private var loadingStateChangedHandlers: [Int: (Bool) -> Void] = [:]
     private var loadingProgressChangedHandlers: [Int: (Double) -> Void] = [:]
-    private var hotkeyHandlers: [() -> Void] = []
+    private var hotkeyHandlers: [Hotkey: () -> Void] = [:]
 
     var stubbedHotkeyRegistrationSucceeds = true
+    /// Combos that fail to register as if another application held them, while everything else
+    /// still succeeds — the rollback tests need exactly one combo to fail.
+    var hotkeysThatFailToRegister: Set<Hotkey> = []
     var stubbedAccessibilityTrusted = true
 
     var stubbedScreens: [CGRect] = [CGRect(x: 0, y: 0, width: 1440, height: 900)]
@@ -100,6 +114,23 @@ final class FakePlatformOps: PlatformOps {
 
     func simulateWindowWillClose(windowID: Int = 1) {
         willCloseHandlers[windowID]?()
+    }
+
+    /// Mirrors `AppKitPlatformOps`: `NSWindow.close()` fires the delegate's `windowWillClose`,
+    /// so closing through this call reaches the registered will-close handler the same way the red
+    /// close button does.
+    func closeWidgetWindow(_ window: WidgetWindowHandle) {
+        let handle = window as! FakeWidgetWindowHandle
+        closedWindowIDs.append(handle.id)
+        willCloseHandlers[handle.id]?()
+    }
+
+    func onReopenRequested(perform handler: @escaping () -> Void) {
+        reopenRequestedHandler = handler
+    }
+
+    func simulateReopenRequested() {
+        reopenRequestedHandler?()
     }
 
     func simulateURLSubmitted(_ url: URL, windowID: Int = 1) {
@@ -188,27 +219,30 @@ final class FakePlatformOps: PlatformOps {
     @discardableResult
     func registerGlobalHotkey(_ hotkey: Hotkey, perform handler: @escaping () -> Void) -> Bool {
         registeredHotkeys.append(hotkey)
-        guard stubbedHotkeyRegistrationSucceeds else { return false }
-        hotkeyHandlers.append(handler)
+        hotkeyCallOrder.append(.register(hotkey))
+        guard stubbedHotkeyRegistrationSucceeds, !hotkeysThatFailToRegister.contains(hotkey) else { return false }
+        hotkeyHandlers[hotkey] = handler
         return true
     }
 
-    func simulateHotkeyPressed(at index: Int = 0) {
-        hotkeyHandlers[index]()
+    /// Fires the handler of the first combo ever registered — `Orchestrator` registers the Ghost
+    /// Mode toggle first, so this is "press the toggle" for tests that don't care which combo.
+    func simulateHotkeyPressed() {
+        guard let first = registeredHotkeys.first else { return }
+        simulateHotkeyPressed(first)
     }
 
-    /// Looks up the handler by matching the hotkey itself rather than a positional index —
-    /// insulates tests from `Orchestrator`'s internal hotkey-registration order. Only correct
-    /// when every registration up to and including a match succeeded (true whenever
-    /// `stubbedHotkeyRegistrationSucceeds` is left at its default), since `hotkeyHandlers` only
-    /// contains successful registrations while `registeredHotkeys` contains every attempt.
+    /// Fires the handler *currently* registered for `hotkey` — mirrors `GlobalHotkeyRegistry`,
+    /// where a later registration of the same combo replaces the earlier handler and an
+    /// unregister removes it, so a combo that was released does nothing here either.
     func simulateHotkeyPressed(_ hotkey: Hotkey) {
-        guard let index = registeredHotkeys.firstIndex(of: hotkey) else { return }
-        hotkeyHandlers[index]()
+        hotkeyHandlers[hotkey]?()
     }
 
     func unregisterGlobalHotkey(_ hotkey: Hotkey) {
         unregisteredHotkeys.append(hotkey)
+        hotkeyCallOrder.append(.unregister(hotkey))
+        hotkeyHandlers.removeValue(forKey: hotkey)
     }
 
     func presentAlert(title: String, message: String) {
@@ -221,6 +255,7 @@ final class FakePlatformOps: PlatformOps {
     }
 
     func createTrayIcon(items: [TrayMenuItem]) {
+        createTrayIconCallCount += 1
         trayMenuItems = items
     }
 

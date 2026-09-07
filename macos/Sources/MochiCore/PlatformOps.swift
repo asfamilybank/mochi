@@ -32,6 +32,18 @@ public protocol PlatformOps: AnyObject {
     func captureWindowState(of window: WidgetWindowHandle) -> WindowState
     func onWindowWillClose(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void)
 
+    /// Really closes the widget (#42): destroys the window *and* its web content so the page stops
+    /// running — closing is closing, not Ghost Mode's Hidden (which keeps the page alive). Must
+    /// route through the same close path the window's red button takes, so `onWindowWillClose`'s
+    /// handler fires exactly once for either entry and "persist geometry before closing" has a
+    /// single implementation. Implementations must not fire the handler themselves in addition.
+    func closeWidgetWindow(_ window: WidgetWindowHandle)
+
+    /// Registers the handler for the user asking the app to re-present itself with no widget
+    /// window to hand — clicking the Dock icon while the widget is closed (#42). App-global, not
+    /// per-window (there is no window at that point), same shape as `createTrayIcon`.
+    func onReopenRequested(perform handler: @escaping () -> Void)
+
     /// The visible frame of every connected screen. Index 0 is always the primary
     /// (menu-bar) screen — matches `NSScreen.screens`' documented ordering.
     func visibleScreens() -> [CGRect]

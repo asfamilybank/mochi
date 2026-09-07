@@ -3,87 +3,57 @@ import Testing
 
 @testable import MochiCore
 
+/// Registration of mapping triggers moved to `Orchestrator` (#46) — see `OrchestratorTests` for
+/// launch-time registration and press-time dispatch. What's left here is the forwarding decision
+/// itself: mode gate, Accessibility onboarding, and the actual keystroke.
 @Suite struct HotkeyForwarderTests {
-    private let mapping = HotkeyMapping(
-        trigger: Hotkey(keyCode: 0x31, modifierFlags: 0),
-        pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0)
-    )
+    private let pageKeystroke = Hotkey(keyCode: 0x31, modifierFlags: 0)
 
-    @Test func registersEachMappingsTriggerAsAGlobalHotkey() {
-        let fake = FakePlatformOps()
-        _ = HotkeyForwarder(platformOps: fake, mappings: [mapping], isGhostModeActive: { true })
-
-        #expect(fake.registeredHotkeys == [mapping.trigger])
-    }
-
-    @Test func forwardsThePageKeystrokeWhenTriggeredWhileInGhostModeAndTrusted() {
+    @Test func forwardsThePageKeystrokeWhileInGhostModeAndTrusted() {
         let fake = FakePlatformOps()
         fake.stubbedAccessibilityTrusted = true
-        // Held in a `let`, not discarded via `_` — `HotkeyForwarder`'s hotkey handler captures
-        // `self` weakly, so a discarded instance would be deallocated before `simulateHotkeyPressed`
-        // ever fires it, making the assertion below trivially (and misleadingly) pass.
-        let forwarder = HotkeyForwarder(platformOps: fake, mappings: [mapping], isGhostModeActive: { true })
+        let forwarder = HotkeyForwarder(platformOps: fake, isGhostModeActive: { true })
 
-        fake.simulateHotkeyPressed()
+        forwarder.forward(pageKeystroke)
 
-        #expect(fake.forwardedKeystrokes == [mapping.pageKeystroke])
+        #expect(fake.forwardedKeystrokes == [pageKeystroke])
         #expect(fake.presentedAlerts.isEmpty)
-        withExtendedLifetime(forwarder) {}
     }
 
-    @Test func doesNothingWhenTriggeredOutsideGhostMode() {
+    @Test func doesNothingOutsideGhostMode() {
         let fake = FakePlatformOps()
         fake.stubbedAccessibilityTrusted = true
-        let forwarder = HotkeyForwarder(platformOps: fake, mappings: [mapping], isGhostModeActive: { false })
+        let forwarder = HotkeyForwarder(platformOps: fake, isGhostModeActive: { false })
 
-        fake.simulateHotkeyPressed()
+        forwarder.forward(pageKeystroke)
 
         #expect(fake.forwardedKeystrokes.isEmpty)
         #expect(fake.presentedAlerts.isEmpty)
-        withExtendedLifetime(forwarder) {}
     }
 
-    @Test func requestsAccessibilityPermissionOnceOnFirstUntrustedTriggerAndAlertsEveryTime() {
+    @Test func requestsAccessibilityPermissionOnceOnFirstUntrustedForwardAndAlertsEveryTime() {
         let fake = FakePlatformOps()
         fake.stubbedAccessibilityTrusted = false
-        let forwarder = HotkeyForwarder(platformOps: fake, mappings: [mapping], isGhostModeActive: { true })
+        let forwarder = HotkeyForwarder(platformOps: fake, isGhostModeActive: { true })
 
-        fake.simulateHotkeyPressed()
-        fake.simulateHotkeyPressed()
+        forwarder.forward(pageKeystroke)
+        forwarder.forward(pageKeystroke)
 
         #expect(fake.accessibilityPermissionRequestCount == 1)
         #expect(fake.presentedAlerts.count == 2)
         #expect(fake.forwardedKeystrokes.isEmpty)
-        withExtendedLifetime(forwarder) {}
     }
 
-    @Test func presentsAnAlertWhenATriggerHotkeyConflictsInsteadOfFailingSilently() {
+    @Test func readsTheModeAtForwardTimeNotAtConstruction() {
         let fake = FakePlatformOps()
-        fake.stubbedHotkeyRegistrationSucceeds = false
+        fake.stubbedAccessibilityTrusted = true
+        var isGhost = false
+        let forwarder = HotkeyForwarder(platformOps: fake, isGhostModeActive: { isGhost })
 
-        _ = HotkeyForwarder(platformOps: fake, mappings: [mapping], isGhostModeActive: { true })
+        forwarder.forward(pageKeystroke)
+        isGhost = true
+        forwarder.forward(pageKeystroke)
 
-        #expect(fake.presentedAlerts.count == 1)
-    }
-
-    @Test func doesNotPresentAnAlertWhenThereAreNoMappingsConfigured() {
-        let fake = FakePlatformOps()
-
-        _ = HotkeyForwarder(platformOps: fake, mappings: [], isGhostModeActive: { true })
-
-        #expect(fake.registeredHotkeys.isEmpty)
-        #expect(fake.presentedAlerts.isEmpty)
-    }
-
-    @Test func skipsRegisteringAMappingWhoseTriggerIsReservedByADefaultHotkeyAndAlertsAboutIt() {
-        // Carbon's RegisterEventHotKey allows the same combo registered twice in-process, which
-        // would make both handlers fire on one press instead of surfacing as a conflict — so a
-        // reserved trigger must never reach `registerGlobalHotkey` at all.
-        let fake = FakePlatformOps()
-
-        _ = HotkeyForwarder(platformOps: fake, mappings: [mapping], reservedTriggers: [mapping.trigger], isGhostModeActive: { true })
-
-        #expect(fake.registeredHotkeys.isEmpty)
-        #expect(fake.presentedAlerts.count == 1)
+        #expect(fake.forwardedKeystrokes == [pageKeystroke])
     }
 }

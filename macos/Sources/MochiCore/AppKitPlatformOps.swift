@@ -540,8 +540,23 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         window.toolbar?.isVisible = visible
     }
 
+    /// Both close entries — the red button and `⌘W` via `closeWidgetWindow` — land here (#42):
+    /// the core's handler runs first (it persists geometry and forgets this window), then the web
+    /// content is torn down explicitly. Closing is closing: the page must stop (video, audio)
+    /// right now, not whenever the last reference to this handle happens to drop.
     func windowWillClose(_ notification: Notification) {
         willCloseHandler?()
+        tearDownWebContent()
+    }
+
+    /// Stops the page for good. `loadHTMLString("")` is what actually silences a playing
+    /// `<video>`/`<audio>` — `stopLoading()` alone only aborts in-flight requests. Detaching the
+    /// delegate first keeps that blank load from reporting back as a navigation.
+    private func tearDownWebContent() {
+        navigationObservations = []
+        webView.navigationDelegate = nil
+        webView.stopLoading()
+        webView.loadHTMLString("", baseURL: nil)
     }
 
     /// The frame `captureWindowState` should persist — `window.frame` itself during element
@@ -760,8 +775,16 @@ public final class AppKitPlatformOps: PlatformOps {
     /// as the tray exists — `NSStatusBar` doesn't keep the status item alive on its own, and
     /// `NSMenuItem.target` doesn't retain its target either.
     private var tray: (statusItem: NSStatusItem, targets: [MenuItemActionTarget])?
+    private var reopenRequestedHandler: (() -> Void)?
 
     public init() {}
+
+    /// `AppDelegate`'s `applicationShouldHandleReopen` (#42) — the Dock-icon click — forwards
+    /// here; there is no notification for it, only that delegate callback, so the app target has
+    /// to hand it over explicitly.
+    public func handleApplicationReopen() {
+        reopenRequestedHandler?()
+    }
 
     public func createWidgetWindow(initialFrame: WindowFrame) -> WidgetWindowHandle {
         let rect = NSRect(x: initialFrame.x, y: initialFrame.y, width: initialFrame.width, height: initialFrame.height)
@@ -836,6 +859,10 @@ public final class AppKitPlatformOps: PlatformOps {
         // ADR-0009: traffic lights + toolbar content share one native row, rendered with the
         // system's own Liquid Glass material — no `NSGlassEffectView` wrapper needed here.
         window.titlebarAppearsTransparent = true
+        // The handle owns this window through ARC (#42): AppKit's default of releasing a closed
+        // window itself would double-free it under Swift. It is deallocated when `Orchestrator`
+        // drops the handle from its will-close callback.
+        window.isReleasedWhenClosed = false
         // ADR-0011: without this, `window.title`'s non-empty fallback ("Mochi") is drawn as visible
         // text next to the traffic lights, contradicting ADR-0009's "title text is never rendered".
         // The title itself stays set — Mission Control/Cmd-Tab read it (`AddressBarController`).
@@ -1009,6 +1036,17 @@ public final class AppKitPlatformOps: PlatformOps {
     public func onWindowWillClose(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {
         guard let handle = handle(for: window) else { return }
         handle.setWillCloseHandler(handler)
+    }
+
+    /// `NSWindow.close()` — the same call the red close button makes — so `windowWillClose` fires
+    /// once and does the whole teardown for either entry (#42).
+    public func closeWidgetWindow(_ window: WidgetWindowHandle) {
+        guard let handle = handle(for: window) else { return }
+        handle.window.close()
+    }
+
+    public func onReopenRequested(perform handler: @escaping () -> Void) {
+        reopenRequestedHandler = handler
     }
 
     public func visibleScreens() -> [CGRect] {

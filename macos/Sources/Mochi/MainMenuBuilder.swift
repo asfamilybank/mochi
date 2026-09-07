@@ -1,7 +1,7 @@
 import AppKit
 import MochiCore
 
-/// Builds `NSApp.mainMenu` (#37) — Mochi never set one before, which silently broke every
+/// Builds `NSApp.mainMenu` (#37, File menu added by #42) — Mochi never set one before, which silently broke every
 /// standard editing shortcut (`⌘V`/`⌘C`/`⌘A`/…) since AppKit dispatches those through the main
 /// menu's key equivalents, not automatically.
 ///
@@ -15,11 +15,10 @@ final class MainMenuBuilder {
     ///   - orchestrator: supplies the operations the Mochi/Display menus call — reload, zoom,
     ///     open settings — all already public on `Orchestrator` (#37) rather than reached for via
     ///     new `PlatformOps` methods.
-    ///   - openSettings: same callback `Orchestrator` and the tray icon already share, so all three
-    ///     entry points (toolbar, tray, menu) open the identical settings window.
     func build(orchestrator: Orchestrator) -> NSMenu {
         let mainMenu = NSMenu()
         mainMenu.addItem(appMenuItem(orchestrator: orchestrator))
+        mainMenu.addItem(fileMenuItem(orchestrator: orchestrator))
         mainMenu.addItem(editMenuItem())
         mainMenu.addItem(viewMenuItem(orchestrator: orchestrator))
         mainMenu.addItem(windowMenuItem())
@@ -44,6 +43,25 @@ final class MainMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(action("退出 \(AppInfo.name)", keyEquivalent: "q") {
             NSApp.terminate(nil)
+        })
+
+        let item = NSMenuItem()
+        item.submenu = menu
+        return item
+    }
+
+    // MARK: - File menu
+
+    /// One item only (#42): 关闭窗口. Mochi has no concept of new/open/export, so no such items are
+    /// invented to fill the menu out. `⌘W` routes to `Orchestrator.closeWidget` (rather than a
+    /// responder-chain `performClose:`) so that it means "close the widget" specifically, and is
+    /// greyed out — via the standard validation hook, not manual `isEnabled` flips — whenever
+    /// there is no widget to close.
+    private func fileMenuItem(orchestrator: Orchestrator) -> NSMenuItem {
+        let menu = NSMenu(title: "文件")
+
+        menu.addItem(widgetAction("关闭窗口", keyEquivalent: "w", orchestrator: orchestrator) {
+            orchestrator.closeWidget()
         })
 
         let item = NSMenuItem()
@@ -84,17 +102,17 @@ final class MainMenuBuilder {
     private func viewMenuItem(orchestrator: Orchestrator) -> NSMenuItem {
         let menu = NSMenu(title: "显示")
 
-        menu.addItem(action("刷新", keyEquivalent: "r") {
+        menu.addItem(widgetAction("刷新", keyEquivalent: "r", orchestrator: orchestrator) {
             orchestrator.reloadPage()
         })
         menu.addItem(.separator())
-        menu.addItem(action("放大", keyEquivalent: "+") {
+        menu.addItem(widgetAction("放大", keyEquivalent: "+", orchestrator: orchestrator) {
             orchestrator.zoomIn()
         })
-        menu.addItem(action("缩小", keyEquivalent: "-") {
+        menu.addItem(widgetAction("缩小", keyEquivalent: "-", orchestrator: orchestrator) {
             orchestrator.zoomOut()
         })
-        menu.addItem(action("实际大小", keyEquivalent: "0") {
+        menu.addItem(widgetAction("实际大小", keyEquivalent: "0", orchestrator: orchestrator) {
             orchestrator.resetZoom()
         })
 
@@ -124,11 +142,20 @@ final class MainMenuBuilder {
 
     // MARK: - Item construction
 
+    /// An item that only makes sense while a widget window exists (#42) — validated against
+    /// `Orchestrator.hasActiveWidget` every time the menu opens or the key equivalent fires.
+    private func widgetAction(
+        _ title: String, keyEquivalent: String, orchestrator: Orchestrator, perform: @escaping () -> Void
+    ) -> NSMenuItem {
+        action(title, keyEquivalent: keyEquivalent, isEnabled: { orchestrator.hasActiveWidget }, perform: perform)
+    }
+
     private func action(
         _ title: String, keyEquivalent: String = "",
-        modifierMask: NSEvent.ModifierFlags = [.command], perform: @escaping () -> Void
+        modifierMask: NSEvent.ModifierFlags = [.command], isEnabled: @escaping () -> Bool = { true },
+        perform: @escaping () -> Void
     ) -> NSMenuItem {
-        let target = MenuItemActionTarget(action: perform)
+        let target = MenuItemActionTarget(isEnabled: isEnabled, action: perform)
         targets.append(target)
         let item = NSMenuItem(title: title, action: #selector(MenuItemActionTarget.invoke), keyEquivalent: keyEquivalent)
         item.target = target

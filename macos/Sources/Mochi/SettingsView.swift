@@ -1,9 +1,16 @@
 import MochiCore
 import SwiftUI
 
-/// The settings panel's content (#13/#14/#15) — General (startup URL / Ghost Mode opacity),
-/// hotkey mappings, and scripts, each backed by `SettingsViewModel` so every edit flows through
-/// `SettingsController`'s persistence path rather than any view-local state of its own.
+/// The settings panel's content, regrouped into four tabs by the user's mental model rather than
+/// by implementation (#46): 通用 (startup) / 窗口与外观 (how the window behaves on the desktop) /
+/// 热键 (both kinds of hotkey in one place) / 脚本. Every tab is backed by `SettingsViewModel` so
+/// each edit flows through `SettingsController`'s persistence path — view-local `@State` only ever
+/// holds a value mid-edit (text being typed, a slider mid-drag), never the truth.
+///
+/// Nothing here says "改动将在重启 Mochi 后生效" any more: every setting either is re-read at its
+/// point of use or is actively re-applied on change (#46). Scripts are the one honest exception —
+/// already-executed JavaScript can't be undone — so that tab says "next page load" and offers the
+/// load as a button.
 struct SettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
 
@@ -11,24 +18,25 @@ struct SettingsView: View {
         TabView {
             GeneralSettingsTab(viewModel: viewModel)
                 .tabItem { Text("通用") }
-            HotkeyMappingsTab(viewModel: viewModel)
-                .tabItem { Text("热键映射") }
+            WindowAppearanceTab(viewModel: viewModel)
+                .tabItem { Text("窗口与外观") }
+            HotkeysTab(viewModel: viewModel)
+                .tabItem { Text("热键") }
             ScriptsTab(viewModel: viewModel)
                 .tabItem { Text("脚本") }
         }
         .padding(20)
-        .frame(width: 480, height: 420)
+        .frame(width: 480, height: 460)
     }
 }
 
 /// #13: read-only "上次访问 URL" + the editable "启动 URL" tri-state selector (具体网址 / 空页面 /
-/// 不设置) that replaces the originally-planned single URL text field (see issue #13's comment),
-/// plus Ghost Mode's target opacity.
+/// 不设置) that replaces the originally-planned single URL text field (see issue #13's comment).
+/// Moved here verbatim from the old three-tab layout — behaviour unchanged (#46).
 private struct GeneralSettingsTab: View {
     @ObservedObject var viewModel: SettingsViewModel
     @State private var startupKind: StartupKind
     @State private var startupURLText: String
-    @State private var ghostOpacity: Double
 
     private enum StartupKind: Hashable {
         case notSet, emptyPage, url
@@ -47,7 +55,6 @@ private struct GeneralSettingsTab: View {
             _startupKind = State(initialValue: .notSet)
             _startupURLText = State(initialValue: "")
         }
-        _ghostOpacity = State(initialValue: viewModel.config.ghostOpacity)
     }
 
     var body: some View {
@@ -72,27 +79,6 @@ private struct GeneralSettingsTab: View {
                         .onSubmit { applyStartupTarget(kind: .url) }
                 }
             }
-
-            Section("Ghost Mode") {
-                HStack {
-                    Slider(
-                        value: $ghostOpacity, in: 0...1,
-                        onEditingChanged: { editing in
-                            if !editing { viewModel.updateGhostOpacity(ghostOpacity) }
-                        }
-                    ) {
-                        Text("目标透明度")
-                    }
-                    Text(String(format: "%.0f%%", ghostOpacity * 100))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, alignment: .trailing)
-                }
-                // `GhostModeController` captures its target opacity once at launch — persisted
-                // immediately, but only takes visual effect the next time Mochi starts.
-                Text("改动将在重启 Mochi 后生效")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         }
     }
 
@@ -109,23 +95,104 @@ private struct GeneralSettingsTab: View {
     }
 }
 
-/// #14: add/edit/delete "global hotkey → page keystroke" mappings, reusing
-/// `SettingsController`'s conflict detection when a new trigger is recorded.
-private struct HotkeyMappingsTab: View {
+/// #46: everything about how the window behaves on the desktop — Ghost Mode's target opacity,
+/// mouse-entered avoidance (ADR-0012), and Snap (#39). The two switches get their first UI here;
+/// before this they were only reachable by hand-editing the config file.
+private struct WindowAppearanceTab: View {
+    @ObservedObject var viewModel: SettingsViewModel
+    @State private var ghostOpacity: Double
+
+    init(viewModel: SettingsViewModel) {
+        self.viewModel = viewModel
+        _ghostOpacity = State(initialValue: viewModel.config.ghostOpacity)
+    }
+
+    var body: some View {
+        Form {
+            Section("Ghost Mode") {
+                HStack {
+                    Slider(
+                        value: $ghostOpacity, in: 0...1,
+                        onEditingChanged: { editing in
+                            if !editing { viewModel.updateGhostOpacity(ghostOpacity) }
+                        }
+                    ) {
+                        Text("目标透明度")
+                    }
+                    Text(String(format: "%.0f%%", ghostOpacity * 100))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, alignment: .trailing)
+                }
+                Toggle(
+                    "鼠标移入时避让",
+                    isOn: Binding(
+                        get: { viewModel.config.isMouseAvoidanceEnabled },
+                        set: { viewModel.updateMouseAvoidanceEnabled($0) }
+                    )
+                )
+                Text("鼠标移到 Widget 上时窗口暂时让开，移开即恢复。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Normal Mode") {
+                Toggle(
+                    "拖动时吸附屏幕边缘",
+                    isOn: Binding(
+                        get: { viewModel.config.isSnapEnabled },
+                        set: { viewModel.updateSnapEnabled($0) }
+                    )
+                )
+            }
+        }
+    }
+}
+
+/// #45 + #14, together in one place since the user thinks of both as "hotkeys" (#46): the two
+/// customizable action hotkeys on top, the forwarding mapping table below. Both sections reuse
+/// the same recorder control and display formatting.
+private struct HotkeysTab: View {
     @ObservedObject var viewModel: SettingsViewModel
     @State private var newTrigger: Hotkey?
     @State private var newPageKeystroke: Hotkey?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Mappings are only actually (un)registered with the OS when `HotkeyForwarder` is
-            // rebuilt at launch (`Orchestrator.start()`) — an edit made here is fully persisted
-            // immediately, but a removed mapping keeps forwarding for the rest of this session,
-            // and an added/edited one does nothing until restart. Disclosed rather than silently
-            // surprising the user, since there's no live unregister path (`GlobalHotkeyRegistry`
-            // doesn't expose one) to make this take effect immediately without a larger change to
-            // how hotkeys are (re)registered at runtime.
-            Text("改动将在重启 Mochi 后生效")
+            Text("功能热键").font(.headline)
+            ForEach(HotkeyAction.allCases, id: \.self) { action in
+                HStack {
+                    Text(action.displayName)
+                    Spacer()
+                    // The binding reads the combo currently in effect straight from the config, so
+                    // a rejected recording (conflict, or held by another app) snaps the control
+                    // back to the unchanged binding instead of displaying a combo that isn't live.
+                    HotkeyRecorderView(
+                        hotkey: Binding(
+                            get: { viewModel.config.hotkey(for: action) },
+                            set: { newValue in
+                                guard let newValue else { return }
+                                viewModel.updateActionHotkey(action, to: newValue)
+                            }
+                        ),
+                        placeholder: "点击录制"
+                    )
+                }
+            }
+            HStack {
+                Text("全局生效，按下即刻切换；刷新与缩放使用固定的 ⌘R / ⌘+ / ⌘- / ⌘0，不可自定义。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("恢复默认") {
+                    viewModel.resetActionHotkeysToDefaults()
+                }
+                .disabled(viewModel.config.hotkeyOverrides.isEmpty)
+            }
+
+            Divider()
+
+            Text("热键映射").font(.headline)
+            Text("Ghost Mode 下按触发热键，向页面转发对应按键。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -146,23 +213,18 @@ private struct HotkeyMappingsTab: View {
                 }
             }
 
-            Divider()
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("新增映射").font(.headline)
-                HStack {
-                    HotkeyRecorderView(hotkey: $newTrigger, placeholder: "触发热键")
-                    Image(systemName: "arrow.right")
-                    HotkeyRecorderView(hotkey: $newPageKeystroke, placeholder: "页面按键")
-                    Button("添加") {
-                        guard let trigger = newTrigger, let pageKeystroke = newPageKeystroke else { return }
-                        if viewModel.addHotkeyMapping(trigger: trigger, pageKeystroke: pageKeystroke) {
-                            newTrigger = nil
-                            newPageKeystroke = nil
-                        }
+            HStack {
+                HotkeyRecorderView(hotkey: $newTrigger, placeholder: "触发热键")
+                Image(systemName: "arrow.right")
+                HotkeyRecorderView(hotkey: $newPageKeystroke, placeholder: "页面按键")
+                Button("添加") {
+                    guard let trigger = newTrigger, let pageKeystroke = newPageKeystroke else { return }
+                    if viewModel.addHotkeyMapping(trigger: trigger, pageKeystroke: pageKeystroke) {
+                        newTrigger = nil
+                        newPageKeystroke = nil
                     }
-                    .disabled(newTrigger == nil || newPageKeystroke == nil)
                 }
+                .disabled(newTrigger == nil || newPageKeystroke == nil)
             }
         }
         .padding(.vertical, 8)
@@ -170,7 +232,9 @@ private struct HotkeyMappingsTab: View {
 }
 
 /// #15: enable/disable built-in official adapter scripts, edit/save a custom script — each
-/// clearly labeled by source, per the ticket's AC.
+/// clearly labeled by source, per the ticket's AC. Since #46 the enabled set and the custom script
+/// are re-read on every navigation, so a change applies on the next page load — stated as such,
+/// with the load itself one click away.
 private struct ScriptsTab: View {
     @ObservedObject var viewModel: SettingsViewModel
     @State private var customScriptText: String
@@ -182,12 +246,18 @@ private struct ScriptsTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Like the hotkey mapping table, `Orchestrator` only reads the enabled/disabled set
-            // and the custom script once at launch — an edit here is persisted immediately but
-            // doesn't reach the already-running page until Mochi restarts.
-            Text("改动将在重启 Mochi 后生效")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            HStack {
+                // Honest about the one limit hot-reload can't cross: JavaScript that already ran
+                // in the page can't be un-run. Both directions — enabling and disabling — wait
+                // for the next load, deliberately symmetric so the rule is learnable.
+                Text("脚本改动将在下次加载页面后生效")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("刷新页面") {
+                    viewModel.reloadPageNow()
+                }
+            }
 
             Text("官方内置适配脚本").font(.headline)
             ForEach(BuiltInScripts.all, id: \.id) { script in
