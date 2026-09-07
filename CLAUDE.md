@@ -52,6 +52,8 @@ commit message 里用 `Closes #<n>` 关闭多个 issue 时，逗号列表（`Clo
 
 拆出来的子 issue 可能只在 body 里用 "## Parent #29" / "## Blocked by #35" 记归属和依赖，并没有建 GitHub 原生 parent/sub-issue 或 `blocked_by` 关系（#29→#35/#39/#40/#41/#43 就是这样）——`gh api graphql` 查 `parent`/`subIssues` 返回全空不等于没拆，得读 body 里的这两节。
 
+领 `ready-for-agent` 票、准备动手实现前先 `git status`/`git diff HEAD`——工作区可能已经躺着前序 session 写完但没提交的完整实现（真实案例：#42/#45/#46 合计 20 个文件近 1900 行改动，`swift build`/`swift test` 全绿，就是没 commit）。先跑一遍构建和测试确认改动完整、再对照 issue AC 走一遍 code review，比假设"没提交=没人做"从头重写快得多。
+
 ### Triage labels
 
 Default vocabulary, label strings equal to their names. See `docs/agents/triage-labels.md`.
