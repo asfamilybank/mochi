@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 
@@ -81,6 +82,23 @@ import Testing
     @Test func addressFieldGlyphSwitchesOnWhetherAPageIsLoaded() {
         #expect(DesignTokens.addressFieldGlyph(hasLoadedPage: true) == .lock)
         #expect(DesignTokens.addressFieldGlyph(hasLoadedPage: false) == .search)
+    }
+
+    /// A mistyped SF Symbol name is otherwise invisible until the glyph silently fails to draw at
+    /// runtime — and `ToolbarStyle.symbolImage` traps on it rather than shipping a blank button.
+    @Test func everySymbolNameResolvesAgainstTheSDK() {
+        for name in DesignTokens.Symbol.all {
+            #expect(NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil,
+                    "SF Symbol \"\(name)\" does not resolve against this SDK")
+        }
+    }
+
+    /// The leading glyph tracks whether a page is loaded, not whether it arrived over TLS, so it
+    /// must not announce itself as a security indicator on what may be a plain-http page.
+    @Test func addressFieldGlyphDoesNotClaimSecurity() {
+        for glyph in [DesignTokens.AddressFieldGlyph.lock, .search] {
+            #expect(!glyph.accessibilityLabel.contains("安全"))
+        }
     }
 
     @Test func fontFamilyIsTheSystemFontNotACustomBrandTypeface() {

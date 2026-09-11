@@ -13,7 +13,7 @@ Widget 的默认状态，定位是**一个普通的 macOS 窗口**——普通�
 _Avoid_: 自绘工具栏（ADR-0004 的旧表述，已被 ADR-0009 的原生 `NSToolbar` 方案取代）
 
 **Smart Address Field（智能地址栏）**:
-Normal Mode 工具栏里的地址栏，按页面状态自动切换显示内容：加载完成且未交互时显示页面标题；鼠标悬停或点击时显示 URL（点击后可编辑）；页面加载中，无论是否有交互都恒定显示 URL。空页面（未导航）状态不受这套切换影响，固定显示占位提示文字，直到用户真正导航一次（见 [ADR-0009](docs/adr/0009-unified-native-toolbar-chrome.md)）。尾部内嵌一个刷新图标（取代原来独立的工具栏刷新按钮），Empty Page 态下隐藏；不含"加载中变停止按钮"这个中止导航能力（见 [ADR-0011](docs/adr/0011-normal-mode-toolbar-safari-alignment.md)）。
+Normal Mode 工具栏里的地址栏，按页面状态自动切换显示内容：加载完成且未交互时显示页面标题；鼠标悬停或点击时显示 URL（点击后可编辑）；页面加载中，无论是否有交互都恒定显示 URL。空页面（未导航）状态不受这套切换影响，固定显示占位提示文字，直到用户真正导航一次（见 [ADR-0009](docs/adr/0009-unified-native-toolbar-chrome.md)）。尾部内嵌一个刷新图标（取代原来独立的工具栏刷新按钮），Empty Page 态下隐藏；不含"加载中变停止按钮"这个中止导航能力（见 [ADR-0011](docs/adr/0011-normal-mode-toolbar-safari-alignment.md)）。前导图标随"有没有加载页面"双态切换：已加载显示锁、空页面显示放大镜——它跟踪的是有无页面而非是否走 TLS（见 [ADR-0013](docs/adr/0013-sf-symbols-for-every-glyph-but-the-ghost.md)）。
 _Avoid_: 地址栏始终可编辑（design-language.md 里的旧表述，已被这套双态切换取代，不再是唯一行为）
 
 **Loading Progress Bar（加载进度条）**:

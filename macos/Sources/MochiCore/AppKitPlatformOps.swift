@@ -5,9 +5,10 @@ import Foundation
 import SwiftUI
 import WebKit
 
-/// Bridges `DesignTokens`/`DesignIcon` (framework-agnostic value types) into the AppKit types
-/// the toolbar draws with. Kept separate from `DesignTokens.swift` itself so that module stays
-/// free of AppKit-specific rendering concerns beyond accent-color resolution.
+/// Bridges `DesignTokens`/`GhostGlyph` (framework-agnostic value types) into the AppKit types
+/// the toolbar draws with, and resolves `DesignTokens.Symbol` names into system symbol images.
+/// Kept separate from `DesignTokens.swift` itself so that module stays free of AppKit-specific
+/// rendering concerns beyond accent-color resolution.
 private enum ToolbarStyle {
     /// A color that re-resolves its light/dark RGBA at draw time, the same mechanism system
     /// dynamic colors (like `NSColor.controlAccentColor`) use — so callers get correct
@@ -24,23 +25,76 @@ private enum ToolbarStyle {
         dynamicColor(light: DesignTokens.glassPalette(dark: false).iconPrimary, dark: DesignTokens.glassPalette(dark: true).iconPrimary)
     }
 
-    /// Renders a `DesignIcon`'s path as a stroked template image (uniform stroke weight, round
-    /// caps/joins — matching `DesignIcon`'s own documented SF Symbols-style geometry), so
-    /// `NSButton.contentTintColor` can tint it like any system template image.
-    static func templateImage(for icon: DesignIcon, accessibilityDescription: String) -> NSImage {
-        let gridSize: CGFloat = 24
-        let image = NSImage(size: NSSize(width: gridSize, height: gridSize), flipped: true) { _ in
-            let bezier = NSBezierPath(cgPath: icon.path)
-            bezier.lineWidth = CGFloat(DesignTokens.Layout.iconStrokeWidth)
-            bezier.lineCapStyle = .round
-            bezier.lineJoinStyle = .round
+    /// A real SF Symbol, which every glyph but the ghost now is. Omitting `pointSize` leaves
+    /// AppKit's own default configuration in place — what `NSToolbarItem` and
+    /// `NSSegmentedControl` expect, since they size their own content; the address field's
+    /// embedded refresh icon and the tray glyph pin a size explicitly because they sit in boxes
+    /// AppKit doesn't measure for us.
+    static func symbolImage(_ name: String, accessibilityDescription: String, pointSize: Double? = nil) -> NSImage {
+        // A missing symbol means a mistyped name, not a runtime condition worth degrading for:
+        // every name passed here exists in this deployment target's SDK (verified by
+        // `DesignTokensTests.everySymbolNameResolvesAgainstTheSDK`).
+        guard let image = NSImage(systemSymbolName: name, accessibilityDescription: accessibilityDescription) else {
+            preconditionFailure("SF Symbol \"\(name)\" is not in this SDK")
+        }
+        guard let pointSize else { return image }
+        return image.withSymbolConfiguration(
+            .init(pointSize: pointSize, weight: .regular, scale: .medium)) ?? image
+    }
+
+    /// The ghost mascot, rendered to the same metric contract the SF Symbols beside it satisfy
+    /// (`SymbolMetrics`): a canvas sized off the point size, a cap-height `alignmentRect` so it
+    /// sits on the text baseline, and a stroke weight that tracks point size. Silhouette
+    /// stroked, eyes filled — see `GhostGlyph` on why those are two paths.
+    static func ghostImage(pointSize: Double, accessibilityDescription: String) -> NSImage {
+        // Ink extent on the 24×24 design grid. The stroke term uses the grid-space reference
+        // weight rather than the final one (which isn't known until `scale` below is solved, and
+        // `scale` needs the ink box) — the resulting sub-0.1pt difference in ink extent is
+        // absorbed by `SymbolMetrics.inkInset`.
+        let ink = GhostGlyph.inkBounds(strokeWidth: DesignTokens.Layout.iconStrokeWidth)
+        let metrics = SymbolMetrics.forGlyph(
+            pointSize: pointSize,
+            capHeight: Double(NSFont.systemFont(ofSize: pointSize).capHeight),
+            inkAspectRatio: Double(ink.width / ink.height))
+
+        let image = NSImage(size: metrics.canvasSize, flipped: true) { _ in
+            guard let context = NSGraphicsContext.current?.cgContext else { return false }
+            let inset = SymbolMetrics.inkInset
+            let scale = min((metrics.canvasSize.width - inset * 2) / ink.width,
+                            (metrics.canvasSize.height - inset * 2) / ink.height)
+            context.translateBy(x: (metrics.canvasSize.width - ink.width * scale) / 2,
+                                y: (metrics.canvasSize.height - ink.height * scale) / 2)
+            context.scaleBy(x: scale, y: scale)
+            context.translateBy(x: -ink.minX, y: -ink.minY)
+
             NSColor.black.setStroke()
-            bezier.stroke()
+            NSColor.black.setFill()
+            let outline = NSBezierPath(cgPath: GhostGlyph.outlinePath)
+            // Stroking happens inside the scaled context, so divide out `scale` to land on
+            // `metrics.strokeWidth` in final points.
+            outline.lineWidth = metrics.strokeWidth / scale
+            outline.lineCapStyle = .round
+            outline.lineJoinStyle = .round
+            outline.stroke()
+            NSBezierPath(cgPath: GhostGlyph.eyesPath).fill()
             return true
         }
         image.isTemplate = true
+        image.alignmentRect = metrics.alignmentRect
         image.accessibilityDescription = accessibilityDescription
         return image
+    }
+
+    /// Point sizes the glyphs are pinned to where AppKit isn't sizing them for us.
+    enum GlyphSize {
+        /// Inside the address field's 20pt embedded-icon box.
+        static let addressFieldEmbedded: Double = 13
+        /// The tray glyph. `NSStatusBar.system.thickness` is 22pt, and a 15pt symbol's canvas is
+        /// 18pt tall — the size Apple's own menu-bar glyphs occupy.
+        static let tray: Double = 15
+        /// A stock `NSToolbarItem`'s glyph, so the hand-drawn ghost matches the SF Symbols in
+        /// the neighbouring items, which AppKit renders at its own default configuration.
+        static let toolbarItem: Double = 13
     }
 }
 
@@ -95,6 +149,48 @@ private final class AddressField: NSSearchField {
         onMouseDown?()
         super.mouseDown(with: event)
     }
+
+    /// Which glyph the leading icon shows (`DesignTokens.addressFieldGlyph`) — a lock once a page
+    /// is loaded, a magnifying glass on the Empty Page.
+    var leadingGlyph: DesignTokens.AddressFieldGlyph = .search {
+        didSet {
+            guard leadingGlyph != oldValue else { return }
+            applyStockButtonOverrides()
+        }
+    }
+
+    /// AppKit rebuilds `NSSearchFieldCell`'s stock buttons during the toolbar's layout pass, so
+    /// both overrides are re-applied on every layout rather than once at construction.
+    override func layout() {
+        super.layout()
+        applyStockButtonOverrides()
+    }
+
+    /// Measured: assigning `cancelButtonCell = nil` is *itself* enough to make AppKit
+    /// install a fresh cell during the next toolbar layout, so setting it once at construction
+    /// left a live clear ("×") button drawing on top of the embedded refresh icon — both sit at
+    /// the field's trailing edge. A bare `NSStackView` host never triggers that rebuild, which is
+    /// why this only reproduces inside an `NSToolbar`. The clear button has to go regardless of
+    /// the overlap: the field's content is a title/URL the presenter computes, not a free-text
+    /// query, and the stock button blanks `stringValue` directly, bypassing
+    /// `AddressFieldPresenter` entirely.
+    private func applyStockButtonOverrides() {
+        guard let searchCell = cell as? NSSearchFieldCell else { return }
+        // Both writes are guarded, because assigning to either property is itself what triggers
+        // the rebuild — writing unconditionally on every layout pass would keep re-provoking the
+        // thing this is compensating for. Comparing the leading glyph by accessibility
+        // description (rather than tracking it in a stored property) is what detects a rebuild:
+        // a fresh cell comes back carrying AppKit's own magnifying glass, whose description is
+        // not ours.
+        if searchCell.cancelButtonCell != nil {
+            searchCell.cancelButtonCell = nil
+        }
+        let wantedDescription = leadingGlyph.accessibilityLabel
+        if searchCell.searchButtonCell?.image?.accessibilityDescription != wantedDescription {
+            searchCell.searchButtonCell?.image = ToolbarStyle.symbolImage(
+                leadingGlyph.symbolName, accessibilityDescription: wantedDescription)
+        }
+    }
 }
 
 /// The back/forward segmented control's segment indices (ADR-0011) — shared between the factory
@@ -142,8 +238,8 @@ fileprivate struct LoadingProgressBar {
 /// drawn next to the traffic lights (`titleVisibility = .hidden`), and settings collapses into
 /// the system's overflow menu as the window narrows (`NSToolbarItem.visibilityPriority`).
 ///
-/// Colors, corner radii, spacing, and the bespoke vector icon set all come from `DesignTokens`/
-/// `DesignIcon` (#17) — nothing here writes its own numbers.
+/// Colors, corner radii, spacing, symbol names, and the one bespoke glyph all come from
+/// `DesignTokens`/`GhostGlyph` (#17) — nothing here writes its own numbers.
 final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDelegate, NSSearchFieldDelegate, WKNavigationDelegate {
     private static let navigationItemID = NSToolbarItem.Identifier("com.mochi.toolbar.navigation")
     private static let addressItemID = NSToolbarItem.Identifier("com.mochi.toolbar.address")
@@ -240,7 +336,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         controls.addressFieldRefreshButton.target = self
         controls.addressFieldRefreshButton.action = #selector(reload)
         observeNavigationState()
-        updateEmbeddedRefreshIconVisibility()
+        updateAddressFieldIcons()
         updateProgressBarColor()
         // The progress bar's fill is baked into a CALayer color (not a dynamic NSColor), so unlike
         // everywhere else in this file it needs to be re-applied whenever the system accent color
@@ -372,16 +468,20 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         controls.addressField.isEditable = state.isEditable
     }
 
-    /// Shows or hides the address field's embedded refresh affordance (ADR-0011) per
-    /// `AddressFieldPresenter`, keeping the text area's trailing inset in step so the two never
-    /// overlap. Driven purely by `hasNavigatedAtLeastOnce` — deliberately not by `isLoading`,
-    /// since this icon is not a stop/cancel toggle.
-    private func updateEmbeddedRefreshIconVisibility() {
+    /// Brings the address field's two icons in step with whether a page is loaded: the embedded
+    /// refresh affordance at the trailing edge (ADR-0011, shown or hidden per
+    /// `AddressFieldPresenter`, with the text area's trailing inset kept in step so the two never
+    /// overlap) and the leading glyph (`DesignTokens.addressFieldGlyph` — lock once loaded,
+    /// magnifying glass on the Empty Page). Both are driven purely by `hasNavigatedAtLeastOnce`
+    /// — deliberately not by `isLoading`, since neither is a stop/cancel toggle.
+    private func updateAddressFieldIcons() {
         let isVisible = AddressFieldPresenter.showsEmbeddedRefreshIcon(
             hasNavigatedAtLeastOnce: hasNavigatedAtLeastOnce)
         controls.addressFieldRefreshButton.isHidden = !isVisible
         (controls.addressField.cell as? AddressFieldCell)?.trailingInset =
             isVisible ? Self.embeddedRefreshIconReservedWidth : 0
+        controls.addressField.leadingGlyph =
+            DesignTokens.addressFieldGlyph(hasLoadedPage: hasNavigatedAtLeastOnce)
         controls.addressField.needsDisplay = true
     }
 
@@ -466,7 +566,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         hasNavigatedAtLeastOnce = true
         currentURL = url
         webView.load(URLRequest(url: url))
-        updateEmbeddedRefreshIconVisibility()
+        updateAddressFieldIcons()
         updateAddressFieldDisplay()
     }
 
@@ -721,7 +821,8 @@ extension AppKitWidgetWindowHandle: NSToolbarDelegate {
             // moment it's entered, so nobody could ever see it drawn "on". Same reasoning as
             // settings below, just for a different reason (that one has no active state to begin
             // with; this one has one it can never display).
-            item.image = ToolbarStyle.templateImage(for: .ghost, accessibilityDescription: "进入 Ghost Mode")
+            item.image = ToolbarStyle.ghostImage(
+                pointSize: ToolbarStyle.GlyphSize.toolbarItem, accessibilityDescription: "进入 Ghost Mode")
             item.target = self
             item.action = #selector(handleGhostModeToggleRequested)
             item.toolTip = "进入 Ghost Mode"
@@ -734,9 +835,11 @@ extension AppKitWidgetWindowHandle: NSToolbarDelegate {
             // time); Pin is gone now, but leaving this as a stock item keeps the shipped
             // rendering — a stock item has no `contentTintColor` and no fixed box, so this glyph
             // draws at AppKit's own control tint and metrics rather than `DesignTokens`'
-            // `iconPrimary`/`normalModeToolbarButtonDiameter`. docs/design-language.md documents
-            // this entry as the "更多" (⋯) affordance, hence `.moreHorizontal`.
-            item.image = ToolbarStyle.templateImage(for: .moreHorizontal, accessibilityDescription: "设置")
+            // `iconPrimary`/`normalModeToolbarButtonDiameter`. That is the *correct* rendering
+            // for a toolbar glyph now that this is a system symbol: AppKit's control tint is
+            // what every other native toolbar uses, including its inactive-window dimming.
+            // docs/design-language.md documents this entry as the "更多" (⋯) affordance.
+            item.image = ToolbarStyle.symbolImage(DesignTokens.Symbol.settings, accessibilityDescription: "设置")
             item.target = self
             item.action = #selector(handleSettingsRequested)
             item.label = "设置"
@@ -918,10 +1021,8 @@ public final class AppKitPlatformOps: PlatformOps {
                 lessThanOrEqualToConstant: DesignTokens.Layout.addressFieldMaxWidth),
             addressField.heightAnchor.constraint(equalToConstant: DesignTokens.Layout.addressFieldHeight),
         ])
-        // The field's content is a title/URL the presenter computes, not a free-text search query
-        // — the stock clear ("×") button would let AppKit blank `stringValue` directly, bypassing
-        // `AddressFieldPresenter` entirely.
-        (addressField.cell as? NSSearchFieldCell)?.cancelButtonCell = nil
+        // The stock clear button and the leading glyph are both owned by `AddressField.layout()`
+        // — AppKit rebuilds the cells that draw them, so configuring either here wouldn't stick.
         // The Empty Page (#16) hasn't navigated yet, so the field stays a plain, freely-editable
         // URL box until `hasNavigatedAtLeastOnce` flips — see `AppKitWidgetWindowHandle.loadURL`.
         addressField.isEditable = true
@@ -929,9 +1030,11 @@ public final class AppKitPlatformOps: PlatformOps {
         // Refresh lives inside the field now (ADR-0011) rather than as a standalone
         // `NSToolbarItem`: a plain subview pinned to the trailing edge, with `AddressFieldCell`
         // shrinking the text area by the matching amount. Visibility (hidden until the first real
-        // navigation) is owned by `updateEmbeddedRefreshIconVisibility`.
+        // navigation) is owned by `updateAddressFieldIcons`.
         let addressFieldRefreshButton = toolbarButton(
-            icon: .refresh, accessibilityDescription: "刷新",
+            image: ToolbarStyle.symbolImage(
+                DesignTokens.Symbol.refresh, accessibilityDescription: "刷新",
+                pointSize: ToolbarStyle.GlyphSize.addressFieldEmbedded),
             diameter: DesignTokens.Layout.addressFieldEmbeddedIconDiameter)
         addressField.addSubview(addressFieldRefreshButton)
         NSLayoutConstraint.activate([
@@ -949,16 +1052,15 @@ public final class AppKitPlatformOps: PlatformOps {
     }
 
     /// Back and forward as one joined native `NSSegmentedControl` (ADR-0011) instead of two
-    /// independent buttons, matching Safari's own control — still carrying Mochi's hand-drawn
-    /// `DesignIcon` glyphs, since a segmented control takes arbitrary `NSImage`s and nothing here
-    /// has to fall back to SF Symbols. `.momentary` tracking keeps both segments push-button-like:
-    /// neither stays visually "selected" after a click, since these aren't a mutually-exclusive
-    /// choice.
+    /// independent buttons, matching Safari's own control, carrying the system's own
+    /// `chevron.left`/`chevron.right` symbols. `.momentary` tracking keeps both segments
+    /// push-button-like: neither stays visually "selected" after a click, since these aren't a
+    /// mutually-exclusive choice.
     private func makeNavigationControl() -> NSSegmentedControl {
         let control = NSSegmentedControl(
             images: [
-                ToolbarStyle.templateImage(for: .chevronLeft, accessibilityDescription: "后退"),
-                ToolbarStyle.templateImage(for: .chevronRight, accessibilityDescription: "前进"),
+                ToolbarStyle.symbolImage(DesignTokens.Symbol.back, accessibilityDescription: "后退"),
+                ToolbarStyle.symbolImage(DesignTokens.Symbol.forward, accessibilityDescription: "前进"),
             ],
             trackingMode: .momentary,
             target: nil,
@@ -988,8 +1090,7 @@ public final class AppKitPlatformOps: PlatformOps {
         return LoadingProgressBar(view: bar, widthConstraint: widthConstraint)
     }
 
-    private func toolbarButton(icon: DesignIcon, accessibilityDescription: String, diameter: Double) -> NSButton {
-        let image = ToolbarStyle.templateImage(for: icon, accessibilityDescription: accessibilityDescription)
+    private func toolbarButton(image: NSImage, diameter: Double) -> NSButton {
         let button = NSButton(image: image, target: nil, action: nil)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.bezelStyle = .toolbar
@@ -1169,14 +1270,17 @@ public final class AppKitPlatformOps: PlatformOps {
         handle.setSnapEnabled(enabled)
     }
 
-    /// The tray icon glyph is `DesignIcon.ghost` — Mochi's existing hand-drawn mascot vector —
-    /// as a stand-in until docs/design-language.md's dedicated "flattened app icon with a
-    /// negative-space window cutout" tray asset is produced by a separate design pass; this
-    /// already satisfies the packaging requirement (monochrome, real alpha transparency,
-    /// template image) via the same `ToolbarStyle.templateImage` renderer the toolbar buttons use.
+    /// The tray glyph is `GhostGlyph` — Mochi's hand-drawn mascot — as a stand-in until
+    /// docs/design-language.md's dedicated "flattened app icon with a negative-space window
+    /// cutout" tray asset is produced by a separate design pass; it already satisfies the
+    /// packaging requirement (monochrome, real alpha transparency, template image). The point
+    /// size is pinned rather than left at the toolbar's, because a status item draws its image
+    /// at that image's own size inside a 22pt menu bar — the 24×24 square this used to pass
+    /// overflowed the bar and left the glyph no breathing room.
     public func createTrayIcon(items: [TrayMenuItem]) {
         let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        statusItem.button?.image = ToolbarStyle.templateImage(for: .ghost, accessibilityDescription: "Mochi")
+        statusItem.button?.image = ToolbarStyle.ghostImage(
+            pointSize: ToolbarStyle.GlyphSize.tray, accessibilityDescription: "Mochi")
 
         let menu = NSMenu()
         var targets: [MenuItemActionTarget] = []

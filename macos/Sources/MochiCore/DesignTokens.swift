@@ -185,9 +185,9 @@ public enum DesignTokens {
         /// The Normal Mode toolbar's own buttons (ADR-0009) — the back/forward segments plus Pin
         /// and settings. Sized against ADR-0011's Safari reference measurement (36×36 back/forward
         /// buttons inside a 52pt unified row), replacing ADR-0009's original 22pt estimate. The
-        /// `DesignIcon` glyphs stay on their own 24×24 grid inside this hit area (the buttons use
-        /// `scaleProportionallyDown`, which never upscales), so this number is the button's box,
-        /// not the glyph's.
+        /// glyphs inside are SF Symbols (and the ghost, matched to their metrics via
+        /// `SymbolMetrics`), each a good deal smaller than this box — so this number is the
+        /// button's hit area, not the glyph's.
         public static let normalModeToolbarButtonDiameter: Double = 36
 
         /// Safari's own address-field height, measured for ADR-0011 (was 24pt before).
@@ -222,8 +222,12 @@ public enum DesignTokens {
 
         public static let emptyPageGlassPanelCornerRadius: Double = 24
 
-        /// The uniform stroke weight `DesignIcon` paths are drawn with — matching
-        /// docs/design-language.md's "统一描边粗细、圆角端点" (even stroke weight, rounded caps).
+        /// The stroke weight `GhostGlyph`'s silhouette is drawn with *at
+        /// `SymbolMetrics.referencePointSize`* — matching docs/design-language.md's "统一描边粗细、
+        /// 圆角端点" (even stroke weight, rounded caps), and calibrated so the hand-drawn ghost
+        /// carries the same visual weight as the real SF Symbols beside it (measured: `.regular`
+        /// system symbols stroke at ≈1.75 at 15pt). `SymbolMetrics` scales it with point size;
+        /// don't use this raw at another size.
         public static let iconStrokeWidth: Double = 1.75
     }
 
@@ -241,6 +245,29 @@ public enum DesignTokens {
         .back, .forward, .addressField, .refresh, .ghostModeToggle, .settings,
     ]
 
+    /// The SF Symbols the native chrome draws. Named here rather than written as string
+    /// literals at each use site so `DesignTokensTests` can assert every one resolves against the
+    /// deployment SDK — a mistyped symbol name is otherwise invisible until the glyph silently
+    /// fails to appear at runtime.
+    ///
+    /// The ghost is deliberately absent: SF Symbols has no ghost, so it stays hand-drawn in
+    /// `GhostGlyph`, matched to these symbols' metrics via `SymbolMetrics`.
+    public enum Symbol {
+        public static let back = "chevron.left"
+        public static let forward = "chevron.right"
+        public static let refresh = "arrow.clockwise"
+        /// docs/design-language.md's "更多" (⋯) affordance, which opens settings.
+        public static let settings = "ellipsis"
+        /// The error page's (#38) failure glyph.
+        public static let failure = "exclamationmark.triangle"
+
+        /// Every symbol name the app can ask for, the address field's two states included.
+        public static let all: [String] = [
+            back, forward, refresh, settings, failure,
+            AddressFieldGlyph.lock.symbolName, AddressFieldGlyph.search.symbolName,
+        ]
+    }
+
     /// Which glyph the address bar's leading icon shows.
     public enum AddressFieldGlyph: Equatable, Sendable {
         /// A page is loaded — shows a lock, like a browser's secure-page indicator.
@@ -248,6 +275,27 @@ public enum DesignTokens {
         /// No page is loaded (Empty Page) — a lock would misleadingly imply a secure page
         /// that isn't there, so this shows a magnifying glass instead.
         case search
+
+        /// The SF Symbol that draws this glyph. `NSSearchField` supplies its own magnifying
+        /// glass, but the leading icon has to be set explicitly either way — the field's stock
+        /// glyph never changes, so leaving it alone would pin the address bar to "search"
+        /// forever, which is the state this whole enum exists to move off of.
+        public var symbolName: String {
+            switch self {
+            case .lock: return "lock"
+            case .search: return "magnifyingglass"
+            }
+        }
+
+        /// What the glyph is announced as. Deliberately *not* "secure connection" for `.lock`:
+        /// the glyph tracks whether a page is loaded, not whether it came over TLS, so claiming
+        /// security here would be wrong on any plain-http page.
+        public var accessibilityLabel: String {
+            switch self {
+            case .lock: return "页面已加载"
+            case .search: return "输入网址"
+            }
+        }
     }
 
     public static func addressFieldGlyph(hasLoadedPage: Bool) -> AddressFieldGlyph {

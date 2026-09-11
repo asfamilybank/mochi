@@ -45,42 +45,17 @@ struct ErrorPageView: View {
     }
 
     private var icon: some View {
-        IconShape(path: DesignIcon.warning.path)
-            .stroke(
-                color(palette.iconMuted),
-                style: StrokeStyle(lineWidth: CGFloat(DesignTokens.Layout.iconStrokeWidth), lineCap: .round, lineJoin: .round)
-            )
-            .frame(width: 40, height: 40)
+        // The system symbol, not a hand-drawn path: SF Symbols has `exclamationmark.triangle`,
+        // and drawing our own gained nothing but its own stroke-weight and alignment bugs
+        // `GhostGlyph` is the only glyph still bespoke, because there is no ghost symbol.
+        Image(systemName: DesignTokens.Symbol.failure)
+            .font(.system(size: 34, weight: .regular))
+            .foregroundStyle(color(palette.iconMuted))
     }
 
     private var palette: DesignTokens.GlassPalette { DesignTokens.glassPalette(dark: isDark) }
 
     private func color(_ rgba: DesignTokens.RGBA) -> Color {
         Color(.sRGB, red: rgba.red, green: rgba.green, blue: rgba.blue, opacity: rgba.alpha)
-    }
-}
-
-/// Renders a `DesignIcon`'s 24×24 `CGPath` as a SwiftUI `Shape`, scaled to fit whatever frame
-/// it's given. Both `CGPath` and SwiftUI's `Path` share the same top-left-origin, y-down
-/// coordinate convention (per `DesignIcon`'s own doc comment on needing a flip only for AppKit's
-/// y-up `NSView` drawing, e.g. `ToolbarStyle.templateImage`'s `NSImage(flipped: true)`), so this
-/// needs no vertical flip of its own — only the fit-to-rect scale/translate.
-private struct IconShape: Shape {
-    // `Path` (a `Sendable` SwiftUI value type), not the `CGPath` it's built from — `CGPath`
-    // itself isn't `Sendable`, which `Shape`'s conformance requires.
-    private let basePath: Path
-    private let bounds: CGRect
-
-    init(path: CGPath) {
-        self.basePath = Path(path)
-        self.bounds = path.boundingBoxOfPath
-    }
-
-    func path(in rect: CGRect) -> Path {
-        let scale = min(rect.width / max(bounds.width, 1), rect.height / max(bounds.height, 1))
-        let transform = CGAffineTransform(translationX: -bounds.midX, y: -bounds.midY)
-            .concatenating(CGAffineTransform(scaleX: scale, y: scale))
-            .concatenating(CGAffineTransform(translationX: rect.midX, y: rect.midY))
-        return basePath.applying(transform)
     }
 }

@@ -1,5 +1,7 @@
 # Normal Mode 工具栏结构与响应式收纳向 Safari 对齐
 
+> 其中"手绘图标"这一条已被 [ADR-0013](0013-sf-symbols-for-every-glyph-but-the-ghost.md) 推翻——界面图标改用 SF Symbols，只有 ghost 保留自绘。本 ADR 的其余决定（原生 `NSToolbar`、系统渲染材质、工具栏结构、响应式收纳、实测尺寸）全部仍然有效，包括下文关于"标准 item 拿不到 `contentTintColor`"那条代价的记录——ADR-0013 重新判定它不是缺陷而是原生正确行为。
+
 [ADR-0009](0009-unified-native-toolbar-chrome.md) 定下了"原生 `NSToolbar` + 系统 Liquid Glass"这个技术路线，但具体到按钮怎么分组、地址栏怎么伸缩、窗口变窄时怎么办，当时留了空白（`normalModeToolbarButtonDiameter` 那行注释自己承认是"实现时的估算值，没真的量过"）。这次用 [macos-ui-verification.md](../agents/macos-ui-verification.md) 的只读截图 + 无障碍树方法实测了一遍真实 Safari 窗口，把这些空白填上，同时顺手修一个跟 ADR-0009 决定矛盾的实现 bug。这份 ADR 只细化/修正 ADR-0009 的具体实现细节，不推翻它的核心决定（原生 `NSToolbar`、系统渲染材质、手绘图标）。
 
 ## 决定

@@ -16,7 +16,7 @@
   - Green `#34C759`
   - Graphite `#8E8E93`
 - **字体**：系统字体栈，不引入自定义品牌字体——`-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, sans-serif`。
-- **图标**：全部手绘线性 SVG，参照 SF Symbols 的几何风格（统一描边粗细、圆角端点、24px 网格），不用 emoji、不用文字符号（比如"更多"按钮是三个绘制的圆点，不是打三个句点字符）。
+- **图标**：优先用 SF Symbols 系统符号（`chevron.left`/`chevron.right`、`arrow.clockwise`、`lock`、`magnifyingglass`、`ellipsis`、`exclamationmark.triangle`）；只有系统里没有的字形才自绘，目前唯一一个是 ghost 吉祥物（`GhostGlyph`），且它必须满足 `SymbolMetrics` 记录的系统符号度量契约（画布随字号、`alignmentRect` 取 cap height、描边随字号缩放），否则跟旁边的系统符号对不齐。不用 emoji、不用文字符号（"更多"按钮是 `ellipsis` 符号，不是打三个句点字符）。见 [ADR-0013](adr/0013-sf-symbols-for-every-glyph-but-the-ghost.md)——这条推翻了原先"全部手绘线性 SVG"的规定。
 - **圆角**：窗口内容区、工具栏胶囊、按钮统一用大圆角（现代 macOS 应用的惯例），Ghost Mode 无边框窗口的内容区也保留圆角。
 - **阴影**：跟随透明度渐隐——Normal Mode（完全不透明）阴影正常显示；Ghost Mode 下阴影强度和内容不透明度绑在一起变化，透明度越低阴影越淡，避免一个几乎看不见的窗口还拖着一圈明显的阴影。
 
@@ -27,8 +27,8 @@
 工具栏下方新增一条加载进度条：绑定 `WKWebView.estimatedProgress` 真实加载进度，2pt 高、系统强调色，从左到右填充，加载完成后短暂淡出消失，不加载时不占用界面空间（不是常驻灰色轨道）。
 
 工具栏按钮清单（从左到右，[ADR-0011](adr/0011-normal-mode-toolbar-safari-alignment.md)）：
-1. 后退/前进——合并成一个原生 `NSSegmentedControl`（不是两个独立按钮），图标沿用现有手绘 SVG 图标集
-2. 地址栏——**智能双态**：标准 `NSSearchField`（不额外包自绘玻璃层，视觉上比周围行更"实"是系统原生效果）。页面加载完成且未交互时显示页面标题；鼠标悬停或点击时显示 URL（点击后可编辑，失焦或移出且非加载中则退回标题）；加载中无论是否有交互都恒定显示 URL。标题取不到时兜底显示域名，再取不到就留空。手动导航会覆盖持久化的"上次访问 URL"。空页面（未导航）状态不受这套切换影响，固定显示占位提示文字，直到用户真正导航一次。宽度改为 Safari 式的弹性伸缩（有 min/max，不再无脑撑满剩余空间）；尾部内嵌刷新图标（替代原来独立的刷新按钮，不做"加载中变停止按钮"这个中止导航能力），Empty Page 态下隐藏
+1. 后退/前进——合并成一个原生 `NSSegmentedControl`（不是两个独立按钮），图标用系统的 `chevron.left`/`chevron.right`（[ADR-0013](adr/0013-sf-symbols-for-every-glyph-but-the-ghost.md)）
+2. 地址栏——**智能双态**：标准 `NSSearchField`（不额外包自绘玻璃层，视觉上比周围行更"实"是系统原生效果）。页面加载完成且未交互时显示页面标题；鼠标悬停或点击时显示 URL（点击后可编辑，失焦或移出且非加载中则退回标题）；加载中无论是否有交互都恒定显示 URL。标题取不到时兜底显示域名，再取不到就留空。手动导航会覆盖持久化的"上次访问 URL"。空页面（未导航）状态不受这套切换影响，固定显示占位提示文字，直到用户真正导航一次。宽度改为 Safari 式的弹性伸缩（有 min/max，不再无脑撑满剩余空间）；尾部内嵌刷新图标（替代原来独立的刷新按钮，不做"加载中变停止按钮"这个中止导航能力），Empty Page 态下隐藏；前导图标按"有没有加载页面"双态切换——已加载显示 `lock`、空页面显示 `magnifyingglass`（它跟踪的是有无页面，不是是否走 TLS，所以无障碍标签刻意不说"安全"）
 3. Ghost Mode 切换——单向的"进入"按钮，不是开关：点击直接从 Normal Mode 进入 Ghost Mode，没有激活态可显示（Ghost Mode 会把整条工具栏一起隐藏，用户不可能看到这颗按钮处于"已激活"的样子）
 4. 设置（"更多"入口，⋯）
 
