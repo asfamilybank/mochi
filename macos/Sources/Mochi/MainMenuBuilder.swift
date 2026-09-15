@@ -33,7 +33,7 @@ final class MainMenuBuilder {
         menu.addItem(action("关于 \(AppInfo.name)") {
             NSApp.orderFrontStandardAboutPanel(options: [
                 .applicationName: AppInfo.name,
-                .applicationVersion: AppInfo.version,
+                .applicationVersion: AppInfo.version(fromInfoDictionary: Bundle.main.infoDictionary),
             ])
         })
         menu.addItem(.separator())

@@ -12,18 +12,25 @@ v1 仅支持 macOS；未来若开发 Windows 版本，是同一仓库下完全�
 
 ## 开发
 
-Swift 项目在 [macos/](macos/) 子目录下，是一个 Swift Package Manager 项目（非 `.xcodeproj`），可以直接用 Xcode 打开：
+Swift 项目在 [macos/](macos/) 子目录下。日常开发与测试走 Swift Package Manager：
 
 ```bash
 open macos/Package.swift
 ```
 
-或用命令行构建、测试：
+或用命令行构建、测试、运行：
 
 ```bash
 cd macos
 swift build
 swift test
+swift run Mochi
+```
+
+另有一个 `macos/Mochi.xcodeproj`，**只用于产出可分发的 `.app`**（见 [ADR-0014](docs/adr/0014-packaging-and-distribution.md)）。它的 App target 通过 local package reference 依赖 `MochiCore`，不重复编译源码：
+
+```bash
+xcodebuild -project macos/Mochi.xcodeproj -scheme Mochi -configuration Release build
 ```
 
 ## Issue 追踪

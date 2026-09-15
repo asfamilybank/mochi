@@ -68,7 +68,13 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 
 ### macOS app (`macos/`)
 
-- Swift Package Manager 项目，不是 `.xcodeproj`——`open macos/Package.swift` 直接在 Xcode 里当项目打开。本机没有 xcodegen/tuist，这是刻意选择而非临时凑合。
+- **两套构建系统并存**（[ADR-0014](docs/adr/0014-packaging-and-distribution.md)）：`Package.swift` 仍是开发与测试的主入口（`swift build`/`swift test`/`swift run Mochi` 一切照旧，`open macos/Package.swift` 也仍能在 Xcode 里当项目打开）；`macos/Mochi.xcodeproj` 只负责产出可分发的 `.app`——它的 App target 通过 local package reference（`relativePath = .`）依赖 `MochiCore`，源文件走 Xcode 16+ 的 file system synchronized group 整目录挂载，所以**新增源文件不需要改 `project.pbxproj`**。仍然没有 xcodegen/tuist，pbxproj 手写维护。
+- 加 `.xcodeproj` 之前 `Package.swift` 没有 `products:` 段，对外不暴露任何产品，Xcode 会报 `Missing package product 'MochiCore'`——补一条 `.library(name: "MochiCore", targets: ["MochiCore"])` 即可，不影响 `swift build`/`swift test`。
+- 两份 `Package.resolved`：`macos/Package.resolved`（SwiftPM）和 `macos/Mochi.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`（Xcode 自己生成，schema version 不同）。两份都进版本库，改依赖版本时要确认两边 revision 一致，否则两套构建系统会各编各的。
+- `.app` 的 `Info.plist` 在 `macos/App/Info.plist`（刻意放在 `Sources/` 外面，否则 SwiftPM 会把它当成 target 里的未处理资源）。版本号不写死在 plist 里，走 `$(MARKETING_VERSION)`/`$(CURRENT_PROJECT_VERSION)`，打包时用 `xcodebuild MARKETING_VERSION=x.y.z CURRENT_PROJECT_VERSION=n` 注入。工程里这两个设置**刻意留空**——实测空值会让 Xcode 把对应的键整个从产物 `Info.plist` 里丢掉（不是写成空字符串），于是未经打包脚本的构建走 `AppInfo` 的兜底，「关于」面板显示 `dev`，跟 `swift run` 一致。别图省事填一个 `0.0.0` 占位：那会让开发态构建谎称自己是某个版本，正是 ADR-0014 要消灭的东西。
+- `.xcodeproj` 里两个 configuration 都开了 `ENABLE_HARDENED_RUNTIME = YES`，虽然 ad-hoc 签名下它不产生任何收益（只有公证才需要）。刻意提前开，是为了让 app 从现在起就在这个限制下被反复运行，而不是等 #53 接公证时才第一次撞上——目前实测 WKWebView 加载页面正常。真撞上限制时补 entitlements 文件，别直接关掉它。
+- 共享 scheme 的 `<Testables>` 是空的：`xcodebuild test` 会静默通过，**它不是测试覆盖**。测试只有 `swift test` 一条路。
+- 验证「关于」面板这类需要点菜单的 UI：`osascript` 走 System Events 点 `menu item 1 of menu 1 of menu bar item 2 of menu bar 1`——**`menu bar item 1` 是苹果菜单**，点它会打开「关于本机」而不是应用的关于面板。拿窗口 ID 用 `CGWindowListCopyWindowInfo` 按 owner 过滤，再 `screencapture -l<id>`。
 - 构建/测试：`cd macos && swift build` / `swift test`。cwd 有时会在会话中途（尤其是穿插了 Skill/Agent 调用之后）跳回仓库根目录，报 `Could not find Package.swift in this directory or any of its parent directories` 时先 `cd macos` 重试，不是构建配置坏了。
 - 运行时配置文件：`~/Library/Application Support/Mochi/config.toml`。
 - ADR-0008 的 macOS 26 baseline 落到 `Package.swift` 需要 `swift-tools-version:6.2`+ 才能写 `.macOS(.v26)`；同时要加 `swiftLanguageModes: [.v5]`（在 `Package(...)` 参数列表里排在 `targets:` 之后，顺序反了编译器报错），否则默认转成 Swift 6 严格并发检查，`MochiCore` 里直接调 AppKit/WebKit 的同步方法会全部报 actor-isolation 错误。
