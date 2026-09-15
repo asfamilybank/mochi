@@ -1,19 +1,36 @@
-// Lifts the mochi off the flat plate the image model drew it on, so the app-icon artwork can go
+// Lifts the mochi off whatever ground the image model drew it on, so the app-icon artwork can go
 // into Icon Composer as a layer over a background *it* controls rather than one baked into the
 // pixels (which would survive into the Dark/Clear/Tinted appearances the system derives).
 //
-//     swift scripts/cutout-icon-background.swift <master.png> <out-1024.png>
+//     swift scripts/cutout-icon-background.swift <master.png> <out-1024.png> [chroma] [lumaHeadroom] [edgeTrim]
 //
-// The two thresholds below were measured on `App/Icon/mochi-icon-master-1254.png` and are not
-// general: a regenerated master needs them re-checked. What makes the separation work on this one
-// is that the plate *and its contact shadow* are neutral and no brighter than the plate, while the
-// mochi's specular highlight is neutral but much brighter — the plate sits at luma ~220 and the
-// highlight at 240+, with almost nothing in between. Chroma alone is not enough: the highlight has
-// none, and an earlier version of this script ate it from the border inwards.
+// The current master was cut with:
 //
-// Known residue at these settings: the innermost contact shadow is warmed by bounce light, so it
-// reads as chromatic and survives as a faint haze at the base. Widening the chroma limit past ~22
-// removes it but starts notching the mochi's lower sides, which is the worse defect.
+//     swift scripts/cutout-icon-background.swift \
+//         App/Icon/mochi-icon-master-1254.png App/Icon/mochi-icon-cutout-1024.png 18 255 2
+//
+// Background is taken to be the low-chroma region reachable from the border, so the subject's
+// interior can never be punched out no matter how neutral it goes. The two thresholds are
+// **per-master and must be re-measured** — sample the plate, the contact shadow and several points
+// on the subject before trusting a number here.
+//
+//   chroma        max colourfulness a pixel may have and still count as ground. Measured on the
+//                 current master: plate 8, outer white 0, contact shadow 13, mochi body 24-39 —
+//                 so 18 sits in the gap.
+//   lumaHeadroom  how much brighter than the border a pixel may be and still count as ground.
+//                 Needed only when the subject has a *neutral* specular highlight that the fill
+//                 could otherwise walk into from the edge: on an earlier master the plate sat at
+//                 luma ~220 and the highlight at 240+, and a headroom of 9 landed in that gap.
+//                 The current master's sheen is warm (chroma 24), so chroma alone holds it and the
+//                 headroom is left wide open.
+//   edgeTrim      pixels of background grown inwards before feathering, to swallow the
+//                 anti-aliased ring where subject and ground blend. Without it that ring survives
+//                 as a speckled fringe all round the silhouette; 2 is enough on the current
+//                 master and costs about a pixel and a half of subject at the output size.
+//
+// A residual haze at the base is expected wherever the innermost contact shadow is warmed by
+// bounce light: it reads as chromatic and survives. Widening chroma far enough to take it starts
+// notching the subject's lower sides, which is the worse defect.
 
 import AppKit
 import CoreGraphics
@@ -40,10 +57,9 @@ buf.withUnsafeMutableBytes { raw in
 
 // Background = low-chroma pixels reachable from the border. Flood fill rather than a global
 // threshold, so the mochi's own neutral specular highlight can't be punched out from inside.
-let chromaLimit = 18
-// Measured on this master: the plate sits at ~220 and the mochi's neutral specular highlight at
-// 240+, with almost nothing between. This headroom lands in that gap.
-let lumaHeadroom = 9
+let chromaLimit = CommandLine.arguments.count > 3 ? Int(CommandLine.arguments[3])! : 18
+let lumaHeadroom = CommandLine.arguments.count > 4 ? Int(CommandLine.arguments[4])! : 255
+let edgeTrim = CommandLine.arguments.count > 5 ? Int(CommandLine.arguments[5])! : 2
 // The plate's brightness, taken as the median of the border ring rather than one corner: the
 // plate has a faint vignette, and a single sample sets the threshold too low to propagate across.
 var borderLuma: [Int] = []
@@ -70,6 +86,31 @@ while let i = stack.popLast() {
     if x < w-1 { seed(i+1) }
     if y > 0 { seed(i-w) }
     if y < h-1 { seed(i+w) }
+}
+
+// Grow the background inwards by a couple of pixels before feathering. The subject's edge is
+// anti-aliased into the ground, so the ring where the two blend lands between the two chroma
+// populations and survives the fill as a speckled fringe. Trimming past it puts the boundary in
+// solid subject, where feathering can make a clean edge; raising the chroma limit far enough to
+// take the fringe instead starts eating the glossy rim, which is the worse defect.
+if edgeTrim > 0 {
+    var grown = isBG
+    for y in 0..<h {
+        for x in 0..<w where !isBG[y*w + x] {
+            var touchesBackground = false
+            for dy in -edgeTrim...edgeTrim where !touchesBackground {
+                let ny = y + dy
+                guard ny >= 0, ny < h else { continue }
+                for dx in -edgeTrim...edgeTrim {
+                    let nx = x + dx
+                    guard nx >= 0, nx < w else { continue }
+                    if isBG[ny*w + nx] { touchesBackground = true; break }
+                }
+            }
+            if touchesBackground { grown[y*w + x] = true }
+        }
+    }
+    isBG = grown
 }
 
 // Feather the cut so it doesn't read as a hard sticker outline.
