@@ -75,6 +75,7 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 - `.xcodeproj` 里两个 configuration 都开了 `ENABLE_HARDENED_RUNTIME = YES`，虽然 ad-hoc 签名下它不产生任何收益（只有公证才需要）。刻意提前开，是为了让 app 从现在起就在这个限制下被反复运行，而不是等 #53 接公证时才第一次撞上——目前实测 WKWebView 加载页面正常。真撞上限制时补 entitlements 文件，别直接关掉它。
 - 共享 scheme 的 `<Testables>` 是空的：`xcodebuild test` 会静默通过，**它不是测试覆盖**。测试只有 `swift test` 一条路。
 - 验证「关于」面板这类需要点菜单的 UI：`osascript` 走 System Events 点 `menu item 1 of menu 1 of menu bar item 2 of menu bar 1`——**`menu bar item 1` 是苹果菜单**，点它会打开「关于本机」而不是应用的关于面板。拿窗口 ID 用 `CGWindowListCopyWindowInfo` 按 owner 过滤，再 `screencapture -l<id>`。
+- **裸 `swift run` 会失败**：`error: multiple executable products available: MochiIconGen, Mochi`。自 #52 起包里有两个可执行产品（app 本体和图标生成器），SwiftPM 没有「默认产品」这种设置，必须写全 `swift run Mochi`。生成占位图标是 `swift run MochiIconGen`。
 - 构建/测试：`cd macos && swift build` / `swift test`。cwd 有时会在会话中途（尤其是穿插了 Skill/Agent 调用之后）跳回仓库根目录，报 `Could not find Package.swift in this directory or any of its parent directories` 时先 `cd macos` 重试，不是构建配置坏了。
 - 运行时配置文件：`~/Library/Application Support/Mochi/config.toml`。
 - ADR-0008 的 macOS 26 baseline 落到 `Package.swift` 需要 `swift-tools-version:6.2`+ 才能写 `.macOS(.v26)`；同时要加 `swiftLanguageModes: [.v5]`（在 `Package(...)` 参数列表里排在 `targets:` 之后，顺序反了编译器报错），否则默认转成 Swift 6 严格并发检查，`MochiCore` 里直接调 AppKit/WebKit 的同步方法会全部报 actor-isolation 错误。

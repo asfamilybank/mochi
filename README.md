@@ -27,6 +27,8 @@ swift test
 swift run Mochi
 ```
 
+`swift run` 必须带上产品名——包里有两个可执行产品，另一个是图标生成器（`swift run MochiIconGen`），不写名字 SwiftPM 会报 `multiple executable products available`。
+
 另有一个 `macos/Mochi.xcodeproj`，**只用于产出可分发的 `.app`**（见 [ADR-0014](docs/adr/0014-packaging-and-distribution.md)）。它的 App target 通过 local package reference 依赖 `MochiCore`，不重复编译源码：
 
 ```bash
