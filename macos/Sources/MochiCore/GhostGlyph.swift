@@ -1,8 +1,10 @@
 import CoreGraphics
 
-/// Mochi's only hand-drawn glyph. Every other icon the UI draws is a real SF Symbol now
+/// The ghost mascot. Every *interface* icon is a real SF Symbol now
 /// (`chevron.left`/`chevron.right`, `arrow.clockwise`, `lock`, `magnifyingglass`, `ellipsis`,
-/// `exclamationmark.triangle`) — SF Symbols has no ghost, so the mascot stays bespoke.
+/// `exclamationmark.triangle`) — SF Symbols has no ghost, so this one stays bespoke, and it is
+/// the only such exception in that set (ADR-0013). `MochiGlyph` is bespoke too but sits outside
+/// that set: it is the brand mark (tray and app icon), not an interface icon (ADR-0015).
 ///
 /// It is bespoke in *geometry only*: it still has to satisfy the same metric contract a system
 /// symbol does, or it draws at the wrong size and sits off the baseline next to its neighbours.
@@ -100,6 +102,14 @@ public struct SymbolMetrics: Equatable, Sendable {
     /// Stroke weight for `.regular` at the reference point size that
     /// `DesignTokens.Layout.iconStrokeWidth` is calibrated to.
     public static let referencePointSize: Double = 15
+
+    /// The factor a glyph's ink is scaled by to sit inside `canvasSize` with `inkInset` clear on
+    /// every side. Lives here rather than inline in the renderer so a test asserting how large a
+    /// glyph's details come out runs the same arithmetic the drawing does.
+    public func fitScale(forInk ink: CGRect) -> Double {
+        min((Double(canvasSize.width) - Self.inkInset * 2) / Double(ink.width),
+            (Double(canvasSize.height) - Self.inkInset * 2) / Double(ink.height))
+    }
 
     /// - Parameters:
     ///   - pointSize: The symbol point size to match.

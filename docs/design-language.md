@@ -46,9 +46,9 @@
 
 **App 图标方向**：圆润的麻糬（Mochi）造型为主体，米白/暖白色，光泽玻璃质感的高光和阴影（呼应 Liquid Glass 语言本身）；麻糬表面嵌一个小的圆角"窗口"切面，半透明暖橙玻璃面板，窗口里画出简化的标题栏三个圆点 + 内容区块，暗示"悬浮网页窗口"这个产品语义。窗口是点缀细节，麻糬造型占主导，不喧宾夺主。
 
-**托盘图标（菜单栏图标）**：App 图标的扁平化单色版本——同一个麻糬轮廓，纯黑色实心填充，窗口部分改用负空间挖空（不是另画一块彩色面板，因为要保持纯单色）。遵循 macOS 菜单栏 template image 惯例：导出时必须带真实 alpha 透明通道（不是白色背景），这样系统才能按菜单栏深浅色自动反色。托盘图标常驻显示，不区分 Normal/Ghost Mode，见 [issue #9](https://github.com/asfamilybank/mochi/issues/9)。
+**托盘图标（菜单栏图标）**：App 图标的扁平化单色版本——同一个麻糬轮廓，纯黑色实心填充，窗口部分改用负空间挖空（不是另画一块彩色面板，因为要保持纯单色）。**实现为 CGPath 代码绘制（`MochiGlyph`），不是导出的位图资源**——这样它才能复用 `SymbolMetrics` 的度量契约（画布随字号、`alignmentRect` 取 cap height、墨迹内缩），位图拿不到这些，见 [ADR-0015](adr/0015-tray-icon-is-the-mochi-glyph.md)。代码绘制天然满足 macOS 菜单栏 template image 惯例：背景是真实 alpha 透明而非白色，系统按菜单栏深浅色自动反色。托盘沿用 15pt（画布 18×18，装进 22pt 菜单栏），常驻显示，不区分 Normal/Ghost Mode，见 [issue #9](https://github.com/asfamilybank/mochi/issues/9)。
 
-**生产方式**：两个图标都是先用图片生成模型（GPT）出一版静态底稿，再看是否需要精修。GPT 出的是单张扁平图，只能当 macOS 26 Icon Composer 分层格式（Default / Dark / Clear / Tinted 四种外观）里 Default 这一层的素材来源，不是能直接拖进 Xcode 用的最终交付物——先做 Default + Dark 两层，Clear/Tinted 等基础图层定稿后再补。
+**生产方式**：两个图标走两条不同的路。托盘图标是代码画的（见上），下面那段 prompt 只作为形状参考存档，不是它的素材来源。App 图标先用图片生成模型（GPT）出一版静态底稿，再看是否需要精修。GPT 出的是单张扁平图，只能当 macOS 26 Icon Composer 分层格式（Default / Dark / Clear / Tinted 四种外观）里 Default 这一层的素材来源，不是能直接拖进 Xcode 用的最终交付物——先做 Default + Dark 两层，Clear/Tinted 等基础图层定稿后再补。
 
 用过的生成 prompt（存档，供复现或迭代用）：
 

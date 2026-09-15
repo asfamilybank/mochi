@@ -41,7 +41,15 @@ import Testing
     }
 }
 
-@Suite struct SymbolMetricsTests {
+/// Serialized because every test here reads live AppKit font metrics. Touching
+/// `NSFont.systemFont(ofSize:)` concurrently for the first time intermittently hands back the
+/// *default* 12pt system font's cap height (8.5 quantised) instead of the requested size's, which
+/// surfaces as a wrong `alignmentRect` at 13pt and 17pt but never at 15pt. The suite used to get
+/// away with it; adding another suite to the run changed the scheduling enough to fail ~20% of
+/// runs. `.serialized` only orders tests *within* this suite, which is enough because this is the
+/// only suite that reads live font metrics — `MochiGlyphTests` deliberately keeps its hands off
+/// `NSFont` to preserve that. A second suite touching it would need the same treatment.
+@Suite(.serialized) struct SymbolMetricsTests {
     /// The contract's whole purpose: a custom glyph must come out the same size and carry the
     /// same alignment box as a real SF Symbol at the same point size, or it draws oversized and
     /// off-baseline beside its neighbours. `arrow.clockwise` is the reference — the toolbar's

@@ -5,8 +5,9 @@ import Foundation
 import SwiftUI
 import WebKit
 
-/// Bridges `DesignTokens`/`GhostGlyph` (framework-agnostic value types) into the AppKit types
-/// the toolbar draws with, and resolves `DesignTokens.Symbol` names into system symbol images.
+/// Bridges the framework-agnostic value types — `DesignTokens` and the two bespoke glyphs,
+/// `GhostGlyph` and `MochiGlyph` — into the AppKit types the UI draws with, and resolves
+/// `DesignTokens.Symbol` names into system symbol images.
 /// Kept separate from `DesignTokens.swift` itself so that module stays free of AppKit-specific
 /// rendering concerns beyond accent-color resolution.
 private enum ToolbarStyle {
@@ -42,16 +43,18 @@ private enum ToolbarStyle {
             .init(pointSize: pointSize, weight: .regular, scale: .medium)) ?? image
     }
 
-    /// The ghost mascot, rendered to the same metric contract the SF Symbols beside it satisfy
-    /// (`SymbolMetrics`): a canvas sized off the point size, a cap-height `alignmentRect` so it
-    /// sits on the text baseline, and a stroke weight that tracks point size. Silhouette
-    /// stroked, eyes filled — see `GhostGlyph` on why those are two paths.
-    static func ghostImage(pointSize: Double, accessibilityDescription: String) -> NSImage {
-        // Ink extent on the 24×24 design grid. The stroke term uses the grid-space reference
-        // weight rather than the final one (which isn't known until `scale` below is solved, and
-        // `scale` needs the ink box) — the resulting sub-0.1pt difference in ink extent is
-        // absorbed by `SymbolMetrics.inkInset`.
-        let ink = GhostGlyph.inkBounds(strokeWidth: DesignTokens.Layout.iconStrokeWidth)
+    /// Renders one of Mochi's bespoke glyphs to the metric contract the SF Symbols beside it
+    /// satisfy (`SymbolMetrics`): a canvas sized off the point size, a cap-height
+    /// `alignmentRect` so it sits on the text baseline, and a stroke weight that tracks point
+    /// size. The ink box is fitted into the canvas here; `draw` paints on the 24×24 design grid
+    /// and is handed the scale it was fitted by, because a stroke has to divide that back out to
+    /// land on `metrics.strokeWidth` in final points.
+    static func glyphImage(
+        pointSize: Double,
+        accessibilityDescription: String,
+        ink: CGRect,
+        draw: @escaping (_ metrics: SymbolMetrics, _ scale: CGFloat) -> Void
+    ) -> NSImage {
         let metrics = SymbolMetrics.forGlyph(
             pointSize: pointSize,
             capHeight: Double(NSFont.systemFont(ofSize: pointSize).capHeight),
@@ -59,9 +62,7 @@ private enum ToolbarStyle {
 
         let image = NSImage(size: metrics.canvasSize, flipped: true) { _ in
             guard let context = NSGraphicsContext.current?.cgContext else { return false }
-            let inset = SymbolMetrics.inkInset
-            let scale = min((metrics.canvasSize.width - inset * 2) / ink.width,
-                            (metrics.canvasSize.height - inset * 2) / ink.height)
+            let scale = CGFloat(metrics.fitScale(forInk: ink))
             context.translateBy(x: (metrics.canvasSize.width - ink.width * scale) / 2,
                                 y: (metrics.canvasSize.height - ink.height * scale) / 2)
             context.scaleBy(x: scale, y: scale)
@@ -69,6 +70,24 @@ private enum ToolbarStyle {
 
             NSColor.black.setStroke()
             NSColor.black.setFill()
+            draw(metrics, scale)
+            return true
+        }
+        image.isTemplate = true
+        image.alignmentRect = metrics.alignmentRect
+        image.accessibilityDescription = accessibilityDescription
+        return image
+    }
+
+    /// The ghost mascot — SF Symbols has no ghost, so the Ghost Mode toolbar item keeps a
+    /// bespoke one. Silhouette stroked, eyes filled: see `GhostGlyph` on why those are two paths.
+    static func ghostImage(pointSize: Double, accessibilityDescription: String) -> NSImage {
+        // The ink's stroke term uses the grid-space reference weight rather than the final one
+        // (which isn't known until the fit scale is solved, and that needs the ink box) — the
+        // resulting sub-0.1pt difference in ink extent is absorbed by `SymbolMetrics.inkInset`.
+        glyphImage(pointSize: pointSize,
+                   accessibilityDescription: accessibilityDescription,
+                   ink: GhostGlyph.inkBounds(strokeWidth: DesignTokens.Layout.iconStrokeWidth)) { metrics, scale in
             let outline = NSBezierPath(cgPath: GhostGlyph.outlinePath)
             // Stroking happens inside the scaled context, so divide out `scale` to land on
             // `metrics.strokeWidth` in final points.
@@ -77,12 +96,21 @@ private enum ToolbarStyle {
             outline.lineJoinStyle = .round
             outline.stroke()
             NSBezierPath(cgPath: GhostGlyph.eyesPath).fill()
-            return true
         }
-        image.isTemplate = true
-        image.alignmentRect = metrics.alignmentRect
-        image.accessibilityDescription = accessibilityDescription
-        return image
+    }
+
+    /// Mochi's brand mark, worn by the menu-bar tray (ADR-0015). One filled path under the
+    /// even-odd rule so the window comes out as a hole rather than a second shape — a template
+    /// image has to stay pure monochrome for AppKit to re-tint it against light and dark menu
+    /// bars. Nothing is stroked, so neither closure parameter is needed.
+    static func mochiImage(pointSize: Double, accessibilityDescription: String) -> NSImage {
+        glyphImage(pointSize: pointSize,
+                   accessibilityDescription: accessibilityDescription,
+                   ink: MochiGlyph.inkBounds) { _, _ in
+            let body = NSBezierPath(cgPath: MochiGlyph.path)
+            body.windingRule = .evenOdd
+            body.fill()
+        }
     }
 
     /// Point sizes the glyphs are pinned to where AppKit isn't sizing them for us.
@@ -1270,16 +1298,14 @@ public final class AppKitPlatformOps: PlatformOps {
         handle.setSnapEnabled(enabled)
     }
 
-    /// The tray glyph is `GhostGlyph` — Mochi's hand-drawn mascot — as a stand-in until
-    /// docs/design-language.md's dedicated "flattened app icon with a negative-space window
-    /// cutout" tray asset is produced by a separate design pass; it already satisfies the
-    /// packaging requirement (monochrome, real alpha transparency, template image). The point
-    /// size is pinned rather than left at the toolbar's, because a status item draws its image
-    /// at that image's own size inside a 22pt menu bar — the 24×24 square this used to pass
-    /// overflowed the bar and left the glyph no breathing room.
+    /// The tray glyph is `MochiGlyph` — the brand mark the app icon also wears, rather than the
+    /// ghost that used to stand in here (ADR-0015). The point size is pinned rather than left at
+    /// the toolbar's, because a status item draws its image at that image's own size inside a
+    /// 22pt menu bar; `NSStatusItem.squareLength` then makes the item only as wide as the bar is
+    /// thick, which is what bounds the glyph's ink aspect ratio.
     public func createTrayIcon(items: [TrayMenuItem]) {
         let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        statusItem.button?.image = ToolbarStyle.ghostImage(
+        statusItem.button?.image = ToolbarStyle.mochiImage(
             pointSize: ToolbarStyle.GlyphSize.tray, accessibilityDescription: "Mochi")
 
         let menu = NSMenu()
