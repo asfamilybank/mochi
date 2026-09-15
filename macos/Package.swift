@@ -23,6 +23,12 @@ let package = Package(
             name: "Mochi",
             dependencies: ["MochiCore"]
         ),
+        // Not shipped with the app: a developer tool, run by hand to regenerate the placeholder
+        // app-icon artwork whenever `MochiGlyph`'s outline changes (#52).
+        .executableTarget(
+            name: "MochiIconGen",
+            dependencies: ["MochiCore"]
+        ),
         .testTarget(
             name: "MochiCoreTests",
             dependencies: ["MochiCore"]

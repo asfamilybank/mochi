@@ -48,7 +48,16 @@
 
 **托盘图标（菜单栏图标）**：App 图标的扁平化单色版本——同一个麻糬轮廓，纯黑色实心填充，窗口部分改用负空间挖空（不是另画一块彩色面板，因为要保持纯单色）。**实现为 CGPath 代码绘制（`MochiGlyph`），不是导出的位图资源**——这样它才能复用 `SymbolMetrics` 的度量契约（画布随字号、`alignmentRect` 取 cap height、墨迹内缩），位图拿不到这些，见 [ADR-0015](adr/0015-tray-icon-is-the-mochi-glyph.md)。代码绘制天然满足 macOS 菜单栏 template image 惯例：背景是真实 alpha 透明而非白色，系统按菜单栏深浅色自动反色。托盘沿用 15pt（画布 18×18，装进 22pt 菜单栏），常驻显示，不区分 Normal/Ghost Mode，见 [issue #9](https://github.com/asfamilybank/mochi/issues/9)。
 
-**生产方式**：两个图标走两条不同的路。托盘图标是代码画的（见上），下面那段 prompt 只作为形状参考存档，不是它的素材来源。App 图标先用图片生成模型（GPT）出一版静态底稿，再看是否需要精修。GPT 出的是单张扁平图，只能当 macOS 26 Icon Composer 分层格式（Default / Dark / Clear / Tinted 四种外观）里 Default 这一层的素材来源，不是能直接拖进 Xcode 用的最终交付物——先做 Default + Dark 两层，Clear/Tinted 等基础图层定稿后再补。
+**生产方式**：两个图标走两条不同的路。托盘图标是代码画的（见上），下面那段 prompt 只作为形状参考存档，不是它的素材来源。App 图标先用图片生成模型（GPT）出一版静态底稿，再看是否需要精修。GPT 出的是单张扁平图，只能当 macOS 26 Icon Composer 分层格式（Default / Dark / Clear / Tinted 四种外观）里 Default 这一层的素材来源，不是能直接拖进 Xcode 用的最终交付物。
+
+**只做 Default 一层**，Dark / Clear / Tinted 全部交给 Icon Composer 自动派生。原先这里写的是「先做 Default + Dark 两层」，那句话没考虑到单张扁平图物理上只有一层——真要手工分层得先有分层素材，那是素材迭代那一轮的事，不该卡住打包链路（[ADR-0014](adr/0014-packaging-and-distribution.md)）。
+
+**正式底稿怎么替换进来**（两步都没有 CLI，Agent 做不了，必须人工）：
+
+1. 把上面那段 prompt 喂给图像生成模型，挑一张出图。挑选标准是跟托盘剪影对得上：顶部圆拱、底部偏平（不是正圆、也不是圆角方块），窗口是居中的圆角矩形、约占身宽 30%，四周留白充足、不画外阴影。参照物是 `swift run MochiIconGen` 生成的占位图 `macos/App/Icon/mochi-placeholder-1024.png`——它是直接从 `MochiGlyph` 的路径渲染的，轮廓就是托盘图标的轮廓。
+2. 把选中的 1024×1024 PNG 存进 `macos/App/Icon/`（源图必须入库：`.icon` 是编译输入的产物，源图丢了就没法再微调），然后打开 `/Applications/Xcode.app/Contents/Applications/Icon Composer.app`，把它拖进去，导出 `.icon` 存到 `macos/App/`，再接进 Xcode 工程的 app icon 设置。
+
+占位图的存在只是为了让打包链路不被素材产出阻塞。它由 `MochiIconGen` 这个不随 app 分发的 target 从 `MochiGlyph` 渲染而来，麻糬轮廓将来跟着正式素材调整时，重跑一次就能拿到新的参照物——这是托盘图标与 app 图标轮廓一致性核对里唯一能机械化的部分，其余靠眼睛（[ADR-0015](adr/0015-tray-icon-is-the-mochi-glyph.md)）。
 
 用过的生成 prompt（存档，供复现或迭代用）：
 
