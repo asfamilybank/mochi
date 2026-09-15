@@ -8,11 +8,13 @@
 
 /* Begin PBXBuildFile section */
 		AA00000000000000000013AA /* MochiCore in Frameworks */ = {isa = PBXBuildFile; productRef = AA00000000000000000012AA /* MochiCore */; };
+		AA00000000000000000016AA /* Mochi.icon in Resources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000015AA /* Mochi.icon */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		AA00000000000000000005AA /* Mochi.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mochi.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA00000000000000000007AA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AA00000000000000000015AA /* Mochi.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = Mochi.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -56,6 +58,7 @@
 			isa = PBXGroup;
 			children = (
 				AA00000000000000000007AA /* Info.plist */,
+				AA00000000000000000015AA /* Mochi.icon */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -128,6 +131,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AA00000000000000000016AA /* Mochi.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -185,6 +189,7 @@
 		AA0000000000000000000FAA /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = Mochi;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -208,6 +213,7 @@
 		AA00000000000000000010AA /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = Mochi;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
