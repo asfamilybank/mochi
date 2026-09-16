@@ -52,10 +52,14 @@
 
 **只做 Default 一层**，Dark / Clear / Tinted 全部交给 Icon Composer 自动派生。原先这里写的是「先做 Default + Dark 两层」，那句话没考虑到单张扁平图物理上只有一层——真要手工分层得先有分层素材，那是素材迭代那一轮的事，不该卡住打包链路（[ADR-0014](adr/0014-packaging-and-distribution.md)）。
 
-**正式底稿怎么替换进来**（两步都没有 CLI，Agent 做不了，必须人工）：
+**正式底稿怎么替换进来**（出图和 Icon Composer 两步都没有 CLI，Agent 做不了，必须人工）：
 
-1. 把上面那段 prompt 喂给图像生成模型，挑一张出图。挑选标准是跟托盘剪影对得上：顶部圆拱、底部偏平（不是正圆、也不是圆角方块），窗口是居中的圆角矩形、约占身宽 30%，四周留白充足、不画外阴影。参照物是 `swift run MochiIconGen` 生成的占位图 `macos/App/Icon/mochi-placeholder-1024.png`——它是直接从 `MochiGlyph` 的路径渲染的，轮廓就是托盘图标的轮廓。
-2. 把选中的 1024×1024 PNG 存进 `macos/App/Icon/`（源图必须入库：`.icon` 是编译输入的产物，源图丢了就没法再微调），然后打开 `/Applications/Xcode.app/Contents/Applications/Icon Composer.app`，把它拖进去，导出 `.icon` 存到 `macos/App/`，再接进 Xcode 工程的 app icon 设置。
+1. 把上面那段 prompt 喂给图像生成模型，**并要求透明背景**。挑选标准是跟托盘剪影对得上：顶部圆拱、底部偏平（不是正圆、也不是圆角方块），窗口是居中的圆角矩形、约占身宽 30%，四周留白充足、不画外阴影——遮罩、背景和投影都由 Icon Composer 和系统施加，画进像素里会跟着进 Dark/Clear/Tinted 各种派生外观。参照物是 `swift run MochiIconGen` 生成的占位图 `macos/App/Icon/mochi-placeholder-1024.png`，它直接从 `MochiGlyph` 的路径渲染，轮廓就是托盘图标的轮廓。
+2. 打开 `/Applications/Xcode.app/Contents/Applications/Icon Composer.app`，把 PNG 拖进图层列表，配好背景，**`File → Save As…` 存成 `macos/App/Mochi.icon`**。注意是 Save 而不是 `Export…`——`.icon` 就是 Icon Composer 的原生文档格式，`Export…` 导出的是位图。保存时它会把 PNG 复制进 `Mochi.icon/Assets/`，所以源图自动随文档入库，不必另存一份。
+
+Xcode 工程那侧不需要任何改动：`Mochi.icon` 已经在 App target 的 Resources 阶段里、`ASSETCATALOG_COMPILER_APPICON_NAME` 已指向它，换素材只是换 `.icon` 里的图层。
+
+**如果模型给不出透明背景**（早期几版就是画在一块实心底板上的），`macos/scripts/cutout-icon-background.swift` 可以把主体抠出来，但它的阈值是逐图实测的、换图必须重量——两张图实测下来参数完全不同。优先让模型直接出透明底，这个脚本是兜底。
 
 占位图的存在只是为了让打包链路不被素材产出阻塞。它由 `MochiIconGen` 这个不随 app 分发的 target 从 `MochiGlyph` 渲染而来，麻糬轮廓将来跟着正式素材调整时，重跑一次就能拿到新的参照物——这是托盘图标与 app 图标轮廓一致性核对里唯一能机械化的部分，其余靠眼睛（[ADR-0015](adr/0015-tray-icon-is-the-mochi-glyph.md)）。
 

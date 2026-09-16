@@ -7,17 +7,26 @@
       "layers" : [
         {
           "blend-mode" : "plus-lighter",
+          "glass" : true,
+          "hidden" : false,
           "image-name" : "Codex 图像 2026年9月15日 16_07_40.png",
           "name" : "Codex 图像 2026年9月15日 16_07_40",
           "position" : {
-            "scale" : 1,
+            "scale" : 0.81,
             "translation-in-points" : [
-              -4.5,
-              27.5
+              -1.5,
+              37.5
             ]
           }
         }
       ],
+      "position" : {
+        "scale" : 1,
+        "translation-in-points" : [
+          1.966553888819135,
+          -66.11458244751611
+        ]
+      },
       "shadow" : {
         "kind" : "neutral",
         "opacity" : 0.5
