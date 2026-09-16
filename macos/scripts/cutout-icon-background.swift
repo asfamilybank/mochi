@@ -4,29 +4,29 @@
 //
 //     swift scripts/cutout-icon-background.swift <master.png> <out-1024.png> [chroma] [lumaHeadroom] [edgeTrim]
 //
-// The current master was cut with:
-//
-//     swift scripts/cutout-icon-background.swift \
-//         App/Icon/mochi-icon-master-1254.png App/Icon/mochi-icon-cutout-1024.png 18 255 2
+// **This is a fallback, not the path.** The shipping icon's master was generated with a genuinely
+// transparent background and went straight into Icon Composer; ask the model for transparency
+// first. This exists for masters that come back painted onto a solid plate, which earlier ones did.
 //
 // Background is taken to be the low-chroma region reachable from the border, so the subject's
-// interior can never be punched out no matter how neutral it goes. The two thresholds are
+// interior can never be punched out no matter how neutral it goes. The thresholds are
 // **per-master and must be re-measured** — sample the plate, the contact shadow and several points
-// on the subject before trusting a number here.
+// on the subject before trusting a number here. The two masters this was pointed at needed
+// different values; the defaults below are one of them, not a general setting.
 //
-//   chroma        max colourfulness a pixel may have and still count as ground. Measured on the
-//                 current master: plate 8, outer white 0, contact shadow 13, mochi body 24-39 —
-//                 so 18 sits in the gap.
+//   chroma        max colourfulness a pixel may have and still count as ground. On the last master
+//                 measured: plate 8, outer white 0, contact shadow 13, subject body 24-39 — so 18
+//                 sits in the gap, and 21 already started biting into the glossy rim.
 //   lumaHeadroom  how much brighter than the border a pixel may be and still count as ground.
 //                 Needed only when the subject has a *neutral* specular highlight that the fill
 //                 could otherwise walk into from the edge: on an earlier master the plate sat at
 //                 luma ~220 and the highlight at 240+, and a headroom of 9 landed in that gap.
-//                 The current master's sheen is warm (chroma 24), so chroma alone holds it and the
-//                 headroom is left wide open.
+//                 The next one's sheen was warm (chroma 24), so chroma alone held it and the
+//                 headroom was left wide open — hence the default.
 //   edgeTrim      pixels of background grown inwards before feathering, to swallow the
 //                 anti-aliased ring where subject and ground blend. Without it that ring survives
-//                 as a speckled fringe all round the silhouette; 2 is enough on the current
-//                 master and costs about a pixel and a half of subject at the output size.
+//                 as a speckled fringe all round the silhouette; 2 was enough on the last master
+//                 measured, and costs about a pixel and a half of subject at the output size.
 //
 // A residual haze at the base is expected wherever the innermost contact shadow is warmed by
 // bounce light: it reads as chromatic and survives. Widening chroma far enough to take it starts
