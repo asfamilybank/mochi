@@ -25,7 +25,7 @@ set -euo pipefail
 # when it's done: everything goes to the log, and only a failure puts any of it on screen.
 run_quiet() {
     if ! "$@" >>"$log_file" 2>&1; then
-        echo "package.sh: 失败于 $1，末尾输出如下（完整日志见 $log_file）" >&2
+        echo "package.sh: 失败于 ${1}，末尾输出如下（完整日志见 ${log_file}）" >&2
         tail -40 "$log_file" >&2
         exit 1
     fi
@@ -126,4 +126,7 @@ if [[ -n "$notary_profile" ]]; then
 fi
 
 signature=$([[ -n "$sign_identity" ]] && echo "Developer ID" || echo "ad-hoc")
-echo "OK  $dmg_path  (版本 $label，$signature 签名)"
+# The braces are load-bearing: written as `$label，`, bash on the CI runner took the full-width
+# comma to be part of the variable's name and died under `set -u`, while the bash on a dev machine
+# read the same line correctly. Any expansion that touches non-ASCII text gets them.
+echo "OK  ${dmg_path}  (版本 ${label}，${signature} 签名)"
