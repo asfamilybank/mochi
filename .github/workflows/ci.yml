@@ -1,0 +1,37 @@
+# Multiple agent sessions commit to main in parallel; without this nobody notices a red `swift test`
+# until someone happens to run it. The xcodebuild step is here for a different reason: the repo
+# carries two build systems (ADR-0014), and the Xcode one is not exercised by day-to-day work, so
+# it can rot unnoticed until release day.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    # Matches the app's deployment target, so a green run here means it builds on what it ships for.
+    runs-on: macos-26
+    defaults:
+      run:
+        working-directory: macos
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: swift build
+        run: swift build
+
+      - name: swift test
+        run: swift test
+
+      # The shared scheme has no testables — this only proves the project still compiles, which is
+      # the whole point of the step. Tests live in SwiftPM.
+      - name: xcodebuild build (keeps Mochi.xcodeproj honest)
+        run: |
+          xcodebuild build \
+            -project Mochi.xcodeproj \
+            -scheme Mochi \
+            -configuration Release \
+            -destination 'platform=macOS,arch=arm64'

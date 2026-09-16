@@ -1,0 +1,31 @@
+# Publishing is one push of a tag. The packaging itself is not reimplemented here: scripts/package.sh
+# is the single source of truth (ADR-0014), so what lands on a Release is what a maintainer can build
+# locally. There is no Developer ID certificate on CI — nor anywhere else on this project — so every
+# artifact this produces is ad-hoc signed and users must pass Gatekeeper once; README covers how.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release:
+    runs-on: macos-26
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # Handing package.sh the ref name rather than letting it re-derive the tag from the checkout
+      # ties the dmg's version to the tag this run was triggered by, even on a commit carrying more
+      # than one tag. It's the same override a maintainer uses to rehearse a release before tagging.
+      - name: Package
+        run: macos/scripts/package.sh
+        env:
+          MOCHI_VERSION: ${{ github.ref_name }}
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes macos/dist/*.dmg
