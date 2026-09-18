@@ -16,7 +16,7 @@
 - **`DesignTokens.Symbol` 是符号名的唯一来源**，列出 `chevron.left` / `chevron.right` / `arrow.clockwise` / `ellipsis` / `exclamationmark.triangle`，加上 `AddressFieldGlyph` 的 `lock` / `magnifyingglass`。不在使用点写字符串字面量——打错一个字的症状是图标静默消失，集中列出才能用一条测试遍历验证全部名字在部署 SDK 里解析得到。
 - **`ToolbarStyle.symbolImage` 对解析失败 `preconditionFailure`**，不静默降级成空白按钮。符号名是编译期常量，解析不到意味着写错了，应当立刻暴露。
 - **ghost 保留自绘，但几何以外的一切都对齐系统符号**，契约固化在 `SymbolMetrics`，四条规则全部由实测系统符号得出而非假设：
-  - 画布高度 = `pointSize + 3`；
+  - 画布高度 = `pointSize + 3`（**下面「后续」一节把它限定为只在 11–18pt 成立**）；
   - `alignmentRect` 高度 = 同字号系统文字的 cap height，**量化到半点**（系统符号在 13/15/17pt 上落在 9.0 / 10.5 / 12.0，对应 SF Pro cap height 9.16 / 10.57 / 11.98——取整到整数会把 15pt 算成 11.0，让 ghost 偏离邻居半个点）；
   - 宽度按字形自身的墨迹宽高比，不是正方形（系统符号 `chevron.left` 是 10×14、`ellipsis` 14×5、`exclamationmark.triangle` 17×15）；
   - 描边粗细随字号线性缩放（`.regular` 实测 13pt≈1.5、15pt=1.75、17pt≈2.0），墨迹四周留约 1pt。
@@ -42,3 +42,36 @@
 - design-language.md 第 19 行"图标全部手绘线性 SVG"和第 30 行"图标沿用现有手绘 SVG 图标集"已被本 ADR 推翻，需要改写；第 79 行那段 app/tray icon 的生成 prompt 不受影响（那是应用图标素材，跟界面图标集是两件事）。
 - 仍未解决、不在本次范围内：**应用本身没有任何 app icon 资源**（无 `.icns`、无 Asset Catalog，`Package.swift` 无 resources），Dock 图标是系统默认白纸。design-language.md 已写好生成方式，缺的是素材与打包，需要单独一轮。
 - 沙盒内验证不了的：菜单栏托盘图标的真实观感。status item 不作为可按 window ID 截图的 CGWindow 暴露，所以这次只验证到"画布 18×18 装得进 22pt 菜单栏"这一层几何，实际是否够清晰要真机看一眼。
+
+## 后续：`alignmentRect` 的半点是契约宽度，不是权宜之计（[#55](https://github.com/asfamilybank/mochi/issues/55)）
+
+上面那条"`alignmentRect` 高度 = cap height 量化到半点"在 [#54](https://github.com/asfamilybank/mochi/issues/54) 接上 CI 后第一次被另一个 macOS 小版本检验，结果分叉：15pt 下真实 `arrow.clockwise` 的 `alignmentRect.height` 在 macOS 26.5.2（本地开发机）是 10.5、在 26.6.2（`macos-26` runner）是 11.0，13pt 与 17pt 两边一致。喂给 `SymbolMetrics` 的输入（`NSFont.systemFont(ofSize:).capHeight`）两边完全相同，所以分叉出在系统符号那一侧。
+
+**结论：规则不动，把"半点"明确为契约宽度。** 依据：
+
+- **这条规则不是对三个字号的巧合拟合。** 在 26.5.2 上把 8–26pt 全部 19 档扫一遍，`round(capHeight × 2) / 2` 与真实系统符号的 `alignmentRect.height` **每一档都精确相等**（差值只有 1e-15 量级的浮点残渣）。同一字号下六个不同符号（`arrow.clockwise`/`chevron.left`/`lock`/`magnifyingglass`/`ellipsis`/`exclamationmark.triangle`）报的也是同一个值，说明它是字体度量的派生量，不是逐符号的资源数据。复现用一段 `swiftc` 直编的脚本即可：
+
+  ```swift
+  import AppKit
+  for pt in (8...26).map(Double.init) {
+      let ours = (Double(NSFont.systemFont(ofSize: pt).capHeight) * 2).rounded() / 2
+      let theirs = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: nil)!
+          .withSymbolConfiguration(.init(pointSize: pt, weight: .regular, scale: .medium))!
+          .alignmentRect.height
+      print(pt, ours, theirs)
+  }
+  ```
+
+- **26.6 的三个已知值反推不出任何一条自洽的取整规则。** 26.6 上 13/15/17pt 分别是 9.0 / 11.0 / 12.0：四舍五入到半点会给出 15pt=10.5（对不上），向上取整会给出 13pt=9.5（也对不上）。
+- **风险不对称。** 改 `forGlyph` 的算术去迁就 11.0，等于拿 26.5 上 19/19 的精确吻合去换一个分叉点；而视觉代价只有半点，且只发生在一个字号上，肉眼不可辨。
+
+因此：
+
+- `SymbolMetrics.forGlyph` 的量化方式保持 `round(capHeight × 2) / 2` 不变，`alignmentBoxIsTheCapHeightQuantisedToHalfPoints` 里钉住的 9.0 / 10.5 / 12.0 三个期望值也不变——它们钉的是**我们自己的算术**，输入 cap height 在两个版本上一致，所以跟 OS 无关。
+- 跟**活的系统符号**对照的那条测试，半点 slack 从"临时措施"升级为**明示的契约**：ghost 承诺的是"与同字号系统符号相差不超过一个量化步长"，而不是"完全相等"。这条断言仍然抓得住真正值得抓的回归——字形按错误字体算尺寸，或整整差一个点。
+- **对照断言的字号范围刻意保持 13/15/17 不变，没有跟着扫描一起扩到 8–26pt。** 那 19 档是本次的取证手段，不是契约面：26.6 上只有 3 档有实测值，把另外 16 档钉进 CI 等于拿没量过的字号当红灯来源，而 app 只画 13pt（工具栏）和 15pt（托盘）。
+- 同一轮重测顺带修正了上面另一条规则的表述：**画布高度 = `pointSize + 3` 只在 11–18pt 成立**（10pt 的系统符号画布是 12 不是 13、20pt 是 24 不是 23，26.5.2 实测）。app 用到的两档都在区间内；将来要在区间外画自绘字形，得先把画布规则在那一档重测。这条同样只在 13/15/17 上有测试守着。
+
+**仍未回答、刻意留着的**：#55 的决策点 1（"在 26.6 的机器上把真实 symbol 度量重新量一遍"）没有执行——本地是 26.5.2，手上没有 26.6 的机器。所以"15pt 是系统侧符号字体度量的一次孤立微调，而不是换了一套取整方式"目前**只是推断，不是实测结论**：它建立在 26.6 的三个数据点上，样本量不足以定性。真要落实，最便宜的路子是在 `ci.yml` 里临时加一步把上面那段脚本的 19 档输出打出来（runner 就是 26.6），拿到全档曲线再回头看这一节。在那之前，本节的决定不依赖这个推断成立——"不改算术"靠的是上面的风险不对称，而不是对 26.6 机制的猜测。
+
+**另记一笔**：#55 正文说"15pt 正是工具栏和托盘都在用的字号"，与代码不符——`ToolbarStyle.GlyphSize` 里工具栏是 13pt、托盘是 15pt，15pt 那档画的是 `MochiGlyph` 而非 ghost。分叉字号对 ghost 的实际影响因此比 issue 描述的更小。

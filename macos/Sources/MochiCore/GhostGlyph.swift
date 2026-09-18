@@ -76,11 +76,17 @@ public enum GhostGlyph {
 /// The geometry a custom glyph must reproduce to sit correctly beside real SF Symbols, measured
 /// off the system's own symbols at several point sizes and weights rather than assumed:
 ///
-/// - **Canvas height is `pointSize + 3`.** `arrow.clockwise` is 16pt tall at 13pt, 18 at 15pt,
-///   20 at 17pt.
-/// - **`alignmentRect` height is the cap height of system text at the same point size** — this
-///   is the mechanism symbols use to sit on the text baseline. Measured 9.0 / 10.5 / 12.0 at
-///   13 / 15 / 17pt, against SF Pro's own cap heights of 9.16 / 10.57 / 11.98.
+/// - **Canvas height is `pointSize + 3`, over 11–18pt** (measured on macOS 26.5.2).
+///   `arrow.clockwise` is 16pt tall at 13pt, 18 at 15pt, 20 at 17pt. Outside that band the
+///   system walks away from the formula — 12pt of canvas at 10pt, 24 at 20pt — so this type is
+///   calibrated for that band alone. Both sizes the app draws a bespoke glyph at sit inside it
+///   (13pt toolbar, 15pt tray); anything outside needs the rule re-measured there first.
+/// - **`alignmentRect` height is the cap height of system text at the same point size**, rounded
+///   to the nearest half point — the mechanism symbols use to sit on the text baseline. Measured
+///   9.0 / 10.5 / 12.0 at 13 / 15 / 17pt, against SF Pro's own cap heights of 9.16 / 10.57 /
+///   11.98. What it *promises* is agreement within one quantisation step, not equality: the
+///   system's own answer moved between macOS releases at 15pt — 10.5 on 26.5.2, 11.0 on 26.6.2,
+///   off an unchanged cap height. ADR-0013's follow-up and #55 carry the measurements.
 /// - **Width is per-glyph, not square.** `chevron.left` is 10×14, `ellipsis` 14×5,
 ///   `exclamationmark.triangle` 17×15. So width follows this glyph's own ink aspect ratio.
 /// - **Ink is inset ~1pt from the canvas edge**, and the stroke weight tracks point size:
@@ -124,7 +130,9 @@ public struct SymbolMetrics: Equatable, Sendable {
         // Quantised to half-points, not whole ones: the system's own symbols land on 9.0 / 10.5 /
         // 12.0 at 13 / 15 / 17pt, against SF Pro cap heights of 9.16 / 10.57 / 11.98. Rounding to
         // integers would put 15pt at 11.0 and leave the ghost half a point off its neighbours'
-        // baseline.
+        // baseline. Which is also, confusingly, what macOS 26.6 reports for 15pt — deliberately
+        // not chased here, since every rounding rule that lands on 11.0 there walks off the
+        // system's answer at other point sizes this one reproduces exactly (#55).
         let alignmentHeight = (capHeight * 2).rounded() / 2
         return SymbolMetrics(
             canvasSize: CGSize(width: width, height: height),

@@ -53,16 +53,21 @@ import Testing
     /// The contract's whole purpose: a custom glyph must come out the same size and carry the
     /// same alignment box as a real SF Symbol at the same point size, or it draws oversized and
     /// off-baseline beside its neighbours. `arrow.clockwise` is the reference — the toolbar's
-    /// own refresh symbol, whose 14:16 proportions are close to the ghost's.
+    /// own refresh symbol, whose 14:16 proportions are close to the ghost's. Every symbol
+    /// reports the same alignment box at a given point size, so one reference stands for all.
     ///
-    /// The alignment box is compared with a half-point of slack rather than exactly, because the
-    /// system's own answer moves between OS releases: at 15pt `arrow.clockwise` reports 10.5 on
-    /// macOS 26.5.2 and 11.0 on 26.6.2 (measured on both — the latter is what CI runs). Half a
-    /// point is one quantisation step, so this still catches the failures worth catching — a
-    /// glyph sized off a different font, or off by a whole point — while refusing to pin our
-    /// arithmetic to whichever macOS happens to run the test. Which of the two the glyph should
-    /// follow on 26.6 is a design question, tracked separately, not something to settle by
-    /// rewriting the expected number here.
+    /// **The half point of slack on the alignment box is the contract, not a workaround.** The
+    /// system's own answer moves between OS releases — at 15pt `arrow.clockwise` reports 10.5 on
+    /// macOS 26.5.2 and 11.0 on 26.6.2, off the same unchanged cap height — so what a bespoke
+    /// glyph can promise is *within one quantisation step*, on whichever macOS runs it. #55
+    /// settled that the ghost keeps our rule rather than chasing the newer number; ADR-0013's
+    /// follow-up carries the measurements and the reasoning. The assertion still catches
+    /// everything worth catching — a glyph sized off the wrong font, or off by a whole point.
+    ///
+    /// These three sizes are the ones measured on both releases, and they bracket the two the
+    /// app actually draws (13pt in the toolbar, 15pt in the tray). Deliberately not widened:
+    /// asserting against sizes nobody has measured on a newer macOS is the same trap that turned
+    /// this test red, just set one size further out.
     @Test(arguments: [13.0, 15.0, 17.0])
     func matchesARealSymbolsCanvasHeightAndAlignmentBox(pointSize: Double) throws {
         let reference = try #require(
@@ -84,7 +89,9 @@ import Testing
     /// `alignmentRect` height *is* the cap height of system text at that point size, quantised to
     /// half-points — the mechanism symbols use to sit on the baseline. The expected values are
     /// the system's own symbols', measured; rounding to whole points instead puts 15pt at 11.0
-    /// and knocks the ghost half a point off its neighbours.
+    /// and knocks the ghost half a point off its neighbours. These three pin our *arithmetic*,
+    /// so unlike the comparison against a live symbol above they are exact: cap height is the one
+    /// input, and it reads the same on every macOS release measured so far.
     @Test(arguments: [(pointSize: 13.0, expected: 9.0),
                       (pointSize: 15.0, expected: 10.5),
                       (pointSize: 17.0, expected: 12.0)])
