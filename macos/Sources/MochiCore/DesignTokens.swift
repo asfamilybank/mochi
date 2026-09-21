@@ -201,6 +201,13 @@ public enum DesignTokens {
         public static let addressFieldMinWidth: Double = 200
         public static let addressFieldMaxWidth: Double = 320
 
+        /// Breathing room left around the address field inside its toolbar item, so the focus
+        /// ring AppKit draws *outside* the field's bounds has somewhere to land. `NSToolbarItemViewer`
+        /// gives a hosted view only 4pt of horizontal slack, and the ring wants about 3 of its own
+        /// on every side — measured, the ring's left and right arcs came back sliced flat against
+        /// that boundary while the top and bottom (which have ~10pt to spare) drew intact.
+        public static let addressFieldFocusRingInset: Double = 3
+
         /// The refresh affordance embedded at the address field's trailing edge (ADR-0011) —
         /// smaller than a standalone toolbar button since it sits *inside* the field's 31pt box.
         public static let addressFieldEmbeddedIconDiameter: Double = 20
@@ -208,12 +215,15 @@ public enum DesignTokens {
 
         /// Normal Mode's minimum window width — measured, not derived from Safari's 574pt (which
         /// is calibrated to Safari's larger always-visible set, sidebar toggle included). Sweeping
-        /// the real window width one point at a time (ADR-0011) found that at 428pt AppKit stops
+        /// the real window width one point at a time (ADR-0011) found the point where AppKit stops
         /// being able to fit the two items that must never collapse — the back/forward segmented
         /// control and the address field at `addressFieldMinWidth` — and sweeps the address field
-        /// itself into the overflow menu. 440 is that threshold plus a small margin. Lowering this
-        /// below ~430 re-breaks "the address bar is never collapsed", so re-measure rather than
-        /// re-deriving it from the button sizes if any of them change.
+        /// itself into the overflow menu. That threshold was 428pt when the field was hosted bare;
+        /// it is 434pt now that `addressFieldFocusRingInset` pads the item by 3pt a side (re-swept
+        /// the same way, and the sweep still reproduces the old 428 without the padding). 440 keeps
+        /// its small margin over it. Lowering this below ~436 re-breaks "the address bar is never
+        /// collapsed", so re-measure rather than re-deriving it from the button sizes if any of
+        /// them change.
         public static let normalModeWindowMinWidth: Double = 440
 
         /// The Loading Progress Bar's (#18) fixed height — a thin line under the toolbar, not a

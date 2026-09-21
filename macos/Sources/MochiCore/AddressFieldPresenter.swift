@@ -45,6 +45,17 @@ public enum AddressFieldPresenter {
         return DisplayState(text: nonEmpty(pageTitle) ?? nonEmpty(host) ?? "", isEditable: false)
     }
 
+    /// Whether a page-driven update (a title/URL/loading KVO tick, a hover enter/exit) may still
+    /// rewrite the field. A live editing session outranks every one of them: from the moment the
+    /// field holds a field editor until it loses it, the text belongs to whoever is typing, and
+    /// re-deriving it from `displayState` would wipe a half-typed address out from under them —
+    /// which is exactly what a page that keeps loading in the background, or a mouse that drifts
+    /// off the field mid-word, used to do. `displayState`'s own inputs are unchanged; this is the
+    /// question of *whether to ask it at all*.
+    public static func acceptsPageDrivenUpdates(hasActiveEditingSession: Bool) -> Bool {
+        !hasActiveEditingSession
+    }
+
     /// Whether the Smart Address Field's trailing embedded refresh affordance (#27) is shown.
     /// Hidden on the Empty Page — before any real navigation there is nothing to reload, matching
     /// that state's existing "no independent URL input" spirit — and shown from the first

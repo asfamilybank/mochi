@@ -78,6 +78,14 @@ import Testing
         #expect(withNeither.text == "")
     }
 
+    @Test func aLiveEditingSessionOutranksEveryPageDrivenUpdate() {
+        #expect(AddressFieldPresenter.acceptsPageDrivenUpdates(hasActiveEditingSession: true) == false)
+    }
+
+    @Test func pageDrivenUpdatesResumeOnceTheEditingSessionIsOver() {
+        #expect(AddressFieldPresenter.acceptsPageDrivenUpdates(hasActiveEditingSession: false) == true)
+    }
+
     @Test func embeddedRefreshIconIsHiddenUntilTheFirstRealNavigation() {
         #expect(AddressFieldPresenter.showsEmbeddedRefreshIcon(hasNavigatedAtLeastOnce: false) == false)
     }

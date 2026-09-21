@@ -245,6 +245,12 @@ fileprivate struct ToolbarControls {
     /// Back and forward as one joined native control (ADR-0011), not two independent buttons.
     let navigationControl: NSSegmentedControl
     let addressField: AddressField
+    /// What the address toolbar item actually hosts: `addressField` inset by
+    /// `DesignTokens.Layout.addressFieldFocusRingInset` on every side, so its focus ring isn't
+    /// clipped. Built once here rather than in `itemForItemIdentifier`, which AppKit may call
+    /// again for the same identifier — a fresh container per call would re-parent the field and
+    /// pile up duplicate constraints.
+    let addressFieldContainer: NSView
     /// The refresh affordance embedded at `addressField`'s trailing edge (ADR-0011) — a subview
     /// of the field, not a toolbar item of its own the way it used to be.
     let addressFieldRefreshButton: NSButton
@@ -482,6 +488,14 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// no-op before the first real navigation (see `hasNavigatedAtLeastOnce`).
     private func updateAddressFieldDisplay() {
         guard hasNavigatedAtLeastOnce else { return }
+        // While the user is typing, every input this method reads is stale by definition — the
+        // field's text is theirs, not the page's (`AddressFieldPresenter.acceptsPageDrivenUpdates`).
+        // Without this, a background load flipping `isLoading` would take `isEditable` away
+        // mid-word, and a title KVO tick or the mouse drifting off the field would put the URL
+        // back over a half-typed address.
+        guard AddressFieldPresenter.acceptsPageDrivenUpdates(
+            hasActiveEditingSession: controls.addressField.currentEditor() != nil)
+        else { return }
         let state = AddressFieldPresenter.displayState(
             isLoading: isLoading,
             isHovering: isHoveringAddressField,
@@ -543,10 +557,23 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         updateAddressFieldDisplay()
     }
 
+    /// Leaves the editable state — but only once the field has genuinely lost its field editor.
+    ///
+    /// AppKit posts `textDidEndEditing:` *while it is installing* the field editor this very
+    /// click asked for (measured: it arrives inside `super.mouseDown`, before
+    /// `controlTextDidBeginEditing` has fired at all). Acting on it synchronously tore down the
+    /// session that was still being built: the field kept the editor but was set back to
+    /// `isEditable = false`, so the caret appeared and then every keystroke was dropped — the
+    /// address bar looked focused and could not be typed into. Deferring one runloop turn lets
+    /// AppKit finish, and `currentEditor()` then answers the real question: still editing (this
+    /// was the install-time notification — ignore it), or truly blurred/submitted.
     func controlTextDidEndEditing(_ obj: Notification) {
         guard let field = obj.object as? NSSearchField, field === controls.addressField else { return }
-        isEditingAddressField = false
-        updateAddressFieldDisplay()
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.controls.addressField.currentEditor() == nil else { return }
+            self.isEditingAddressField = false
+            self.updateAddressFieldDisplay()
+        }
     }
 
     func setWillCloseHandler(_ handler: @escaping () -> Void) {
@@ -840,7 +867,7 @@ extension AppKitWidgetWindowHandle: NSToolbarDelegate {
             item.label = "后退/前进"
             item.visibilityPriority = .high
         case Self.addressItemID:
-            item.view = controls.addressField
+            item.view = controls.addressFieldContainer
             item.label = "地址"
             item.visibilityPriority = .high
         case Self.ghostModeItemID:
@@ -1072,9 +1099,28 @@ public final class AppKitPlatformOps: PlatformOps {
             addressFieldRefreshButton.centerYAnchor.constraint(equalTo: addressField.centerYAnchor),
         ])
 
+        // The toolbar item hosts this container rather than the field itself, so AppKit's focus
+        // ring — drawn outside the field's bounds — has room instead of being sliced flat against
+        // the item viewer's edge (`addressFieldFocusRingInset`).
+        let addressFieldContainer = NSView()
+        addressFieldContainer.translatesAutoresizingMaskIntoConstraints = false
+        addressFieldContainer.addSubview(addressField)
+        let ringInset = DesignTokens.Layout.addressFieldFocusRingInset
+        NSLayoutConstraint.activate([
+            addressField.leadingAnchor.constraint(
+                equalTo: addressFieldContainer.leadingAnchor, constant: ringInset),
+            addressField.trailingAnchor.constraint(
+                equalTo: addressFieldContainer.trailingAnchor, constant: -ringInset),
+            addressField.topAnchor.constraint(
+                equalTo: addressFieldContainer.topAnchor, constant: ringInset),
+            addressField.bottomAnchor.constraint(
+                equalTo: addressFieldContainer.bottomAnchor, constant: -ringInset),
+        ])
+
         return ToolbarControls(
             navigationControl: makeNavigationControl(),
             addressField: addressField,
+            addressFieldContainer: addressFieldContainer,
             addressFieldRefreshButton: addressFieldRefreshButton
         )
     }
