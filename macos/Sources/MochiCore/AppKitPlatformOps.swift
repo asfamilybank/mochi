@@ -547,14 +547,24 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
 
     /// Flips the field into its editable state (story #4) — called from `AddressField.onMouseDown`
     /// *before* AppKit's own click handling runs, so the same click both reveals the URL and
-    /// places a cursor in it, rather than requiring a second click. Excludes `isLoading`: the
-    /// presenter forces a non-editable URL display while loading regardless of `isEditing`, so
-    /// setting the flag here would just get silently stuck `true` (with no focus ever having been
-    /// granted) until the load finishes.
+    /// places a cursor in it, rather than requiring a second click.
+    ///
+    /// A load in flight is no longer a reason to refuse: `AddressFieldPresenter` now ranks editing
+    /// above loading, so a heavy page can't leave the address bar unclickable while it finishes.
+    /// What that used to protect against is handled by the deferred check instead — if AppKit ends
+    /// up not granting the field an editor, there is no blur notification coming to clear the flag,
+    /// and the bar would sit in its editable-URL state indefinitely.
     private func beginEditingAddressField() {
-        guard hasNavigatedAtLeastOnce, !isLoading, !isEditingAddressField else { return }
+        guard hasNavigatedAtLeastOnce, !isEditingAddressField else { return }
         isEditingAddressField = true
         updateAddressFieldDisplay()
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isEditingAddressField,
+                self.controls.addressField.currentEditor() == nil
+            else { return }
+            self.isEditingAddressField = false
+            self.updateAddressFieldDisplay()
+        }
     }
 
     /// Leaves the editable state — but only once the field has genuinely lost its field editor.

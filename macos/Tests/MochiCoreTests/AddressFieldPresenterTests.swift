@@ -7,13 +7,27 @@ import Testing
     private static let url = "https://example.com/page"
     private static let host = "example.com"
 
-    @Test func loadingAlwaysShowsURLRegardlessOfHoverOrEditing() {
-        for (isHovering, isEditing) in [(false, false), (true, false), (false, true), (true, true)] {
+    @Test func loadingShowsTheURLWhileNobodyIsEditing() {
+        for isHovering in [false, true] {
             let state = AddressFieldPresenter.displayState(
-                isLoading: true, isHovering: isHovering, isEditing: isEditing,
+                isLoading: true, isHovering: isHovering, isEditing: false,
                 pageTitle: "Title", urlString: Self.url, host: Self.host
             )
             #expect(state.text == Self.url)
+            #expect(state.isEditable == false)
+        }
+    }
+
+    /// A heavy page can keep loading for many seconds; refusing to let the address be retyped
+    /// until it settles is what every other browser doesn't do.
+    @Test func editingOutranksLoadingSoTheAddressStaysTypeableMidNavigation() {
+        for isHovering in [false, true] {
+            let state = AddressFieldPresenter.displayState(
+                isLoading: true, isHovering: isHovering, isEditing: true,
+                pageTitle: "Title", urlString: Self.url, host: Self.host
+            )
+            #expect(state.text == Self.url)
+            #expect(state.isEditable == true)
         }
     }
 

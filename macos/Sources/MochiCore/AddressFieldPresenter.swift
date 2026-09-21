@@ -18,10 +18,13 @@ public enum AddressFieldPresenter {
         }
     }
 
-    /// - Parameter isLoading: highest priority — while `true`, `urlString` is shown regardless of
-    ///   `isHovering`/`isEditing`.
-    /// - Parameter isEditing: the user has clicked in and not yet blurred/submitted — shows an
-    ///   editable `urlString`.
+    /// - Parameter isEditing: highest priority — the user has clicked in and not yet blurred/
+    ///   submitted, so the field is an editable `urlString` even mid-load. It used to rank below
+    ///   `isLoading`, which meant a heavy page left the address bar unclickable for as long as it
+    ///   kept loading (measured: ~20s on a real site); every other browser lets you retype an
+    ///   address while the current one is still coming in.
+    /// - Parameter isLoading: shows `urlString` read-only while nobody is editing — so a
+    ///   navigation in flight is always legible as the URL it is fetching, not the old title.
     /// - Parameter isHovering: the mouse is over the field without having clicked — shows a
     ///   read-only `urlString`.
     /// - Parameter pageTitle: falls back to `host`, then an empty string, when idle.
@@ -33,11 +36,11 @@ public enum AddressFieldPresenter {
         urlString: String,
         host: String?
     ) -> DisplayState {
-        if isLoading {
-            return DisplayState(text: urlString, isEditable: false)
-        }
         if isEditing {
             return DisplayState(text: urlString, isEditable: true)
+        }
+        if isLoading {
+            return DisplayState(text: urlString, isEditable: false)
         }
         if isHovering {
             return DisplayState(text: urlString, isEditable: false)
