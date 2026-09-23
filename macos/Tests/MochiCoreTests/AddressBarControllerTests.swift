@@ -50,6 +50,34 @@ import Testing
         #expect(platformOps.windowTitleChanges.last?.title == "other.com")
     }
 
+    /// Back onto the Empty Page: the page left behind no longer describes the window.
+    @Test func showsTheMochiFallbackWhileTheEmptyPageIsUp() {
+        let platformOps = FakePlatformOps()
+        let window = makeWindow(platformOps)
+        let controller = AddressBarController(platformOps: platformOps, window: window)
+        controller.urlLoaded(URL(string: "https://example.com")!)
+        platformOps.simulatePageTitleChanged("Example Site")
+
+        platformOps.simulateEmptyPageVisibilityChanged(true)
+
+        #expect(platformOps.windowTitleChanges.last?.title == "Mochi")
+    }
+
+    /// Forward off the Empty Page returns to the same page, so its title comes straight back —
+    /// no `urlLoaded` happens on that path to re-derive it.
+    @Test func restoresThePagesTitleWhenTheEmptyPageIsLeft() {
+        let platformOps = FakePlatformOps()
+        let window = makeWindow(platformOps)
+        let controller = AddressBarController(platformOps: platformOps, window: window)
+        controller.urlLoaded(URL(string: "https://example.com")!)
+        platformOps.simulatePageTitleChanged("Example Site")
+        platformOps.simulateEmptyPageVisibilityChanged(true)
+
+        platformOps.simulateEmptyPageVisibilityChanged(false)
+
+        #expect(platformOps.windowTitleChanges.last?.title == "Example Site")
+    }
+
     @Test func fallsBackToHostAgainWhenTheTitleClears() {
         let platformOps = FakePlatformOps()
         let window = makeWindow(platformOps)

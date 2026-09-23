@@ -100,12 +100,20 @@ import Testing
         #expect(AddressFieldPresenter.acceptsPageDrivenUpdates(hasActiveEditingSession: false) == true)
     }
 
-    @Test func embeddedRefreshIconIsHiddenUntilTheFirstRealNavigation() {
-        #expect(AddressFieldPresenter.showsEmbeddedRefreshIcon(hasNavigatedAtLeastOnce: false) == false)
+    @Test(arguments: [false, true])
+    func embeddedRefreshIconIsHiddenUntilTheFirstRealNavigation(isEditing: Bool) {
+        #expect(AddressFieldPresenter.showsEmbeddedRefreshIcon(
+            hasNavigatedAtLeastOnce: false, isEditing: isEditing) == false)
     }
 
     @Test func embeddedRefreshIconIsShownOnceANavigationHasHappened() {
-        #expect(AddressFieldPresenter.showsEmbeddedRefreshIcon(hasNavigatedAtLeastOnce: true) == true)
+        #expect(AddressFieldPresenter.showsEmbeddedRefreshIcon(
+            hasNavigatedAtLeastOnce: true, isEditing: false) == true)
+    }
+
+    @Test func embeddedRefreshIconIsHiddenWhileTheFieldIsBeingEdited() {
+        #expect(AddressFieldPresenter.showsEmbeddedRefreshIcon(
+            hasNavigatedAtLeastOnce: true, isEditing: true) == false)
     }
 
     @Test func windowTitleFallsBackFromTitleToHostToMochi() {

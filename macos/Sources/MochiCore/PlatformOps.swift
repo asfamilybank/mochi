@@ -104,6 +104,12 @@ public protocol PlatformOps: AnyObject {
     /// display, which reads the same underlying signal directly inside the AppKit view.
     func onPageTitleChanged(_ window: WidgetWindowHandle, perform handler: @escaping (String?) -> Void)
 
+    /// Registers a handler invoked whenever the Empty Page (#16) is shown or hidden — including
+    /// by back/forward, which the view handles on its own (`EmptyPageHistory`) without a core
+    /// round trip. The window title (`AddressBarController`) needs it: while the Empty Page is
+    /// up, the title of the page that was left behind no longer describes the window.
+    func onEmptyPageVisibilityChanged(_ window: WidgetWindowHandle, perform handler: @escaping (Bool) -> Void)
+
     /// Registers a handler invoked whenever the page's loading state changes (`WKWebView.isLoading`
     /// KVO). The Normal Mode toolbar's own Smart Address Field and Loading Progress Bar (#18)
     /// react to this same signal directly inside the AppKit view (they already own `webView`); this

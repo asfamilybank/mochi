@@ -61,6 +61,13 @@ public enum DesignTokens {
         public let iconMuted: RGBA
     }
 
+    /// The faint disc behind an icon button inside the address bar while the pointer is over it.
+    /// The icon itself also goes from `iconPrimary` to `textPrimary`, but that step alone (82% →
+    /// 100% opacity in light) is too small to read as a response.
+    public static func addressBarIconHoverBackground(dark: Bool) -> RGBA {
+        dark ? RGBA(red: 1, green: 1, blue: 1, alpha: 0.12) : RGBA(red: 0, green: 0, blue: 0, alpha: 0.07)
+    }
+
     /// - Parameter dark: `true` for the dark-appearance palette, `false` for light.
     public static func glassPalette(dark: Bool) -> GlassPalette {
         dark ? darkGlassPalette : lightGlassPalette
@@ -197,9 +204,11 @@ public enum DesignTokens {
         /// between these, rather than stretching to fill every point left over between its
         /// neighbours the way it did before. The minimum is what still shows a readable host +
         /// the embedded refresh icon; the maximum keeps a wide window from turning the field into
-        /// one enormous bar, matching Safari's own bounded behavior.
+        /// one enormous bar, matching Safari's own bounded behavior. The maximum is close to
+        /// Safari's own address group (492pt, read off its accessibility tree); 320 cut long
+        /// titles short even in a wide window.
         public static let addressFieldMinWidth: Double = 200
-        public static let addressFieldMaxWidth: Double = 320
+        public static let addressFieldMaxWidth: Double = 480
 
         /// The `.unified` toolbar row's height (ADR-0011 measured it at 52 and pinned the style to
         /// get it). Used as the *starting* value for the web view's obscured inset and the
@@ -211,24 +220,31 @@ public enum DesignTokens {
         /// real measurement; they agree in practice, so nothing changes and nothing repaints.
         public static let normalModeToolbarRowHeight: Double = 52
 
-        /// Breathing room left around the address field inside its toolbar item, so the focus
-        /// ring AppKit draws *outside* the field's bounds has somewhere to land. `NSToolbarItemViewer`
+        /// Breathing room left around the address bar's capsule inside its toolbar item, so the
+        /// focus ring drawn *outside* the capsule has somewhere to land. `NSToolbarItemViewer`
         /// gives a hosted view only 4pt of horizontal slack, and the ring wants about 3 of its own
         /// on every side — measured, the ring's left and right arcs came back sliced flat against
         /// that boundary while the top and bottom (which have ~10pt to spare) drew intact.
         public static let addressFieldFocusRingInset: Double = 3
 
-        /// The refresh affordance embedded at the address field's trailing edge (ADR-0011) —
-        /// smaller than a standalone toolbar button since it sits *inside* the field's 31pt box.
+        /// The refresh affordance embedded at the address bar's trailing edge (ADR-0011) —
+        /// smaller than a standalone toolbar button since it sits *inside* the 31pt capsule.
         public static let addressFieldEmbeddedIconDiameter: Double = 20
         public static let addressFieldEmbeddedIconTrailingPadding: Double = 4
 
         /// The site icon at the address field's leading edge — the favicon, or the symbol standing
         /// in for it. Sized to match what `NSSearchField`'s built-in magnifying glass occupied
-        /// before the field became a plain `NSTextField`, so the text still starts in the same
-        /// place.
+        /// before the field became a plain `NSTextField`.
         public static let addressFieldLeadingIconDiameter: Double = 16
-        public static let addressFieldLeadingIconLeadingPadding: Double = 7
+        /// Mirrors the refresh affordance: the site icon's center sits as far from the capsule's
+        /// leading edge as refresh's does from the trailing one (14pt), so on a page the two
+        /// read as a matched pair framing the title.
+        public static let addressFieldLeadingIconLeadingPadding: Double =
+            addressFieldEmbeddedIconTrailingPadding
+                + (addressFieldEmbeddedIconDiameter - addressFieldLeadingIconDiameter) / 2
+        /// Between the site icon and the text field's frame. The borderless field's cell adds ~2pt
+        /// of its own before the first glyph, so the visible icon-to-text gap is about 4pt.
+        public static let addressFieldLeadingIconTextGap: Double = 2
 
         /// Normal Mode's minimum window width — measured, not derived from Safari's 574pt (which
         /// is calibrated to Safari's larger always-visible set, sidebar toggle included). Sweeping
@@ -259,6 +275,12 @@ public enum DesignTokens {
     }
 
     /// One control in a toolbar's fixed left-to-right button order.
+    public enum Motion {
+        /// The address bar sliding between its display layout (icon + text centered) and its
+        /// editing layout (icon at the leading edge, field across the whole middle).
+        public static let addressBarModeChange: Double = 0.25
+    }
+
     public enum ToolbarButton: Equatable, Sendable {
         case back, forward, refresh, addressField, ghostModeToggle, settings
     }

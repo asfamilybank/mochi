@@ -6,6 +6,11 @@ import SwiftUI
 /// de-emphasized default-hotkey quick reference, matching `design/mochi/EmptyPage.dc.html`.
 struct EmptyPageView: View {
     @Environment(\.colorScheme) private var colorScheme
+    /// The toolbar strip's height. The page runs full-bleed underneath the toolbar, which floats
+    /// over it, but the composition centers in the area below that strip. Passed in rather than
+    /// read from the safe area: the safe area follows the window's chrome, and Ghost Mode removing
+    /// the titlebar would drop it to 0 and send the composition jumping up.
+    var topInset: CGFloat = 0
 
     private var isDark: Bool { colorScheme == .dark }
 
@@ -18,6 +23,7 @@ struct EmptyPageView: View {
                 glassComposition
                 hotkeyQuickReference
             }
+            .padding(.top, topInset)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

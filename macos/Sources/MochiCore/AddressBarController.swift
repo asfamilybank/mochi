@@ -11,12 +11,19 @@ public final class AddressBarController {
     private let window: WidgetWindowHandle
     private var pageTitle: String?
     private var host: String?
+    /// While the Empty Page is up, the page behind it (still held for forward) keeps its title
+    /// and host here, so forward can put them straight back.
+    private var isShowingEmptyPage = false
 
     public init(platformOps: PlatformOps, window: WidgetWindowHandle) {
         self.platformOps = platformOps
         self.window = window
         platformOps.onPageTitleChanged(window) { [weak self] title in
             self?.pageTitle = title
+            self?.updateWindowTitle()
+        }
+        platformOps.onEmptyPageVisibilityChanged(window) { [weak self] visible in
+            self?.isShowingEmptyPage = visible
             self?.updateWindowTitle()
         }
         updateWindowTitle()
@@ -32,6 +39,9 @@ public final class AddressBarController {
     }
 
     private func updateWindowTitle() {
-        platformOps.setWindowTitle(AddressFieldPresenter.windowTitle(pageTitle: pageTitle, host: host), in: window)
+        let title = isShowingEmptyPage
+            ? AddressFieldPresenter.windowTitle(pageTitle: nil, host: nil)
+            : AddressFieldPresenter.windowTitle(pageTitle: pageTitle, host: host)
+        platformOps.setWindowTitle(title, in: window)
     }
 }

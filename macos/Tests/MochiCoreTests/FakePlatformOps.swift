@@ -50,6 +50,7 @@ final class FakePlatformOps: PlatformOps {
     private(set) var deactivateAppCallCount = 0
     private var mouseInsideChangedHandlers: [Int: (Bool) -> Void] = [:]
     private var pageTitleChangedHandlers: [Int: (String?) -> Void] = [:]
+    private var emptyPageVisibilityChangedHandlers: [Int: (Bool) -> Void] = [:]
     private var loadingStateChangedHandlers: [Int: (Bool) -> Void] = [:]
     private var loadingProgressChangedHandlers: [Int: (Double) -> Void] = [:]
     private var hotkeyHandlers: [Hotkey: () -> Void] = [:]
@@ -287,6 +288,15 @@ final class FakePlatformOps: PlatformOps {
 
     func simulatePageTitleChanged(_ title: String?, windowID: Int = 1) {
         pageTitleChangedHandlers[windowID]?(title)
+    }
+
+    func onEmptyPageVisibilityChanged(_ window: WidgetWindowHandle, perform handler: @escaping (Bool) -> Void) {
+        let handle = window as! FakeWidgetWindowHandle
+        emptyPageVisibilityChangedHandlers[handle.id] = handler
+    }
+
+    func simulateEmptyPageVisibilityChanged(_ visible: Bool, windowID: Int = 1) {
+        emptyPageVisibilityChangedHandlers[windowID]?(visible)
     }
 
     func onLoadingStateChanged(_ window: WidgetWindowHandle, perform handler: @escaping (Bool) -> Void) {

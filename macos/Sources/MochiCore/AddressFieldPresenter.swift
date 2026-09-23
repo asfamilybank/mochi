@@ -3,10 +3,10 @@ import Foundation
 /// The Smart Address Field's (#18) display decision — framework-agnostic so it can be unit
 /// tested without AppKit. All of its inputs (loading state, hover/focus, the page's title/URL/
 /// host) are AppKit-local state the view code (`AppKitWidgetWindowHandle`) already owns via
-/// `WKWebView` KVO and its own `NSTrackingArea`/`NSSearchFieldDelegate` tracking — this type is
-/// fed those values directly rather than through `PlatformOps`. This only covers the address
-/// field's state *after* a real navigation has happened — the Empty Page's fixed placeholder
-/// (#16) is a separate, untouched code path.
+/// `WKWebView` KVO and its own `NSTrackingArea`/`NSTextFieldDelegate` tracking — this type is
+/// fed those values directly rather than through `PlatformOps`. The Empty Page (#16) runs through
+/// here too: with no URL, title or host, every non-editing state resolves to an empty text, which
+/// leaves the field showing its placeholder as a display until clicked.
 public enum AddressFieldPresenter {
     public struct DisplayState: Equatable {
         public let text: String
@@ -62,10 +62,12 @@ public enum AddressFieldPresenter {
     /// Whether the Smart Address Field's trailing embedded refresh affordance (#27) is shown.
     /// Hidden on the Empty Page — before any real navigation there is nothing to reload, matching
     /// that state's existing "no independent URL input" spirit — and shown from the first
-    /// navigation onward. Deliberately *not* a loading/stop toggle (ADR-0011): the icon means
-    /// "refresh" in every state, so `isLoading` is not an input here.
-    public static func showsEmbeddedRefreshIcon(hasNavigatedAtLeastOnce: Bool) -> Bool {
-        hasNavigatedAtLeastOnce
+    /// navigation onward — except while the field is being edited: the address being typed is
+    /// not the page refresh would reload, and the room goes to the text instead. Deliberately
+    /// *not* a loading/stop toggle (ADR-0011): the icon means "refresh" in every state, so
+    /// `isLoading` is not an input here.
+    public static func showsEmbeddedRefreshIcon(hasNavigatedAtLeastOnce: Bool, isEditing: Bool) -> Bool {
+        hasNavigatedAtLeastOnce && !isEditing
     }
 
     /// `NSWindow.title`'s fallback chain (#18) — one level deeper than the address field's own

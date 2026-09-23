@@ -26,6 +26,11 @@ private enum ToolbarStyle {
         dynamicColor(light: DesignTokens.glassPalette(dark: false).iconPrimary, dark: DesignTokens.glassPalette(dark: true).iconPrimary)
     }
 
+    /// `iconTint` under the pointer — full-strength rather than `iconPrimary`'s slight fade.
+    static func iconHoverTint() -> NSColor {
+        dynamicColor(light: DesignTokens.glassPalette(dark: false).textPrimary, dark: DesignTokens.glassPalette(dark: true).textPrimary)
+    }
+
     /// A real SF Symbol, which every glyph but the ghost now is. Omitting `pointSize` leaves
     /// AppKit's own default configuration in place — what `NSToolbarItem` and
     /// `NSSegmentedControl` expect, since they size their own content; the address field's
@@ -151,66 +156,258 @@ private final class PageScrollReporter: NSObject, WKScriptMessageHandler {
     }
 }
 
-/// Reserves room at both ends of the address field's text area — the leading site icon and the
-/// trailing refresh affordance (ADR-0011) — so a long title/URL truncates before it reaches either
-/// instead of sliding underneath. `NSTextField` exposes no view-level hook for that geometry; the
-/// cell owns it, which is why this is a cell subclass rather than a layout tweak on the field.
-private final class AddressFieldCell: NSTextFieldCell {
-    /// Points shaved off the leading edge, for the site icon / globe / magnifying glass.
-    var leadingInset: CGFloat = 0
-    /// Points shaved off the trailing edge; `0` while the refresh icon is hidden.
-    var trailingInset: CGFloat = 0
-
-    /// Both the drawn text and the field editor derive from this, so insetting here keeps the
-    /// caret and the selection inside the same box the static text occupies.
-    override func drawingRect(forBounds rect: NSRect) -> NSRect {
-        var textRect = super.drawingRect(forBounds: rect)
-        textRect.origin.x += leadingInset
-        textRect.size.width = max(0, textRect.width - leadingInset - trailingInset)
-        return textRect
+/// The Smart Address Field's text (#18) — just the text. Borderless and background-free: the
+/// capsule, the site icon and the refresh affordance all belong to `AddressBarView`, which hosts
+/// this as one of three siblings (Safari's own layout, read off its accessibility tree).
+///
+/// It is a plain `NSTextField` rather than the `NSSearchField` this started as: the search
+/// field's cancel and search button cells are rebuilt by AppKit on every toolbar layout pass, so
+/// keeping a custom leading glyph on one and a cleared cancel button on the other meant
+/// re-applying both from `layout()` forever — and assigning to either property is itself what
+/// provoked the rebuild. Safari's field isn't a search field either (`AXTextField`, no
+/// `AXSearchField` subrole).
+private final class AddressField: NSTextField {
+    /// Only reached while nobody is editing — once a field editor is installed, it takes the
+    /// clicks itself. Every such click is `AddressBarView`'s "activate the bar", the same as a
+    /// click on the rim or the icon: the field is about to slide to its editing layout and swap
+    /// the title for the URL, so a caret placed under the pointer would land somewhere arbitrary.
+    override func mouseDown(with event: NSEvent) {
+        superview?.mouseDown(with: event)
     }
 }
 
-/// The Smart Address Field (#18).
+/// What the address toolbar item hosts: the capsule, with the site icon, `AddressField` and the
+/// refresh affordance laid out inside it as siblings (`AddressBarLayout` decides where).
 ///
-/// An `NSTextField` with `.roundedBezel`, not the `NSSearchField` this started as. Two reasons,
-/// both measured against the real control:
+/// Owning the capsule here rather than on the field is what gives the Safari behavior: only the
+/// field's own frame can ever show an I-beam, so the rim and both icons keep the arrow cursor;
+/// and the field can shrink to its text and sit centered next to the icon while nobody is
+/// editing, then widen to the whole middle once clicked. A click anywhere on the capsule while
+/// nobody is editing — the rim, the site icon, or the text itself, which `AddressField` forwards —
+/// arrives here and is handed to `onActivate`.
 ///
-/// 1. **Focus ring.** `NSSearchField` draws its ring *on top of* its own border rather than
-///    outside it, so the two overlap and any clipping at the edges turns the ring's end caps into
-///    flat vertical lines. `NSTextField` draws the ring outside the border with a gap between
-///    them — the separation every other focused field on the system has, and what Safari's own
-///    address bar (`AXTextField` with no `AXSearchField` subrole — it is not a search field
-///    either) looks like.
-/// 2. **No stock buttons to fight.** The search field's cancel and search button cells are
-///    rebuilt by AppKit on every toolbar layout pass, so keeping a custom leading glyph on one
-///    and a cleared cancel button on the other meant re-applying both from `layout()` forever —
-///    and assigning to either property is itself what provoked the rebuild. A plain text field
-///    has neither, so the leading icon is just a subview nobody else touches.
-private final class AddressField: NSTextField {
-    var onMouseDown: (() -> Void)?
+/// Children are positioned by hand in `layout()`; the container's own size comes solely from its
+/// width/height constraints plus the toolbar's spare room. Nothing inside reports an intrinsic
+/// width to `NSToolbarItem` — a field that did would make the item collapse its `maxSize` onto the
+/// text's fitting size and freeze the bar at its minimum width from the first navigation on
+/// (measured, ADR-0011).
+private final class AddressBarView: NSView {
+    let field = AddressField()
+    let leadingIconView = NSImageView()
+    let refreshButton: NSButton
+    var onActivate: (() -> Void)?
 
-    /// `NSControl` builds its cell from this at `init(frame:)` time — the only way to get
-    /// `AddressFieldCell`'s text-rect insets in without swapping a live `cell` out from under
-    /// the field.
-    override class var cellClass: AnyClass? {
-        get { AddressFieldCell.self }
-        set {}
+    /// Whether the field is a live input: full-width with the icon at the leading edge, and the
+    /// focus ring drawn around the capsule. Otherwise it is an unselectable display of the
+    /// title/URL, hugging its text and centered together with the icon. Flipping it animates
+    /// between the two layouts.
+    var isEditing = false {
+        didSet {
+            guard isEditing != oldValue else { return }
+            needsDisplay = true
+            animateLayoutChange()
+        }
     }
 
-    /// Drops the horizontal half of `NSTextField`'s content-derived intrinsic width, which the
-    /// field only reports once it actually holds text. `NSToolbarItem` derives its own `maxSize`
-    /// from the hosted view, and a present horizontal intrinsic makes it collapse that maximum
-    /// onto the fitting size — so without this the field is elastic between its min and max on
-    /// the Empty Page and then freezes at its *minimum* width from the first navigation onward
-    /// (measured, ADR-0011). The field's width is decided entirely by its own min/max constraints
-    /// plus how much room the toolbar has; its text should never be an input to that.
-    override var intrinsicContentSize: NSSize {
-        NSSize(width: NSView.noIntrinsicMetric, height: super.intrinsicContentSize.height)
+    var isRefreshVisible = true {
+        didSet {
+            guard isRefreshVisible != oldValue else { return }
+            refreshButton.isHidden = !isRefreshVisible
+            needsLayout = true
+        }
+    }
+
+    /// The site icon holds the leading edge (mirroring refresh) instead of travelling with the
+    /// text — on a page. The Empty Page's magnifying glass stays centered with its placeholder.
+    var pinsIcon = false {
+        didSet {
+            guard pinsIcon != oldValue else { return }
+            needsLayout = true
+        }
+    }
+
+    /// Measures what the field's text (or its placeholder, when empty) needs, with the field's
+    /// own font and a borderless cell's own padding — the field itself can't answer that for its
+    /// placeholder.
+    private let measuringCell: NSTextFieldCell = {
+        let cell = NSTextFieldCell(textCell: "")
+        cell.isBordered = false
+        cell.isBezeled = false
+        return cell
+    }()
+    private var keyObservers: [NSObjectProtocol] = []
+
+    init(refreshButton: NSButton) {
+        self.refreshButton = refreshButton
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        field.isBezeled = false
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.lineBreakMode = .byTruncatingTail
+        field.cell?.isScrollable = true
+        leadingIconView.imageScaling = .scaleProportionallyUpOrDown
+        for view in [leadingIconView, field, refreshButton] as [NSView] {
+            view.translatesAutoresizingMaskIntoConstraints = true
+            addSubview(view)
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    deinit {
+        keyObservers.forEach(NotificationCenter.default.removeObserver)
+    }
+
+    /// The capsule itself — inset from the container by `addressFieldFocusRingInset`, which is
+    /// where the focus ring is drawn (`NSToolbarItemViewer` leaves a hosted view only 4pt of
+    /// horizontal slack, so the ring has to fit inside the item's own bounds).
+    private var capsuleRect: NSRect {
+        let inset = DesignTokens.Layout.addressFieldFocusRingInset
+        return bounds.insetBy(dx: inset, dy: inset)
+    }
+
+    override func layout() {
+        super.layout()
+        let capsule = capsuleRect
+        let text = field.stringValue.isEmpty ? (field.placeholderString ?? "") : field.stringValue
+        measuringCell.font = field.font
+        measuringCell.stringValue = text
+        let placement = AddressBarLayout.placement(
+            capsuleWidth: Double(capsule.width),
+            contentWidth: Double(ceil(measuringCell.cellSize.width)),
+            isEditing: isEditing,
+            pinsIcon: pinsIcon,
+            leadingPadding: DesignTokens.Layout.addressFieldLeadingIconLeadingPadding,
+            iconSize: DesignTokens.Layout.addressFieldLeadingIconDiameter,
+            iconTextGap: DesignTokens.Layout.addressFieldLeadingIconTextGap,
+            trailingReserved: isRefreshVisible
+                ? DesignTokens.Layout.addressFieldEmbeddedIconDiameter
+                    + DesignTokens.Layout.addressFieldEmbeddedIconTrailingPadding * 2
+                : DesignTokens.Layout.addressFieldLeadingIconLeadingPadding)
+
+        let iconSize = DesignTokens.Layout.addressFieldLeadingIconDiameter
+        leadingIconView.frame = backingAligned(NSRect(
+            x: capsule.minX + placement.iconMinX, y: capsule.midY - iconSize / 2,
+            width: iconSize, height: iconSize))
+        let fieldHeight = field.intrinsicContentSize.height
+        field.frame = backingAligned(NSRect(
+            x: capsule.minX + placement.fieldMinX, y: capsule.midY - fieldHeight / 2,
+            width: placement.fieldWidth, height: fieldHeight))
+        let refreshSize = DesignTokens.Layout.addressFieldEmbeddedIconDiameter
+        refreshButton.frame = backingAligned(NSRect(
+            x: capsule.maxX - DesignTokens.Layout.addressFieldEmbeddedIconTrailingPadding - refreshSize,
+            y: capsule.midY - refreshSize / 2, width: refreshSize, height: refreshSize))
+    }
+
+    /// Slides the icon and the field to wherever `layout()` now puts them. Implicit animation
+    /// turns the frame assignments in `layout()` into animated ones, so the geometry still has a
+    /// single source; any later layout pass (a title arriving mid-slide) simply lands on the final
+    /// frames. Honors Reduce Motion by not animating at all.
+    private func animateLayoutChange() {
+        needsLayout = true
+        guard window != nil, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            layoutSubtreeIfNeeded()
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = DesignTokens.Motion.addressBarModeChange
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            context.allowsImplicitAnimation = true
+            layoutSubtreeIfNeeded()
+        }
+    }
+
+    private func backingAligned(_ rect: NSRect) -> NSRect {
+        backingAlignedRect(rect, options: .alignAllEdgesNearest)
+    }
+
+    /// The focus ring, drawn by hand around the capsule. A focus ring AppKit draws for a view is
+    /// clipped to that view's own bounds (measured: a mask covering the capsule drew nothing,
+    /// the same mask shrunk inside the field drew fine), and the field is now much smaller than
+    /// the capsule — so the ring that used to come with the bezeled field is this container's job.
+    override func draw(_ dirtyRect: NSRect) {
+        guard isEditing, window?.isKeyWindow == true else { return }
+        let capsule = capsuleRect
+        let ringWidth = DesignTokens.Layout.addressFieldFocusRingInset
+        let ringRect = capsule.insetBy(dx: -ringWidth / 2, dy: -ringWidth / 2)
+        let ring = NSBezierPath(roundedRect: ringRect, xRadius: ringRect.height / 2, yRadius: ringRect.height / 2)
+        ring.lineWidth = ringWidth
+        NSColor.keyboardFocusIndicatorColor.setStroke()
+        ring.stroke()
+    }
+
+    /// The ring only shows while the window is key, like every system focus ring.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        keyObservers.forEach(NotificationCenter.default.removeObserver)
+        keyObservers = []
+        guard let window else { return }
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+            keyObservers.append(NotificationCenter.default.addObserver(
+                forName: name, object: window, queue: .main
+            ) { [weak self] _ in self?.needsDisplay = true })
+        }
     }
 
     override func mouseDown(with event: NSEvent) {
-        onMouseDown?()
+        onActivate?()
+    }
+}
+
+/// An icon button inside the address bar's capsule that responds to the pointer: the icon deepens
+/// and a faint disc appears behind it, the way Safari's in-field buttons react on hover.
+private final class HoverIconButton: NSButton {
+    private var isHovered = false {
+        didSet {
+            guard isHovered != oldValue else { return }
+            contentTintColor = isHovered ? ToolbarStyle.iconHoverTint() : ToolbarStyle.iconTint()
+            needsDisplay = true
+        }
+    }
+    private var hoverArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverArea { removeTrackingArea(hoverArea) }
+        let area = NSTrackingArea(
+            rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        hoverArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) { isHovered = true }
+    override func mouseExited(with event: NSEvent) { isHovered = false }
+
+    /// Hidden under the pointer (refresh on the Empty Page) delivers no exit event, so the hover
+    /// state would otherwise still be lit the next time the button appears.
+    override func viewDidHide() {
+        super.viewDidHide()
+        isHovered = false
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        if isHovered {
+            ToolbarStyle.dynamicColor(
+                light: DesignTokens.addressBarIconHoverBackground(dark: false),
+                dark: DesignTokens.addressBarIconHoverBackground(dark: true)
+            ).setFill()
+            NSBezierPath(ovalIn: bounds).fill()
+        }
+        super.draw(dirtyRect)
+    }
+}
+
+/// The Empty Page's and the error page's host. A click on native page content takes focus off
+/// the address bar the way a click on a web page does: `WKWebView` makes itself first responder
+/// when clicked, so the bar's field editor goes away, but a SwiftUI host never accepts first
+/// responder and a click on it would otherwise leave the bar focused indefinitely. Buttons in the
+/// page (the error page's 重试) still get the click — this only clears focus before passing it on.
+private final class NativePageHostingView<Content: View>: NSHostingView<Content> {
+    override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(nil)
         super.mouseDown(with: event)
     }
 }
@@ -238,20 +435,10 @@ private final class HoverTracker: NSObject {
 fileprivate struct ToolbarControls {
     /// Back and forward as one joined native control (ADR-0011), not two independent buttons.
     let navigationControl: NSSegmentedControl
-    let addressField: AddressField
-    /// What the address toolbar item actually hosts: `addressField` inset by
-    /// `DesignTokens.Layout.addressFieldFocusRingInset` on every side, so its focus ring isn't
-    /// clipped. Built once here rather than in `itemForItemIdentifier`, which AppKit may call
-    /// again for the same identifier — a fresh container per call would re-parent the field and
-    /// pile up duplicate constraints.
-    let addressFieldContainer: NSView
-    /// The site icon at `addressField`'s leading edge — a plain subview now that the field is an
-    /// `NSTextField`, rather than an image pushed onto `NSSearchFieldCell`'s stock search button
-    /// (which AppKit rebuilt on every layout pass).
-    let addressFieldLeadingIconView: NSImageView
-    /// The refresh affordance embedded at `addressField`'s trailing edge (ADR-0011) — a subview
-    /// of the field, not a toolbar item of its own the way it used to be.
-    let addressFieldRefreshButton: NSButton
+    /// The address toolbar item's view. Built once here rather than in `itemForItemIdentifier`,
+    /// which AppKit may call again for the same identifier — a fresh bar per call would re-parent
+    /// its field and lose its wiring.
+    let addressBar: AddressBarView
 }
 
 /// The Loading Progress Bar (#18): a thin line docked to the content area's top edge, overlaid
@@ -291,12 +478,6 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         navigationItemID, addressItemID, .flexibleSpace, ghostModeItemID, settingsItemID,
     ]
 
-    /// Width the embedded refresh icon claims from the address field's text area — the icon plus
-    /// the padding on either side of it.
-    private static let embeddedRefreshIconReservedWidth =
-        DesignTokens.Layout.addressFieldEmbeddedIconDiameter
-            + DesignTokens.Layout.addressFieldEmbeddedIconTrailingPadding * 2
-
     let window: NSWindow
     let webView: WKWebView
     private let controls: ToolbarControls
@@ -317,6 +498,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     private var navigationFailedHandler: ((String) -> Void)?
     private var mouseInsideChangedHandler: ((Bool) -> Void)?
     private var pageTitleChangedHandler: ((String?) -> Void)?
+    private var emptyPageVisibilityChangedHandler: ((Bool) -> Void)?
     private var loadingStateChangedHandler: ((Bool) -> Void)?
     private var loadingProgressChangedHandler: ((Double) -> Void)?
     /// Set on `windowWillEnterFullScreen`, cleared on `windowDidExitFullScreen` — `window.frame`
@@ -325,10 +507,19 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// persist that lands mid-fullscreen (e.g. ⌘Q) would save a frame that fills the screen, and
     /// the next launch would start the window that way (#38).
     private var frameBeforeFullscreen: NSRect?
-    /// Whether a real navigation (`loadURL`) has ever happened — the Smart Address Field (#18)
-    /// only kicks in once this flips `true`; before that, the Empty Page's (#16) fixed
-    /// placeholder + freely-editable field is left untouched (story #12).
+    /// Whether a real navigation (`loadURL`) has ever happened — before that the bar is the Empty
+    /// Page's (#16): magnifying glass, placeholder, no refresh affordance.
     private var hasNavigatedAtLeastOnce = false
+    /// Whether this session opened on the Empty Page — the only case where there is one to go
+    /// back to (`EmptyPageHistory`).
+    private var startedOnEmptyPage = false
+    /// The Empty Page is on screen — at startup, or reached by going back.
+    private var isShowingEmptyPage = false
+    /// Which layer going back onto the Empty Page hid, so forward can put the same one back.
+    private var emptyPageCoveredErrorPage = false
+    /// A page (or its error page) is what the bar describes: neither the startup Empty Page nor
+    /// one returned to by going back. Drives the leading icon and the refresh affordance.
+    private var isShowingPage: Bool { hasNavigatedAtLeastOnce && !isShowingEmptyPage }
     private var isLoading = false
     /// Mirrors `webView.url`, but updated *synchronously* in `loadURL` — `webView.url` itself only
     /// updates once WKWebView actually commits the navigation, which lags a KVO tick or more
@@ -338,6 +529,10 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     private var isHoveringAddressField = false
     private var isEditingAddressField = false
     private let contentTopInset: NSLayoutConstraint
+    /// The error page's top edge, held below the toolbar strip — its counterpart to the web view's
+    /// `obscuredContentInsets` (and to `EmptyPageView.topInset`), kept equal to it, and like it
+    /// left alone by Ghost Mode.
+    private let nativePageTopConstraints: [NSLayoutConstraint]
     /// The toolbar-row height the web view's obscured inset is currently set to, so a repeated
     /// measurement can be recognised and skipped.
     private var appliedTitlebarHeight: CGFloat
@@ -381,6 +576,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         window: NSWindow, webView: WKWebView, controls: ToolbarControls,
         emptyPageHostingView: NSHostingView<EmptyPageView>, errorPageHostingView: NSHostingView<ErrorPageView>,
         progressBar: LoadingProgressBar, contentTopInset: NSLayoutConstraint,
+        nativePageTopConstraints: [NSLayoutConstraint],
         contentContainerTopConstraint: NSLayoutConstraint
     ) {
         self.window = window
@@ -390,6 +586,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         self.errorPageHostingView = errorPageHostingView
         self.progressBar = progressBar
         self.contentTopInset = contentTopInset
+        self.nativePageTopConstraints = nativePageTopConstraints
         self.appliedTitlebarHeight = contentTopInset.constant
         self.contentContainerTopConstraint = contentContainerTopConstraint
         self.contentContainerGhostModeHeight = webView.superview!.heightAnchor.constraint(equalToConstant: 0)
@@ -399,16 +596,17 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         webView.navigationDelegate = self
         installGhostModeMouseTracking()
         installAddressFieldHoverTracking()
-        controls.addressField.delegate = self
-        controls.addressField.onMouseDown = { [weak self] in
-            self?.beginEditingAddressField()
+        controls.addressBar.field.delegate = self
+        controls.addressBar.onActivate = { [weak self] in
+            self?.activateAddressField()
         }
         controls.navigationControl.target = self
         controls.navigationControl.action = #selector(navigationSegmentClicked(_:))
-        controls.addressFieldRefreshButton.target = self
-        controls.addressFieldRefreshButton.action = #selector(reload)
+        controls.addressBar.refreshButton.target = self
+        controls.addressBar.refreshButton.action = #selector(reload)
         observeNavigationState()
         updateAddressFieldIcons()
+        updateAddressFieldDisplay()
         updateProgressBarColor()
         // The progress bar's fill is baked into a CALayer color (not a dynamic NSColor), so unlike
         // everywhere else in this file it needs to be re-applied whenever the system accent color
@@ -466,6 +664,8 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         appliedTitlebarHeight = height
         contentTopInset.constant = height
         webView.obscuredContentInsets = NSEdgeInsets(top: height, left: 0, bottom: 0, right: 0)
+        nativePageTopConstraints.forEach { $0.constant = height }
+        emptyPageHostingView.rootView = EmptyPageView(topInset: height)
     }
 
     /// Which of the toolbar's two backgrounds is showing.
@@ -481,8 +681,9 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// being covered as being occluded and stops drawing. Driving the titlebar's own background
     /// leaves nothing on top of the web view at all.
     private func updateTitlebarBackdrop() {
-        // The Empty Page (#16) is its own full-bleed composition — letting it run up under a
-        // transparent toolbar is the point, so it never gets the opaque band.
+        // The native pages never get the opaque band: the Empty Page (#16) runs full-bleed under a
+        // floating, transparent toolbar, and the error page (#38) starts below the strip, which
+        // then shows the window's own background.
         let isShowingWebContent = !webView.isHidden
         window.titlebarAppearsTransparent = !(isShowingWebContent && isPageAtTop)
     }
@@ -526,16 +727,13 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     }
 
     private func observeNavigationState() {
-        setNavigationSegment(NavigationSegment.back, enabled: webView.canGoBack)
-        setNavigationSegment(NavigationSegment.forward, enabled: webView.canGoForward)
+        updateNavigationSegments()
         navigationObservations = [
-            webView.observe(\.canGoBack, options: [.new]) { [weak self] _, change in
-                guard let self else { return }
-                self.setNavigationSegment(NavigationSegment.back, enabled: change.newValue ?? false)
+            webView.observe(\.canGoBack, options: [.new]) { [weak self] _, _ in
+                self?.updateNavigationSegments()
             },
-            webView.observe(\.canGoForward, options: [.new]) { [weak self] _, change in
-                guard let self else { return }
-                self.setNavigationSegment(NavigationSegment.forward, enabled: change.newValue ?? false)
+            webView.observe(\.canGoForward, options: [.new]) { [weak self] _, _ in
+                self?.updateNavigationSegments()
             },
             webView.observe(\.url, options: [.new]) { [weak self] _, change in
                 guard let self else { return }
@@ -571,12 +769,81 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         controls.navigationControl.setEnabled(enabled, forSegment: segment)
     }
 
+    private var backStep: EmptyPageHistory.Step? {
+        EmptyPageHistory.backStep(
+            isShowingEmptyPage: isShowingEmptyPage, startedOnEmptyPage: startedOnEmptyPage,
+            webViewCanGoBack: webView.canGoBack)
+    }
+
+    private var forwardStep: EmptyPageHistory.Step? {
+        EmptyPageHistory.forwardStep(
+            isShowingEmptyPage: isShowingEmptyPage, hasPage: hasNavigatedAtLeastOnce,
+            webViewCanGoForward: webView.canGoForward)
+    }
+
+    /// Back/forward follow `EmptyPageHistory`, which layers the Empty Page underneath the web
+    /// view's own list — so besides the web view's `canGoBack`/`canGoForward`, moving onto or off
+    /// the Empty Page changes them too.
+    private func updateNavigationSegments() {
+        setNavigationSegment(NavigationSegment.back, enabled: backStep != nil)
+        setNavigationSegment(NavigationSegment.forward, enabled: forwardStep != nil)
+    }
+
     @objc private func navigationSegmentClicked(_ sender: NSSegmentedControl) {
+        let step: EmptyPageHistory.Step?
         switch sender.selectedSegment {
-        case NavigationSegment.back: webView.goBack()
-        case NavigationSegment.forward: webView.goForward()
-        default: break
+        case NavigationSegment.back: step = backStep
+        case NavigationSegment.forward: step = forwardStep
+        default: return
         }
+        switch step {
+        case .webView:
+            if sender.selectedSegment == NavigationSegment.back { webView.goBack() } else { webView.goForward() }
+        case .toEmptyPage:
+            returnToEmptyPage()
+        case .fromEmptyPage:
+            leaveEmptyPage()
+        case nil:
+            break
+        }
+    }
+
+    /// Back from the oldest page. The page stays loaded in the (hidden) web view — that is what
+    /// forward returns to — but anything still in flight is stopped, the way going back stops a
+    /// load in any browser, so the progress bar doesn't keep running over the Empty Page.
+    private func returnToEmptyPage() {
+        emptyPageCoveredErrorPage = !errorPageHostingView.isHidden
+        webView.stopLoading()
+        showEmptyPage()
+    }
+
+    /// Forward from the Empty Page, back onto whichever layer going back hid.
+    private func leaveEmptyPage() {
+        emptyPageHostingView.isHidden = true
+        if emptyPageCoveredErrorPage {
+            errorPageHostingView.isHidden = false
+        } else {
+            webView.isHidden = false
+        }
+        setShowingEmptyPage(false)
+        updateTitlebarBackdrop()
+    }
+
+    /// Everything that follows from the Empty Page coming or going: the bar's text and icons, the
+    /// back/forward segments, and the window title (via the core's `AddressBarController`).
+    private func setShowingEmptyPage(_ showing: Bool) {
+        let changed = showing != isShowingEmptyPage
+        isShowingEmptyPage = showing
+        updateAddressFieldIcons()
+        updateAddressFieldDisplay()
+        updateNavigationSegments()
+        if changed {
+            emptyPageVisibilityChangedHandler?(showing)
+        }
+    }
+
+    func setEmptyPageVisibilityChangedHandler(_ handler: @escaping (Bool) -> Void) {
+        emptyPageVisibilityChangedHandler = handler
     }
 
     /// Not `private` — the target-action for the Normal Mode toolbar's embedded refresh button,
@@ -617,56 +884,76 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
 
     /// Computes and applies the Smart Address Field's (#18) current text + editability via
     /// `AddressFieldPresenter`, using `webView`'s own state directly (no `PlatformOps` round trip
-    /// needed — this view already owns `webView`) plus the locally-tracked hover/edit flags. A
-    /// no-op before the first real navigation (see `hasNavigatedAtLeastOnce`).
+    /// needed — this view already owns `webView`) plus the locally-tracked hover/edit flags.
+    ///
+    /// The Empty Page goes through here too: with no URL, title or host every non-editing state
+    /// resolves to an empty text, so the bar shows its placeholder centered and unselectable —
+    /// the same "a display until clicked" field as everywhere else, not a bare input box.
     private func updateAddressFieldDisplay() {
-        guard hasNavigatedAtLeastOnce else { return }
         // While the user is typing, every input this method reads is stale by definition — the
         // field's text is theirs, not the page's (`AddressFieldPresenter.acceptsPageDrivenUpdates`).
         // Without this, a background load flipping `isLoading` would take `isEditable` away
         // mid-word, and a title KVO tick or the mouse drifting off the field would put the URL
         // back over a half-typed address.
         guard AddressFieldPresenter.acceptsPageDrivenUpdates(
-            hasActiveEditingSession: controls.addressField.currentEditor() != nil)
+            hasActiveEditingSession: controls.addressBar.field.currentEditor() != nil)
         else { return }
+        // Back on the Empty Page, the page left loaded behind it is not what the bar describes.
+        let page = isShowingEmptyPage ? nil : currentURL
         let state = AddressFieldPresenter.displayState(
-            isLoading: isLoading,
+            isLoading: isLoading && !isShowingEmptyPage,
             isHovering: isHoveringAddressField,
             isEditing: isEditingAddressField,
-            pageTitle: webView.title,
-            urlString: currentURL?.absoluteString ?? "",
-            host: currentURL?.host
+            pageTitle: page == nil ? nil : webView.title,
+            urlString: page?.absoluteString ?? "",
+            host: page?.host
         )
-        if controls.addressField.stringValue != state.text {
-            controls.addressField.stringValue = state.text
+        let field = controls.addressBar.field
+        let textChanged = field.stringValue != state.text
+        if textChanged {
+            field.stringValue = state.text
         }
-        controls.addressField.isEditable = state.isEditable
+        // Not editable is not enough: a selectable field still claims an I-beam cursor rect and
+        // lets the text be drag-selected. The display state is neither (Safari's arrow cursor);
+        // `isEditable = true` turns selectability back on by itself.
+        if state.isEditable {
+            field.isEditable = true
+        } else {
+            field.isSelectable = false
+        }
+        window.invalidateCursorRects(for: field)
+        // Leading-aligned in both states — no `.center` while displaying. The display layout
+        // already sizes the field to its text, so centering the *field* centers the text; and a
+        // fixed alignment is what lets the text ride along with the field's frame when the bar
+        // animates between states instead of jumping to the other edge first.
+        // Before `isEditing`, so the slide it animates already accounts for both: refresh makes
+        // way while editing (`showsEmbeddedRefreshIcon`), and a page pins its icon.
+        controls.addressBar.isRefreshVisible = AddressFieldPresenter.showsEmbeddedRefreshIcon(
+            hasNavigatedAtLeastOnce: isShowingPage, isEditing: state.isEditable)
+        controls.addressBar.pinsIcon = isShowingPage
+        controls.addressBar.isEditing = state.isEditable
+        // The display layout hugs the text, so a new title/URL moves it.
+        if textChanged {
+            controls.addressBar.needsLayout = true
+        }
     }
 
-    /// Brings the address field's two icons in step with whether a page is loaded: the embedded
-    /// refresh affordance at the trailing edge (ADR-0011, shown or hidden per
-    /// `AddressFieldPresenter`, with the text area's trailing inset kept in step so the two never
-    /// overlap) and the leading glyph (`DesignTokens.addressFieldGlyph` — lock once loaded,
-    /// magnifying glass on the Empty Page). Both are driven purely by `hasNavigatedAtLeastOnce`
-    /// — deliberately not by `isLoading`, since neither is a stop/cancel toggle.
+    /// Brings the address bar's leading glyph in step with what is on screen
+    /// (`DesignTokens.addressFieldLeadingIcon` — the favicon or a globe on a page, the magnifying
+    /// glass on the Empty Page). Refresh's visibility also depends on editing, so it is decided
+    /// in `updateAddressFieldDisplay` instead.
     private func updateAddressFieldIcons() {
-        let isVisible = AddressFieldPresenter.showsEmbeddedRefreshIcon(
-            hasNavigatedAtLeastOnce: hasNavigatedAtLeastOnce)
-        controls.addressFieldRefreshButton.isHidden = !isVisible
-        (controls.addressField.cell as? AddressFieldCell)?.trailingInset =
-            isVisible ? Self.embeddedRefreshIconReservedWidth : 0
         let leadingState = DesignTokens.addressFieldLeadingIcon(
-            hasLoadedPage: hasNavigatedAtLeastOnce, hasSiteIcon: siteIcon != nil)
+            hasLoadedPage: isShowingPage, hasSiteIcon: siteIcon != nil)
         if leadingState == .siteIcon, let siteIcon {
-            controls.addressFieldLeadingIconView.image = siteIcon
+            controls.addressBar.leadingIconView.image = siteIcon
         } else {
             guard let symbolName = leadingState.symbolName else { return }
-            controls.addressFieldLeadingIconView.image = ToolbarStyle.symbolImage(
+            controls.addressBar.leadingIconView.image = ToolbarStyle.symbolImage(
                 symbolName, accessibilityDescription: leadingState.accessibilityLabel,
                 pointSize: ToolbarStyle.GlyphSize.addressFieldLeading)
         }
-        controls.addressFieldLeadingIconView.setAccessibilityLabel(leadingState.accessibilityLabel)
-        controls.addressField.needsDisplay = true
+        controls.addressBar.leadingIconView.setAccessibilityLabel(leadingState.accessibilityLabel)
     }
 
     private func installAddressFieldHoverTracking() {
@@ -684,12 +971,11 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
             owner: addressFieldHoverTracker,
             userInfo: nil
         )
-        controls.addressField.addTrackingArea(trackingArea)
+        controls.addressBar.addTrackingArea(trackingArea)
     }
 
-    /// Flips the field into its editable state (story #4) — called from `AddressField.onMouseDown`
-    /// *before* AppKit's own click handling runs, so the same click both reveals the URL and
-    /// places a cursor in it, rather than requiring a second click.
+    /// Flips the field into its editable state (story #4), ahead of `activateAddressField`
+    /// handing it focus — so the one click both reveals the URL and makes it typeable.
     ///
     /// A load in flight is no longer a reason to refuse: `AddressFieldPresenter` now ranks editing
     /// above loading, so a heavy page can't leave the address bar unclickable while it finishes.
@@ -697,16 +983,24 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// up not granting the field an editor, there is no blur notification coming to clear the flag,
     /// and the bar would sit in its editable-URL state indefinitely.
     private func beginEditingAddressField() {
-        guard hasNavigatedAtLeastOnce, !isEditingAddressField else { return }
+        guard !isEditingAddressField else { return }
         isEditingAddressField = true
         updateAddressFieldDisplay()
         DispatchQueue.main.async { [weak self] in
             guard let self, self.isEditingAddressField,
-                self.controls.addressField.currentEditor() == nil
+                self.controls.addressBar.field.currentEditor() == nil
             else { return }
             self.isEditingAddressField = false
             self.updateAddressFieldDisplay()
         }
+    }
+
+    /// A click anywhere on the capsule while nobody is editing — the text, its rim, the site icon
+    /// (`AddressField` forwards its own clicks here). Enters editing, then hands the field focus
+    /// with its whole address selected, the way Safari's bar behaves when clicked anywhere.
+    private func activateAddressField() {
+        beginEditingAddressField()
+        window.makeFirstResponder(controls.addressBar.field)
     }
 
     /// Leaves the editable state — but only once the field has genuinely lost its field editor.
@@ -720,9 +1014,9 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// AppKit finish, and `currentEditor()` then answers the real question: still editing (this
     /// was the install-time notification — ignore it), or truly blurred/submitted.
     func controlTextDidEndEditing(_ obj: Notification) {
-        guard let field = obj.object as? NSTextField, field === controls.addressField else { return }
+        guard let field = obj.object as? NSTextField, field === controls.addressBar.field else { return }
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.controls.addressField.currentEditor() == nil else { return }
+            guard let self, self.controls.addressBar.field.currentEditor() == nil else { return }
             self.isEditingAddressField = false
             self.updateAddressFieldDisplay()
         }
@@ -778,8 +1072,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         isPageAtTop = true
         webView.load(URLRequest(url: url))
         updateTitlebarBackdrop()
-        updateAddressFieldIcons()
-        updateAddressFieldDisplay()
+        setShowingEmptyPage(false)
     }
 
     /// Switches the content area to the Empty Page's native content, hiding `webView` — the
@@ -789,9 +1082,13 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// next caller could trip over (code review finding, #38 review).
     func showEmptyPage() {
         defer { updateTitlebarBackdrop() }
+        if !hasNavigatedAtLeastOnce {
+            startedOnEmptyPage = true
+        }
         webView.isHidden = true
         errorPageHostingView.isHidden = true
         emptyPageHostingView.isHidden = false
+        setShowingEmptyPage(true)
     }
 
     /// Switches the content area to the error page (#38), showing `message` alongside whatever
@@ -812,7 +1109,13 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
             }
         )
         webView.isHidden = true
-        errorPageHostingView.isHidden = false
+        // A failure that lands after going back onto the Empty Page belongs to the page left
+        // behind: forward shows it, but it must not cover the Empty Page now.
+        if isShowingEmptyPage {
+            emptyPageCoveredErrorPage = true
+        } else {
+            errorPageHostingView.isHidden = false
+        }
     }
 
     func setNavigationFinishedHandler(_ handler: @escaping () -> Void) {
@@ -825,9 +1128,15 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         // A retry (which reloads `webView` directly, bypassing `loadURL`) needs the error page
-        // cleared here — `loadURL` only covers navigations that went through it.
-        errorPageHostingView.isHidden = true
-        webView.isHidden = false
+        // cleared here — `loadURL` only covers navigations that went through it. Not while the
+        // Empty Page is up, though: a load that finishes after going back onto it must not pull
+        // the page over it.
+        if isShowingEmptyPage {
+            emptyPageCoveredErrorPage = false
+        } else {
+            errorPageHostingView.isHidden = true
+            webView.isHidden = false
+        }
         fetchSiteIcon()
         navigationFinishedHandler?()
     }
@@ -1025,10 +1334,10 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-        guard control === controls.addressField, commandSelector == #selector(NSResponder.insertNewline(_:)) else {
+        guard control === controls.addressBar.field, commandSelector == #selector(NSResponder.insertNewline(_:)) else {
             return false
         }
-        guard let url = Self.resolveURL(from: controls.addressField.stringValue) else { return true }
+        guard let url = Self.resolveURL(from: controls.addressBar.field.stringValue) else { return true }
         urlSubmittedHandler?(url)
         // Blurs the field, which fires `controlTextDidEndEditing` and reverts the display back to
         // the (new) page's title once it loads — matches story #4's "submit closes edit mode".
@@ -1091,7 +1400,7 @@ extension AppKitWidgetWindowHandle: NSToolbarDelegate {
             item.label = "后退/前进"
             item.visibilityPriority = .high
         case Self.addressItemID:
-            item.view = controls.addressFieldContainer
+            item.view = controls.addressBar
             item.label = "地址"
             item.visibilityPriority = .high
         case Self.ghostModeItemID:
@@ -1184,25 +1493,41 @@ public final class AppKitPlatformOps: PlatformOps {
         webView.obscuredContentInsets = NSEdgeInsets(
             top: DesignTokens.Layout.normalModeToolbarRowHeight, left: 0, bottom: 0, right: 0)
 
-        let emptyPageHostingView = NSHostingView(rootView: EmptyPageView())
+        let emptyPageHostingView: NSHostingView<EmptyPageView> = NativePageHostingView(
+            rootView: EmptyPageView(topInset: DesignTokens.Layout.normalModeToolbarRowHeight))
         emptyPageHostingView.translatesAutoresizingMaskIntoConstraints = false
         emptyPageHostingView.isHidden = true
 
         // The error page (#38) starts with placeholder content — `showErrorPage(message:)`
         // replaces `rootView` with the real failure before ever making this visible.
-        let errorPageHostingView = NSHostingView(rootView: ErrorPageView(failedURL: "", message: "", onRetry: {}))
+        let errorPageHostingView: NSHostingView<ErrorPageView> = NativePageHostingView(
+            rootView: ErrorPageView(failedURL: "", message: "", onRetry: {}))
         errorPageHostingView.translatesAutoresizingMaskIntoConstraints = false
         errorPageHostingView.isHidden = true
 
+        // Neither native page lays itself out against the window's safe area: a safe area follows
+        // the window's chrome, and Ghost Mode removes the titlebar — the inset dropped to 0, the
+        // page re-laid itself out across the whole container (whose top 52pt hang off the window
+        // in Ghost Mode) and its content jumped up. Instead the toolbar strip's height is given to
+        // each explicitly, as fixed as the web view's `obscuredContentInsets`: the Empty Page runs
+        // full-bleed under the floating toolbar and is told the height (`EmptyPageView.topInset`);
+        // the error page, like a loaded page, starts below the strip (`nativePageTopConstraints`).
+        emptyPageHostingView.safeAreaRegions = []
+        errorPageHostingView.safeAreaRegions = []
+
         // `webView`, `emptyPageHostingView` (#16), and `errorPageHostingView` (#38) share this
-        // container, each pinned to fill it completely — exactly one is ever visible at a time
-        // (see `loadURL`/`showEmptyPage`/`showErrorPage`).
+        // container, exactly one visible at a time (see `loadURL`/`showEmptyPage`/`showErrorPage`).
+        // The web view and the Empty Page fill it completely; the error page starts below the strip.
         let contentContainer = NSView()
         contentContainer.translatesAutoresizingMaskIntoConstraints = false
         contentContainer.addSubview(webView)
         contentContainer.addSubview(emptyPageHostingView)
         contentContainer.addSubview(errorPageHostingView)
-        NSLayoutConstraint.activate([
+        let nativePageTopConstraints = [
+            errorPageHostingView.topAnchor.constraint(
+                equalTo: contentContainer.topAnchor, constant: DesignTokens.Layout.normalModeToolbarRowHeight),
+        ]
+        NSLayoutConstraint.activate(nativePageTopConstraints + [
             webView.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
             webView.topAnchor.constraint(equalTo: contentContainer.topAnchor),
@@ -1213,7 +1538,6 @@ public final class AppKitPlatformOps: PlatformOps {
             emptyPageHostingView.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor),
             errorPageHostingView.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
             errorPageHostingView.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
-            errorPageHostingView.topAnchor.constraint(equalTo: contentContainer.topAnchor),
             errorPageHostingView.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor),
         ])
 
@@ -1273,6 +1597,7 @@ public final class AppKitPlatformOps: PlatformOps {
             window: window, webView: webView, controls: controls,
             emptyPageHostingView: emptyPageHostingView, errorPageHostingView: errorPageHostingView,
             progressBar: progressBar, contentTopInset: contentTopInset,
+            nativePageTopConstraints: nativePageTopConstraints,
             contentContainerTopConstraint: contentContainerTopConstraint
         )
 
@@ -1286,24 +1611,34 @@ public final class AppKitPlatformOps: PlatformOps {
         return handle
     }
 
-    /// Builds the Normal Mode toolbar's controls (ADR-0009/ADR-0011) — a rounded-bezel `NSTextField`
-    /// for the Smart Address Field (no hand-drawn glass wrapper; its native rendering already looks
-    /// "more solid" than the surrounding row, per design-language.md) with the refresh affordance
-    /// embedded at its trailing edge and a native segmented control for back/forward — all
-    /// hosted as `NSToolbarItem` views by `AppKitWidgetWindowHandle`'s `NSToolbarDelegate`
-    /// conformance. Settings is not here: it is a stock image+action item built in that delegate.
+    /// Builds the Normal Mode toolbar's controls (ADR-0009/ADR-0011) — the Smart Address Field's
+    /// `AddressBarView` (capsule, site icon, text and embedded refresh affordance as siblings) and
+    /// a native segmented control for back/forward — all hosted as `NSToolbarItem` views by
+    /// `AppKitWidgetWindowHandle`'s `NSToolbarDelegate` conformance. Settings is not here: it is
+    /// a stock image+action item built in that delegate.
     private func makeToolbarControls() -> ToolbarControls {
-        let addressField = AddressField()
-        addressField.translatesAutoresizingMaskIntoConstraints = false
-        addressField.placeholderString = "输入网址"
-        addressField.lineBreakMode = .byTruncatingTail
-        // The rounded bezel is what keeps the Safari-like capsule shape now that this is a plain
-        // text field. It is also the variant whose focus ring draws *outside* the border instead
-        // of over it (measured against `.squareBezel` and against `NSSearchField`).
-        addressField.bezelStyle = .roundedBezel
-        addressField.isBezeled = true
+        // Refresh lives inside the capsule (ADR-0011) rather than as a standalone `NSToolbarItem`.
+        // Visibility (hidden until the first real navigation) is owned by `updateAddressFieldIcons`.
+        let refreshButton = embeddedButton(
+            image: ToolbarStyle.symbolImage(
+                DesignTokens.Symbol.refresh, accessibilityDescription: "刷新",
+                pointSize: ToolbarStyle.GlyphSize.addressFieldEmbedded))
+        refreshButton.toolTip = "刷新页面"
+        // Stable handle for UI automation and accessibility tooling (Safari's own is `ReloadButton`).
+        let refreshID = NSUserInterfaceItemIdentifier("com.mochi.addressBar.reload")
+        refreshButton.identifier = refreshID
+        refreshButton.setAccessibilityIdentifier(refreshID.rawValue)
+        let addressBar = AddressBarView(refreshButton: refreshButton)
+        addressBar.field.placeholderString = "输入网址"
+        // The leading site icon: the page's favicon, or a symbol standing in for it
+        // (`updateAddressFieldIcons` owns which).
+        addressBar.leadingIconView.image = ToolbarStyle.symbolImage(
+            DesignTokens.AddressFieldLeadingIcon.search.symbolName!,
+            accessibilityDescription: DesignTokens.AddressFieldLeadingIcon.search.accessibilityLabel,
+            pointSize: ToolbarStyle.GlyphSize.addressFieldLeading)
+
         // Bounded elastic width (ADR-0011), replacing the earlier "fill every point left over
-        // between the neighbouring items": low hugging still lets `NSToolbarItem` grow the field
+        // between the neighbouring items": low hugging still lets `NSToolbarItem` grow the bar
         // into spare width — per the `NSToolbarItem.minSize`/`maxSize` SDK header, the toolbar
         // "automatically measure[s] the size of the view using constraints" rather than consulting
         // those (deprecated) properties — but the required upper bound stops that growth at
@@ -1311,84 +1646,22 @@ public final class AppKitPlatformOps: PlatformOps {
         // measurement stays inside them; the trap #23 fell into was a huge *low-priority*
         // `width == 10_000` constraint with no upper bound, which became the fitting size itself,
         // so the toolbar decided the item could never fit and swept it straight into the overflow
-        // menu instead of sizing it down to the required minimum.
-        addressField.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        NSLayoutConstraint.activate([
-            addressField.widthAnchor.constraint(
-                greaterThanOrEqualToConstant: DesignTokens.Layout.addressFieldMinWidth),
-            addressField.widthAnchor.constraint(
-                lessThanOrEqualToConstant: DesignTokens.Layout.addressFieldMaxWidth),
-            addressField.heightAnchor.constraint(equalToConstant: DesignTokens.Layout.addressFieldHeight),
-        ])
-        // The Empty Page (#16) hasn't navigated yet, so the field stays a plain, freely-editable
-        // URL box until `hasNavigatedAtLeastOnce` flips — see `AppKitWidgetWindowHandle.loadURL`.
-        addressField.isEditable = true
-
-        // The leading site icon: the page's favicon, or a symbol standing in for it
-        // (`updateAddressFieldIcons` owns which). A subview rather than anything cell-owned, so
-        // nothing rebuilds it behind our back.
-        let leadingIconView = NSImageView()
-        leadingIconView.translatesAutoresizingMaskIntoConstraints = false
-        leadingIconView.imageScaling = .scaleProportionallyUpOrDown
-        leadingIconView.image = ToolbarStyle.symbolImage(
-            DesignTokens.AddressFieldLeadingIcon.search.symbolName!,
-            accessibilityDescription: DesignTokens.AddressFieldLeadingIcon.search.accessibilityLabel,
-            pointSize: ToolbarStyle.GlyphSize.addressFieldLeading)
-        addressField.addSubview(leadingIconView)
-        let leadingPadding = DesignTokens.Layout.addressFieldLeadingIconLeadingPadding
-        let leadingDiameter = DesignTokens.Layout.addressFieldLeadingIconDiameter
-        NSLayoutConstraint.activate([
-            leadingIconView.leadingAnchor.constraint(
-                equalTo: addressField.leadingAnchor, constant: leadingPadding),
-            leadingIconView.centerYAnchor.constraint(equalTo: addressField.centerYAnchor),
-            leadingIconView.widthAnchor.constraint(equalToConstant: leadingDiameter),
-            leadingIconView.heightAnchor.constraint(equalToConstant: leadingDiameter),
-        ])
-        // Text starts after the icon. Constant, unlike the trailing inset — the icon is always
-        // there in some form, whereas refresh is hidden until the first navigation.
-        (addressField.cell as? AddressFieldCell)?.leadingInset = leadingPadding + leadingDiameter
-
-        // Refresh lives inside the field now (ADR-0011) rather than as a standalone
-        // `NSToolbarItem`: a plain subview pinned to the trailing edge, with `AddressFieldCell`
-        // shrinking the text area by the matching amount. Visibility (hidden until the first real
-        // navigation) is owned by `updateAddressFieldIcons`.
-        let addressFieldRefreshButton = toolbarButton(
-            image: ToolbarStyle.symbolImage(
-                DesignTokens.Symbol.refresh, accessibilityDescription: "刷新",
-                pointSize: ToolbarStyle.GlyphSize.addressFieldEmbedded),
-            diameter: DesignTokens.Layout.addressFieldEmbeddedIconDiameter)
-        addressField.addSubview(addressFieldRefreshButton)
-        NSLayoutConstraint.activate([
-            addressFieldRefreshButton.trailingAnchor.constraint(
-                equalTo: addressField.trailingAnchor,
-                constant: -DesignTokens.Layout.addressFieldEmbeddedIconTrailingPadding),
-            addressFieldRefreshButton.centerYAnchor.constraint(equalTo: addressField.centerYAnchor),
-        ])
-
-        // The toolbar item hosts this container rather than the field itself, so AppKit's focus
-        // ring — drawn outside the field's bounds — has room instead of being sliced flat against
-        // the item viewer's edge (`addressFieldFocusRingInset`).
-        let addressFieldContainer = NSView()
-        addressFieldContainer.translatesAutoresizingMaskIntoConstraints = false
-        addressFieldContainer.addSubview(addressField)
+        // menu instead of sizing it down to the required minimum. The capsule's bounds are padded
+        // by the focus-ring inset on every side, same as when the field itself was the capsule.
         let ringInset = DesignTokens.Layout.addressFieldFocusRingInset
+        addressBar.setContentHuggingPriority(.defaultLow, for: .horizontal)
         NSLayoutConstraint.activate([
-            addressField.leadingAnchor.constraint(
-                equalTo: addressFieldContainer.leadingAnchor, constant: ringInset),
-            addressField.trailingAnchor.constraint(
-                equalTo: addressFieldContainer.trailingAnchor, constant: -ringInset),
-            addressField.topAnchor.constraint(
-                equalTo: addressFieldContainer.topAnchor, constant: ringInset),
-            addressField.bottomAnchor.constraint(
-                equalTo: addressFieldContainer.bottomAnchor, constant: -ringInset),
+            addressBar.widthAnchor.constraint(
+                greaterThanOrEqualToConstant: DesignTokens.Layout.addressFieldMinWidth + ringInset * 2),
+            addressBar.widthAnchor.constraint(
+                lessThanOrEqualToConstant: DesignTokens.Layout.addressFieldMaxWidth + ringInset * 2),
+            addressBar.heightAnchor.constraint(
+                equalToConstant: DesignTokens.Layout.addressFieldHeight + ringInset * 2),
         ])
 
         return ToolbarControls(
             navigationControl: makeNavigationControl(),
-            addressField: addressField,
-            addressFieldContainer: addressFieldContainer,
-            addressFieldLeadingIconView: leadingIconView,
-            addressFieldRefreshButton: addressFieldRefreshButton
+            addressBar: addressBar
         )
     }
 
@@ -1431,15 +1704,14 @@ public final class AppKitPlatformOps: PlatformOps {
         return LoadingProgressBar(view: bar, widthConstraint: widthConstraint)
     }
 
-    private func toolbarButton(image: NSImage, diameter: Double) -> NSButton {
-        let button = NSButton(image: image, target: nil, action: nil)
-        button.translatesAutoresizingMaskIntoConstraints = false
+    /// A borderless icon button for inside the address bar's capsule, which frames its children
+    /// by hand (`AddressBarView.layout()`) — hence no size constraints here.
+    private func embeddedButton(image: NSImage) -> NSButton {
+        let button = HoverIconButton(image: image, target: nil, action: nil)
         button.bezelStyle = .toolbar
         button.isBordered = false
         button.imageScaling = .scaleProportionallyDown
         button.contentTintColor = ToolbarStyle.iconTint()
-        button.widthAnchor.constraint(equalToConstant: diameter).isActive = true
-        button.heightAnchor.constraint(equalToConstant: diameter).isActive = true
         return button
     }
 
@@ -1532,6 +1804,11 @@ public final class AppKitPlatformOps: PlatformOps {
     public func injectScript(_ source: String, in window: WidgetWindowHandle) {
         guard let handle = handle(for: window) else { return }
         handle.injectScript(source)
+    }
+
+    public func onEmptyPageVisibilityChanged(_ window: WidgetWindowHandle, perform handler: @escaping (Bool) -> Void) {
+        guard let handle = handle(for: window) else { return }
+        handle.setEmptyPageVisibilityChangedHandler(handler)
     }
 
     public func onNavigationFinished(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {
