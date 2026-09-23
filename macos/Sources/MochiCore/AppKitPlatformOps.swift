@@ -915,14 +915,12 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         } else {
             window.styleMask.remove(.titled)
         }
-        // Ghost Mode has no toolbar, so there is no strip to keep the page's layout clear of —
-        // the page gets the whole window.
+        // Ghost Mode leaves `obscuredContentInsets` exactly as Normal Mode had it: handing the
+        // toolbar's strip to the page would grow its layout viewport and reflow it on every
+        // toggle. The strip just stays empty while the toolbar is gone. (In Ghost Mode
+        // `titlebarHeight` reads `nil`, so a resize there can't clear the inset either.)
         if visible {
             updateTitlebarMetrics()
-        } else {
-            appliedTitlebarHeight = 0
-            contentTopInset.constant = 0
-            webView.obscuredContentInsets = NSEdgeInsets()
         }
         updateTitlebarBackdrop()
     }
