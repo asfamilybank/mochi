@@ -83,6 +83,17 @@ end tell'
 
 不用真实录屏，改用连续截图：每 0.3 秒重复第 2 步一次，拍 5~10 张，按顺序对比。
 
+## 5. 验证 NSApp.mainMenu 结构（顶层菜单、子菜单条目）
+
+只读，不需要打开溢出菜单或点击任何菜单项：
+
+```bash
+osascript -e 'tell application "System Events" to tell process "Mochi" to get name of every menu bar item of menu bar 1'
+osascript -e 'tell application "System Events" to tell process "Mochi" to get name of every menu item of menu 1 of menu bar item 3 of menu bar 1'
+```
+
+第二条按顶层菜单序号（1=Apple, 2=第一个自定义菜单…）取子菜单条目名。可以顺带确认系统自动追加的项（Edit 菜单末尾的"开始听写"/"表情与符号"、Window 菜单的"移动与调整大小"/窗口列表）是否真的出现——这些是 AppKit 在满足条件时自动加的，代码里不需要（也不应该）手写。
+
 ## 能力边界，别自作主张扩展
 
 - **不做模拟点击/拖拽**——这套流程只读，不操作真实窗口。需要交互验证时，请用户手动操作。
