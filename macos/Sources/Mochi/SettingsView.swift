@@ -30,9 +30,13 @@ struct SettingsView: View {
     }
 }
 
-/// #13: read-only "上次访问 URL" + the editable "启动 URL" tri-state selector (具体网址 / 空页面 /
-/// 不设置) that replaces the originally-planned single URL text field (see issue #13's comment).
-/// Moved here verbatim from the old three-tab layout — behaviour unchanged (#46).
+/// #13's editable "启动 URL" tri-state selector (具体网址 / 空页面 / 不设置), which replaces the
+/// originally-planned single URL text field (see issue #13's comment).
+///
+/// It used to sit under a read-only "上次访问 URL" row echoing `config.url`. That row is gone: the
+/// address bar already shows where you are, and a settings panel is a poor place to leave the last
+/// site you visited sitting in plain text. `config.url` itself is untouched — it is what
+/// "继续上次访问页面" resolves to, it just isn't displayed any more.
 private struct GeneralSettingsTab: View {
     @ObservedObject var viewModel: SettingsViewModel
     @State private var startupKind: StartupKind
@@ -59,12 +63,6 @@ private struct GeneralSettingsTab: View {
 
     var body: some View {
         Form {
-            Section("上次访问 URL") {
-                Text(viewModel.config.url?.absoluteString ?? "尚无浏览记录")
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-            }
-
             Section("启动 URL") {
                 Picker("启动时", selection: $startupKind) {
                     Text("继续上次访问页面").tag(StartupKind.notSet)
@@ -75,7 +73,10 @@ private struct GeneralSettingsTab: View {
                 .onChange(of: startupKind) { _, newValue in applyStartupTarget(kind: newValue) }
 
                 if startupKind == .url {
-                    TextField("https://example.com", text: $startupURLText)
+                    // Placeholder kept generic rather than a sample domain — an example URL in a
+                    // field that already means "type a URL here" only adds a site nobody asked about.
+                    // Same wording as the address bar's own placeholder.
+                    TextField("输入网址", text: $startupURLText)
                         .onSubmit { applyStartupTarget(kind: .url) }
                 }
             }

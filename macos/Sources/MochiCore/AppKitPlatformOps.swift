@@ -117,6 +117,9 @@ private enum ToolbarStyle {
     enum GlyphSize {
         /// Inside the address field's 20pt embedded-icon box.
         static let addressFieldEmbedded: Double = 13
+        /// The address field's leading site icon, when a symbol stands in for a missing favicon.
+        /// Smaller than the 16pt box it sits in, the way a favicon's own artwork has its margins.
+        static let addressFieldLeading: Double = 13
         /// The tray glyph. `NSStatusBar.system.thickness` is 22pt, and a 15pt symbol's canvas is
         /// 18pt tall — the size Apple's own menu-bar glyphs occupy.
         static let tray: Double = 15
@@ -132,31 +135,48 @@ private extension NSColor {
     }
 }
 
-/// Reserves room at the trailing edge of the address field's text area for its embedded refresh
-/// affordance (ADR-0011), so a long title/URL truncates before it reaches the icon instead of
-/// sliding underneath it. `NSSearchField` exposes no view-level hook for that geometry — the cell
-/// owns it — which is why this is a cell subclass rather than a layout tweak on the field.
-private final class AddressFieldCell: NSSearchFieldCell {
-    /// Points shaved off the trailing edge of the text area; `0` while the icon is hidden.
+/// Reserves room at both ends of the address field's text area — the leading site icon and the
+/// trailing refresh affordance (ADR-0011) — so a long title/URL truncates before it reaches either
+/// instead of sliding underneath. `NSTextField` exposes no view-level hook for that geometry; the
+/// cell owns it, which is why this is a cell subclass rather than a layout tweak on the field.
+private final class AddressFieldCell: NSTextFieldCell {
+    /// Points shaved off the leading edge, for the site icon / globe / magnifying glass.
+    var leadingInset: CGFloat = 0
+    /// Points shaved off the trailing edge; `0` while the refresh icon is hidden.
     var trailingInset: CGFloat = 0
 
-    override func searchTextRect(forBounds rect: NSRect) -> NSRect {
-        var textRect = super.searchTextRect(forBounds: rect)
-        textRect.size.width = max(0, textRect.width - trailingInset)
+    /// Both the drawn text and the field editor derive from this, so insetting here keeps the
+    /// caret and the selection inside the same box the static text occupies.
+    override func drawingRect(forBounds rect: NSRect) -> NSRect {
+        var textRect = super.drawingRect(forBounds: rect)
+        textRect.origin.x += leadingInset
+        textRect.size.width = max(0, textRect.width - leadingInset - trailingInset)
         return textRect
     }
 }
 
-/// A search field that reports the moment it's clicked, *before* AppKit's own `mouseDown`
-/// processing runs — needed so the Smart Address Field (#18) can flip into its editable state
-/// (`AddressFieldPresenter`) in time for that same click to place a cursor, rather than the user
-/// needing a second click after the field becomes editable.
-private final class AddressField: NSSearchField {
+/// The Smart Address Field (#18).
+///
+/// An `NSTextField` with `.roundedBezel`, not the `NSSearchField` this started as. Two reasons,
+/// both measured against the real control:
+///
+/// 1. **Focus ring.** `NSSearchField` draws its ring *on top of* its own border rather than
+///    outside it, so the two overlap and any clipping at the edges turns the ring's end caps into
+///    flat vertical lines. `NSTextField` draws the ring outside the border with a gap between
+///    them — the separation every other focused field on the system has, and what Safari's own
+///    address bar (`AXTextField` with no `AXSearchField` subrole — it is not a search field
+///    either) looks like.
+/// 2. **No stock buttons to fight.** The search field's cancel and search button cells are
+///    rebuilt by AppKit on every toolbar layout pass, so keeping a custom leading glyph on one
+///    and a cleared cancel button on the other meant re-applying both from `layout()` forever —
+///    and assigning to either property is itself what provoked the rebuild. A plain text field
+///    has neither, so the leading icon is just a subview nobody else touches.
+private final class AddressField: NSTextField {
     var onMouseDown: (() -> Void)?
 
     /// `NSControl` builds its cell from this at `init(frame:)` time — the only way to get
-    /// `AddressFieldCell`'s text-rect inset in without swapping a live `cell` out from under
-    /// `NSSearchField`.
+    /// `AddressFieldCell`'s text-rect insets in without swapping a live `cell` out from under
+    /// the field.
     override class var cellClass: AnyClass? {
         get { AddressFieldCell.self }
         set {}
@@ -176,48 +196,6 @@ private final class AddressField: NSSearchField {
     override func mouseDown(with event: NSEvent) {
         onMouseDown?()
         super.mouseDown(with: event)
-    }
-
-    /// Which glyph the leading icon shows (`DesignTokens.addressFieldGlyph`) — a lock once a page
-    /// is loaded, a magnifying glass on the Empty Page.
-    var leadingGlyph: DesignTokens.AddressFieldGlyph = .search {
-        didSet {
-            guard leadingGlyph != oldValue else { return }
-            applyStockButtonOverrides()
-        }
-    }
-
-    /// AppKit rebuilds `NSSearchFieldCell`'s stock buttons during the toolbar's layout pass, so
-    /// both overrides are re-applied on every layout rather than once at construction.
-    override func layout() {
-        super.layout()
-        applyStockButtonOverrides()
-    }
-
-    /// Measured: assigning `cancelButtonCell = nil` is *itself* enough to make AppKit
-    /// install a fresh cell during the next toolbar layout, so setting it once at construction
-    /// left a live clear ("×") button drawing on top of the embedded refresh icon — both sit at
-    /// the field's trailing edge. A bare `NSStackView` host never triggers that rebuild, which is
-    /// why this only reproduces inside an `NSToolbar`. The clear button has to go regardless of
-    /// the overlap: the field's content is a title/URL the presenter computes, not a free-text
-    /// query, and the stock button blanks `stringValue` directly, bypassing
-    /// `AddressFieldPresenter` entirely.
-    private func applyStockButtonOverrides() {
-        guard let searchCell = cell as? NSSearchFieldCell else { return }
-        // Both writes are guarded, because assigning to either property is itself what triggers
-        // the rebuild — writing unconditionally on every layout pass would keep re-provoking the
-        // thing this is compensating for. Comparing the leading glyph by accessibility
-        // description (rather than tracking it in a stored property) is what detects a rebuild:
-        // a fresh cell comes back carrying AppKit's own magnifying glass, whose description is
-        // not ours.
-        if searchCell.cancelButtonCell != nil {
-            searchCell.cancelButtonCell = nil
-        }
-        let wantedDescription = leadingGlyph.accessibilityLabel
-        if searchCell.searchButtonCell?.image?.accessibilityDescription != wantedDescription {
-            searchCell.searchButtonCell?.image = ToolbarStyle.symbolImage(
-                leadingGlyph.symbolName, accessibilityDescription: wantedDescription)
-        }
     }
 }
 
@@ -251,6 +229,10 @@ fileprivate struct ToolbarControls {
     /// again for the same identifier — a fresh container per call would re-parent the field and
     /// pile up duplicate constraints.
     let addressFieldContainer: NSView
+    /// The site icon at `addressField`'s leading edge — a plain subview now that the field is an
+    /// `NSTextField`, rather than an image pushed onto `NSSearchFieldCell`'s stock search button
+    /// (which AppKit rebuilt on every layout pass).
+    let addressFieldLeadingIconView: NSImageView
     /// The refresh affordance embedded at `addressField`'s trailing edge (ADR-0011) — a subview
     /// of the field, not a toolbar item of its own the way it used to be.
     let addressFieldRefreshButton: NSButton
@@ -274,7 +256,7 @@ fileprivate struct LoadingProgressBar {
 ///
 /// Colors, corner radii, spacing, symbol names, and the one bespoke glyph all come from
 /// `DesignTokens`/`GhostGlyph` (#17) — nothing here writes its own numbers.
-final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDelegate, NSSearchFieldDelegate, WKNavigationDelegate {
+final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDelegate, NSTextFieldDelegate, WKNavigationDelegate {
     private static let navigationItemID = NSToolbarItem.Identifier("com.mochi.toolbar.navigation")
     private static let addressItemID = NSToolbarItem.Identifier("com.mochi.toolbar.address")
     private static let ghostModeItemID = NSToolbarItem.Identifier("com.mochi.toolbar.ghostMode")
@@ -339,6 +321,12 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     private var currentURL: URL?
     private var isHoveringAddressField = false
     private var isEditingAddressField = false
+    private let faviconLoader = FaviconLoader()
+    /// The current page's favicon, or `nil` while none has been fetched for it. Reset on every
+    /// real navigation rather than left to be overwritten — otherwise the previous site's icon
+    /// would stay on screen for as long as the new one takes to load, which on a slow site is
+    /// long enough to read as "this is that site".
+    private var siteIcon: NSImage?
     private let defaultWindowBackgroundColor: NSColor
     private var navigationObservations: [NSKeyValueObservation] = []
     private var appearanceObservation: NSKeyValueObservation?
@@ -522,8 +510,17 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         controls.addressFieldRefreshButton.isHidden = !isVisible
         (controls.addressField.cell as? AddressFieldCell)?.trailingInset =
             isVisible ? Self.embeddedRefreshIconReservedWidth : 0
-        controls.addressField.leadingGlyph =
-            DesignTokens.addressFieldGlyph(hasLoadedPage: hasNavigatedAtLeastOnce)
+        let leadingState = DesignTokens.addressFieldLeadingIcon(
+            hasLoadedPage: hasNavigatedAtLeastOnce, hasSiteIcon: siteIcon != nil)
+        if leadingState == .siteIcon, let siteIcon {
+            controls.addressFieldLeadingIconView.image = siteIcon
+        } else {
+            guard let symbolName = leadingState.symbolName else { return }
+            controls.addressFieldLeadingIconView.image = ToolbarStyle.symbolImage(
+                symbolName, accessibilityDescription: leadingState.accessibilityLabel,
+                pointSize: ToolbarStyle.GlyphSize.addressFieldLeading)
+        }
+        controls.addressFieldLeadingIconView.setAccessibilityLabel(leadingState.accessibilityLabel)
         controls.addressField.needsDisplay = true
     }
 
@@ -578,7 +575,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// AppKit finish, and `currentEditor()` then answers the real question: still editing (this
     /// was the install-time notification — ignore it), or truly blurred/submitted.
     func controlTextDidEndEditing(_ obj: Notification) {
-        guard let field = obj.object as? NSSearchField, field === controls.addressField else { return }
+        guard let field = obj.object as? NSTextField, field === controls.addressField else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self, self.controls.addressField.currentEditor() == nil else { return }
             self.isEditingAddressField = false
@@ -630,6 +627,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         webView.isHidden = false
         hasNavigatedAtLeastOnce = true
         currentURL = url
+        siteIcon = nil
         webView.load(URLRequest(url: url))
         updateAddressFieldIcons()
         updateAddressFieldDisplay()
@@ -680,7 +678,27 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         // cleared here — `loadURL` only covers navigations that went through it.
         errorPageHostingView.isHidden = true
         webView.isHidden = false
+        fetchSiteIcon()
         navigationFinishedHandler?()
+    }
+
+    /// Fetches the loaded page's favicon for the address bar's leading icon. Deliberately after
+    /// `didFinish` rather than on commit: the icon links are read out of the live DOM, and a
+    /// single-page app may not have injected them yet at commit time.
+    private func fetchSiteIcon() {
+        guard let pageURL = webView.url ?? currentURL,
+            let requestedOrigin = FaviconLoader.origin(of: pageURL)
+        else { return }
+        faviconLoader.loadIcon(for: pageURL, in: webView) { [weak self] image in
+            guard let self, let image else { return }
+            // A slow fetch can land after the user has already moved on; the icon belongs to the
+            // origin it was requested for, not to whatever is on screen when it arrives.
+            guard let currentOrigin = self.currentURL.flatMap(FaviconLoader.origin(of:)),
+                currentOrigin == requestedOrigin
+            else { return }
+            self.siteIcon = image
+            self.updateAddressFieldIcons()
+        }
     }
 
     /// Covers the most common real-world failure (DNS/offline) that `didFail` alone would miss —
@@ -1057,7 +1075,7 @@ public final class AppKitPlatformOps: PlatformOps {
         return handle
     }
 
-    /// Builds the Normal Mode toolbar's controls (ADR-0009/ADR-0011) — a standard `NSSearchField`
+    /// Builds the Normal Mode toolbar's controls (ADR-0009/ADR-0011) — a rounded-bezel `NSTextField`
     /// for the Smart Address Field (no hand-drawn glass wrapper; its native rendering already looks
     /// "more solid" than the surrounding row, per design-language.md) with the refresh affordance
     /// embedded at its trailing edge and a native segmented control for back/forward — all
@@ -1068,6 +1086,11 @@ public final class AppKitPlatformOps: PlatformOps {
         addressField.translatesAutoresizingMaskIntoConstraints = false
         addressField.placeholderString = "输入网址"
         addressField.lineBreakMode = .byTruncatingTail
+        // The rounded bezel is what keeps the Safari-like capsule shape now that this is a plain
+        // text field. It is also the variant whose focus ring draws *outside* the border instead
+        // of over it (measured against `.squareBezel` and against `NSSearchField`).
+        addressField.bezelStyle = .roundedBezel
+        addressField.isBezeled = true
         // Bounded elastic width (ADR-0011), replacing the earlier "fill every point left over
         // between the neighbouring items": low hugging still lets `NSToolbarItem` grow the field
         // into spare width — per the `NSToolbarItem.minSize`/`maxSize` SDK header, the toolbar
@@ -1086,11 +1109,33 @@ public final class AppKitPlatformOps: PlatformOps {
                 lessThanOrEqualToConstant: DesignTokens.Layout.addressFieldMaxWidth),
             addressField.heightAnchor.constraint(equalToConstant: DesignTokens.Layout.addressFieldHeight),
         ])
-        // The stock clear button and the leading glyph are both owned by `AddressField.layout()`
-        // — AppKit rebuilds the cells that draw them, so configuring either here wouldn't stick.
         // The Empty Page (#16) hasn't navigated yet, so the field stays a plain, freely-editable
         // URL box until `hasNavigatedAtLeastOnce` flips — see `AppKitWidgetWindowHandle.loadURL`.
         addressField.isEditable = true
+
+        // The leading site icon: the page's favicon, or a symbol standing in for it
+        // (`updateAddressFieldIcons` owns which). A subview rather than anything cell-owned, so
+        // nothing rebuilds it behind our back.
+        let leadingIconView = NSImageView()
+        leadingIconView.translatesAutoresizingMaskIntoConstraints = false
+        leadingIconView.imageScaling = .scaleProportionallyUpOrDown
+        leadingIconView.image = ToolbarStyle.symbolImage(
+            DesignTokens.AddressFieldLeadingIcon.search.symbolName!,
+            accessibilityDescription: DesignTokens.AddressFieldLeadingIcon.search.accessibilityLabel,
+            pointSize: ToolbarStyle.GlyphSize.addressFieldLeading)
+        addressField.addSubview(leadingIconView)
+        let leadingPadding = DesignTokens.Layout.addressFieldLeadingIconLeadingPadding
+        let leadingDiameter = DesignTokens.Layout.addressFieldLeadingIconDiameter
+        NSLayoutConstraint.activate([
+            leadingIconView.leadingAnchor.constraint(
+                equalTo: addressField.leadingAnchor, constant: leadingPadding),
+            leadingIconView.centerYAnchor.constraint(equalTo: addressField.centerYAnchor),
+            leadingIconView.widthAnchor.constraint(equalToConstant: leadingDiameter),
+            leadingIconView.heightAnchor.constraint(equalToConstant: leadingDiameter),
+        ])
+        // Text starts after the icon. Constant, unlike the trailing inset — the icon is always
+        // there in some form, whereas refresh is hidden until the first navigation.
+        (addressField.cell as? AddressFieldCell)?.leadingInset = leadingPadding + leadingDiameter
 
         // Refresh lives inside the field now (ADR-0011) rather than as a standalone
         // `NSToolbarItem`: a plain subview pinned to the trailing edge, with `AddressFieldCell`
@@ -1131,6 +1176,7 @@ public final class AppKitPlatformOps: PlatformOps {
             navigationControl: makeNavigationControl(),
             addressField: addressField,
             addressFieldContainer: addressFieldContainer,
+            addressFieldLeadingIconView: leadingIconView,
             addressFieldRefreshButton: addressFieldRefreshButton
         )
     }

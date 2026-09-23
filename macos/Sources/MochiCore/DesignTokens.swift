@@ -213,6 +213,13 @@ public enum DesignTokens {
         public static let addressFieldEmbeddedIconDiameter: Double = 20
         public static let addressFieldEmbeddedIconTrailingPadding: Double = 4
 
+        /// The site icon at the address field's leading edge — the favicon, or the symbol standing
+        /// in for it. Sized to match what `NSSearchField`'s built-in magnifying glass occupied
+        /// before the field became a plain `NSTextField`, so the text still starts in the same
+        /// place.
+        public static let addressFieldLeadingIconDiameter: Double = 16
+        public static let addressFieldLeadingIconLeadingPadding: Double = 7
+
         /// Normal Mode's minimum window width — measured, not derived from Safari's 574pt (which
         /// is calibrated to Safari's larger always-visible set, sidebar toggle included). Sweeping
         /// the real window width one point at a time (ADR-0011) found the point where AppKit stops
@@ -271,45 +278,56 @@ public enum DesignTokens {
         /// The error page's (#38) failure glyph.
         public static let failure = "exclamationmark.triangle"
 
-        /// Every symbol name the app can ask for, the address field's two states included.
+        /// Every symbol name the app can ask for, the address field's drawn states included.
+        /// `.siteIcon` contributes nothing here — it draws a downloaded favicon, not a symbol.
         public static let all: [String] = [
             back, forward, refresh, settings, failure,
-            AddressFieldGlyph.lock.symbolName, AddressFieldGlyph.search.symbolName,
+            AddressFieldLeadingIcon.genericPage.symbolName!, AddressFieldLeadingIcon.search.symbolName!,
         ]
     }
 
-    /// Which glyph the address bar's leading icon shows.
-    public enum AddressFieldGlyph: Equatable, Sendable {
-        /// A page is loaded — shows a lock, like a browser's secure-page indicator.
-        case lock
-        /// No page is loaded (Empty Page) — a lock would misleadingly imply a secure page
-        /// that isn't there, so this shows a magnifying glass instead.
+    /// What the address bar's leading position shows.
+    ///
+    /// This used to be a lock once any page had loaded. A lock is every browser's *encryption*
+    /// indicator, but nothing here ever looked at the scheme — it only knew a page existed — so
+    /// a plain-http page got the same lock an https one did, which is a security claim Mochi
+    /// cannot back. The site's own favicon says the useful part ("which site is this") without
+    /// saying anything about the connection at all.
+    public enum AddressFieldLeadingIcon: Equatable, Sendable {
+        /// The site's own favicon, fetched from the site itself (never a third-party favicon
+        /// service — that would hand a tracker one request per site visited).
+        case siteIcon
+        /// A page is loaded but has no favicon Mochi could fetch, or it hasn't arrived yet.
+        case genericPage
+        /// No page is loaded (Empty Page).
         case search
 
-        /// The SF Symbol that draws this glyph. `NSSearchField` supplies its own magnifying
-        /// glass, but the leading icon has to be set explicitly either way — the field's stock
-        /// glyph never changes, so leaving it alone would pin the address bar to "search"
-        /// forever, which is the state this whole enum exists to move off of.
-        public var symbolName: String {
+        /// The SF Symbol that draws this state, or `nil` for `.siteIcon`, which draws an image.
+        /// `NSSearchField` supplies its own magnifying glass, but the leading icon has to be set
+        /// explicitly either way — the field's stock glyph never changes, so leaving it alone
+        /// would pin the address bar to "search" forever.
+        public var symbolName: String? {
             switch self {
-            case .lock: return "lock"
+            case .siteIcon: return nil
+            case .genericPage: return "globe"
             case .search: return "magnifyingglass"
             }
         }
 
-        /// What the glyph is announced as. Deliberately *not* "secure connection" for `.lock`:
-        /// the glyph tracks whether a page is loaded, not whether it came over TLS, so claiming
-        /// security here would be wrong on any plain-http page.
+        /// What the icon is announced as. Nothing here mentions security: the leading icon tracks
+        /// which site is loaded, not how the bytes got here.
         public var accessibilityLabel: String {
             switch self {
-            case .lock: return "页面已加载"
+            case .siteIcon: return "站点图标"
+            case .genericPage: return "页面已加载"
             case .search: return "输入网址"
             }
         }
     }
 
-    public static func addressFieldGlyph(hasLoadedPage: Bool) -> AddressFieldGlyph {
-        hasLoadedPage ? .lock : .search
+    public static func addressFieldLeadingIcon(hasLoadedPage: Bool, hasSiteIcon: Bool) -> AddressFieldLeadingIcon {
+        guard hasLoadedPage else { return .search }
+        return hasSiteIcon ? .siteIcon : .genericPage
     }
 
     /// Colors for the Empty Page's (#16) abstract Liquid Glass composition and de-emphasized

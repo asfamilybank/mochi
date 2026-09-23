@@ -79,9 +79,23 @@ import Testing
         ])
     }
 
-    @Test func addressFieldGlyphSwitchesOnWhetherAPageIsLoaded() {
-        #expect(DesignTokens.addressFieldGlyph(hasLoadedPage: true) == .lock)
-        #expect(DesignTokens.addressFieldGlyph(hasLoadedPage: false) == .search)
+    @Test func addressFieldLeadingIconPrefersTheSitesOwnFaviconOnceItIsAvailable() {
+        #expect(DesignTokens.addressFieldLeadingIcon(hasLoadedPage: true, hasSiteIcon: true) == .siteIcon)
+        #expect(DesignTokens.addressFieldLeadingIcon(hasLoadedPage: true, hasSiteIcon: false) == .genericPage)
+    }
+
+    @Test func addressFieldLeadingIconStaysASearchGlyphUntilSomethingIsLoaded() {
+        for hasSiteIcon in [false, true] {
+            #expect(DesignTokens.addressFieldLeadingIcon(hasLoadedPage: false, hasSiteIcon: hasSiteIcon) == .search)
+        }
+    }
+
+    /// `.siteIcon` draws downloaded bytes, so it is the one state with no symbol to fall back on —
+    /// anything reaching for `symbolName` on it has picked the wrong drawing path.
+    @Test func onlyTheFaviconStateLacksASymbol() {
+        #expect(DesignTokens.AddressFieldLeadingIcon.siteIcon.symbolName == nil)
+        #expect(DesignTokens.AddressFieldLeadingIcon.genericPage.symbolName != nil)
+        #expect(DesignTokens.AddressFieldLeadingIcon.search.symbolName != nil)
     }
 
     /// A mistyped SF Symbol name is otherwise invisible until the glyph silently fails to draw at
@@ -93,11 +107,13 @@ import Testing
         }
     }
 
-    /// The leading glyph tracks whether a page is loaded, not whether it arrived over TLS, so it
-    /// must not announce itself as a security indicator on what may be a plain-http page.
-    @Test func addressFieldGlyphDoesNotClaimSecurity() {
-        for glyph in [DesignTokens.AddressFieldGlyph.lock, .search] {
-            #expect(!glyph.accessibilityLabel.contains("安全"))
+    /// The leading icon says which site is loaded, never how the bytes got here. It used to be a
+    /// lock — every browser's encryption indicator — drawn on plain-http pages too; nothing in
+    /// this enum may drift back toward claiming security.
+    @Test func addressFieldLeadingIconNeverClaimsSecurity() {
+        for icon in [DesignTokens.AddressFieldLeadingIcon.siteIcon, .genericPage, .search] {
+            #expect(!icon.accessibilityLabel.contains("安全"))
+            #expect(icon.symbolName != "lock")
         }
     }
 
