@@ -102,6 +102,13 @@ public final class Orchestrator {
         let addressBarController = AddressBarController(platformOps: platformOps, window: window)
         self.addressBarController = addressBarController
 
+        // On screen before anything loads. WebKit treats a web view in a window that was never
+        // ordered front as not visible and skips building its rendering layers, and nothing later
+        // asks it to reconsider — so a page that finished loading during that window came up blank
+        // and stayed blank until a scroll forced a repaint. A slow page hid this by not finishing
+        // until after the window was already up.
+        platformOps.showWindow(window)
+
         switch StartupResolution.resolveStartupContent(for: config) {
         case .url(let url):
             platformOps.loadURL(url, in: window)
@@ -129,7 +136,6 @@ public final class Orchestrator {
         platformOps.onNavigationFailed(window) { [weak self] message in
             self?.handleNavigationFailed(message)
         }
-        platformOps.showWindow(window)
 
         let ghostModeController = GhostModeController(platformOps: platformOps, window: window, currentConfig: currentConfig)
         self.ghostModeController = ghostModeController

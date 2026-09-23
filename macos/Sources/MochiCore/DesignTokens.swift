@@ -201,6 +201,16 @@ public enum DesignTokens {
         public static let addressFieldMinWidth: Double = 200
         public static let addressFieldMaxWidth: Double = 320
 
+        /// The `.unified` toolbar row's height (ADR-0011 measured it at 52 and pinned the style to
+        /// get it). Used as the *starting* value for the web view's obscured inset and the
+        /// backdrop, before the window can report its real `contentLayoutRect` — which it cannot
+        /// do until it has laid out, i.e. after the startup page has already begun loading.
+        /// Changing that inset mid-load leaves WebKit laid out but never painted (a blank page
+        /// until something forces a redraw), so it has to be right from the first frame rather
+        /// than corrected into place. `updateTitlebarMetrics` still reconciles it against the
+        /// real measurement; they agree in practice, so nothing changes and nothing repaints.
+        public static let normalModeToolbarRowHeight: Double = 52
+
         /// Breathing room left around the address field inside its toolbar item, so the focus
         /// ring AppKit draws *outside* the field's bounds has somewhere to land. `NSToolbarItemViewer`
         /// gives a hosted view only 4pt of horizontal slack, and the ring wants about 3 of its own

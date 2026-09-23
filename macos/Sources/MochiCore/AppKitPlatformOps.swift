@@ -135,21 +135,6 @@ private extension NSColor {
     }
 }
 
-/// Covers the titlebar strip with the system's window background while the page is scrolled to the
-/// top, so the toolbar reads as a solid band rather than showing whatever happens to be behind it.
-///
-/// Drawn from `NSColor` at draw time rather than stamped into a `CALayer.backgroundColor`, so it
-/// re-resolves on its own when the system switches between light and dark.
-private final class TitlebarBackdrop: NSView {
-    override func draw(_ dirtyRect: NSRect) {
-        NSColor.windowBackgroundColor.setFill()
-        dirtyRect.fill()
-    }
-
-    /// Purely a backdrop: clicks belong to the toolbar above it and the page below.
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-}
-
 /// Bridges the injected scroll-position script back into AppKit. A separate object because
 /// `WKUserContentController` retains its message handlers, and having the window handle be its own
 /// handler would make that a retain cycle.
@@ -352,9 +337,10 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     private var currentURL: URL?
     private var isHoveringAddressField = false
     private var isEditingAddressField = false
-    private let titlebarBackdrop: TitlebarBackdrop
-    private let titlebarBackdropHeight: NSLayoutConstraint
     private let contentTopInset: NSLayoutConstraint
+    /// The toolbar-row height the web view's obscured inset is currently set to, so a repeated
+    /// measurement can be recognised and skipped.
+    private var appliedTitlebarHeight: CGFloat
     /// Whether the page is scrolled to its very top. Reported by an injected script — `WKWebView`
     /// has no scroll position to observe from here, and AppKit's own toolbar/scroll coupling only
     /// works for an `NSScrollView` it can find in the content view, which a web view is not.
@@ -368,13 +354,15 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     private let defaultWindowBackgroundColor: NSColor
     private var navigationObservations: [NSKeyValueObservation] = []
     private var appearanceObservation: NSKeyValueObservation?
+    /// `contentLayoutRect` is KVO-compliant and changes exactly when the titlebar strip's height
+    /// becomes known (and whenever it changes after), which beats guessing at a runloop turn.
+    private var contentLayoutObservation: NSKeyValueObservation?
     private var accentColorObserver: NSObjectProtocol?
 
     fileprivate init(
         window: NSWindow, webView: WKWebView, controls: ToolbarControls,
         emptyPageHostingView: NSHostingView<EmptyPageView>, errorPageHostingView: NSHostingView<ErrorPageView>,
-        progressBar: LoadingProgressBar, titlebarBackdrop: TitlebarBackdrop,
-        titlebarBackdropHeight: NSLayoutConstraint, contentTopInset: NSLayoutConstraint
+        progressBar: LoadingProgressBar, contentTopInset: NSLayoutConstraint
     ) {
         self.window = window
         self.webView = webView
@@ -382,9 +370,8 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         self.emptyPageHostingView = emptyPageHostingView
         self.errorPageHostingView = errorPageHostingView
         self.progressBar = progressBar
-        self.titlebarBackdrop = titlebarBackdrop
-        self.titlebarBackdropHeight = titlebarBackdropHeight
         self.contentTopInset = contentTopInset
+        self.appliedTitlebarHeight = contentTopInset.constant
         self.defaultWindowBackgroundColor = window.backgroundColor
         super.init()
         window.delegate = self
@@ -415,9 +402,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
             self?.updateProgressBarColor()
         }
         installPageScrollReporting()
-        // `contentLayoutRect` isn't meaningful until the window has laid out, so the first real
-        // measurement happens a runloop later; `windowDidResize` keeps it current after that.
-        DispatchQueue.main.async { [weak self] in
+        contentLayoutObservation = window.observe(\.contentLayoutRect, options: [.new]) { [weak self] _, _ in
             self?.updateTitlebarMetrics()
         }
         updateTitlebarMetrics()
@@ -431,8 +416,18 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// Height of the strip the toolbar occupies, taken from the window rather than hardcoded so it
     /// tracks the toolbar style and whatever the system decides that row should be. Drives both the
     /// backdrop's height and the web view's obscured inset, so the two can never disagree.
-    private var titlebarHeight: CGFloat {
-        max(0, window.frame.height - window.contentLayoutRect.height)
+    /// `nil` when the window can't answer yet. Before it has laid out, `contentLayoutRect` comes
+    /// back empty and the subtraction yields the *entire* window height — which, applied, made the
+    /// backdrop cover the whole page instead of the toolbar strip (the page appeared to be a grey
+    /// sheet until the first scroll hid the backdrop). A toolbar row can't be half the window, so
+    /// anything that large is the un-laid-out case, not a measurement.
+    private var titlebarHeight: CGFloat? {
+        let layoutHeight = window.contentLayoutRect.height
+        let total = window.frame.height
+        guard layoutHeight > 0, total > layoutHeight else { return nil }
+        let height = total - layoutHeight
+        guard height <= total / 2 else { return nil }
+        return height
     }
 
     /// Keeps the backdrop, the web view's layout viewport and the progress bar in step with the
@@ -441,29 +436,34 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// reposition themselves, and none of it changes when the toolbar's background does — so
     /// scrolling never makes the page jump.
     private func updateTitlebarMetrics() {
-        let height = titlebarHeight
-        guard height > 0 else { return }
-        titlebarBackdropHeight.constant = height
+        guard let height = titlebarHeight else { return }
+        // Only when it actually changed. Re-assigning the same `obscuredContentInsets` makes
+        // WebKit redo layout without repainting, which left the page blank — a flat grey sheet
+        // until the first scroll forced a draw. `contentLayoutRect` fires this more than once
+        // while the window settles, so the repeats are the common case, not the rare one.
+        guard abs(appliedTitlebarHeight - height) > 0.5 else { return }
+        appliedTitlebarHeight = height
         contentTopInset.constant = height
         webView.obscuredContentInsets = NSEdgeInsets(top: height, left: 0, bottom: 0, right: 0)
     }
 
     /// Which of the toolbar's two backgrounds is showing.
     ///
-    /// The titlebar itself never draws one (`titlebarAppearsTransparent`), so this is decided by
-    /// whether the backdrop covers the strip: covered reads as a solid system-colored band, and
-    /// uncovered lets the page scroll up behind the toolbar, where the system's own transparent-
-    /// titlebar treatment softens it — the frosted look.
+    /// At the scroll origin the titlebar draws its own material — an opaque band in the system's
+    /// light or dark color, with nothing of the page behind it. Once the page has scrolled under
+    /// the toolbar the titlebar goes transparent, and the system's treatment of a transparent
+    /// titlebar softens whatever is passing beneath: the frosted look.
     ///
-    /// The softening has to come from there. An `NSVisualEffectView` with `.withinWindow`
-    /// blending draws nothing of the page at all (measured against a solid red page: the strip
-    /// stayed flat grey), because a `WKWebView` renders into its own remote layer and never
-    /// reaches the backdrop sampling a visual effect view does.
+    /// Deliberately not a view of our own laid over the strip. That was tried, and an opaque
+    /// sibling sitting on top of the web view stopped it painting altogether — the whole page
+    /// came up blank, not just the 52 points the view actually covered, because WebKit treats
+    /// being covered as being occluded and stops drawing. Driving the titlebar's own background
+    /// leaves nothing on top of the web view at all.
     private func updateTitlebarBackdrop() {
         // The Empty Page (#16) is its own full-bleed composition — letting it run up under a
-        // transparent toolbar is the point, so no solid band there.
+        // transparent toolbar is the point, so it never gets the opaque band.
         let isShowingWebContent = !webView.isHidden
-        titlebarBackdrop.isHidden = !(isShowingWebContent && isPageAtTop)
+        window.titlebarAppearsTransparent = !(isShowingWebContent && isPageAtTop)
     }
 
     /// Reports whether the page sits at its scroll origin. There is nothing on `WKWebView` to
@@ -905,12 +905,12 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         } else {
             window.styleMask.remove(.titled)
         }
-        // Ghost Mode has no toolbar, so there is no strip to keep the page's layout clear of and
-        // nothing to put a backdrop behind — the page gets the whole window.
+        // Ghost Mode has no toolbar, so there is no strip to keep the page's layout clear of —
+        // the page gets the whole window.
         if visible {
             updateTitlebarMetrics()
         } else {
-            titlebarBackdropHeight.constant = 0
+            appliedTitlebarHeight = 0
             contentTopInset.constant = 0
             webView.obscuredContentInsets = NSEdgeInsets()
         }
@@ -1123,6 +1123,9 @@ public final class AppKitPlatformOps: PlatformOps {
         webViewConfiguration.preferences.isElementFullscreenEnabled = true
         let webView = WKWebView(frame: .zero, configuration: webViewConfiguration)
         webView.translatesAutoresizingMaskIntoConstraints = false
+        // Set before anything loads — see `normalModeToolbarRowHeight`.
+        webView.obscuredContentInsets = NSEdgeInsets(
+            top: DesignTokens.Layout.normalModeToolbarRowHeight, left: 0, bottom: 0, right: 0)
 
         let emptyPageHostingView = NSHostingView(rootView: EmptyPageView())
         emptyPageHostingView.translatesAutoresizingMaskIntoConstraints = false
@@ -1165,26 +1168,20 @@ public final class AppKitPlatformOps: PlatformOps {
         // The content runs the full height of the window (`.fullSizeContentView`), so the page can
         // scroll up behind the toolbar. What keeps its *layout* clear of the toolbar is
         // `obscuredContentInsets`, applied in `updateTitlebarMetrics` — not a smaller frame, which
-        // is why changing the toolbar's background never resizes anything.
-        let titlebarBackdrop = TitlebarBackdrop()
-        titlebarBackdrop.translatesAutoresizingMaskIntoConstraints = false
+        // is why changing the toolbar's background never resizes anything. Nothing is ever layered
+        // on top of the web view: see `updateTitlebarBackdrop`.
         let rootView = NSView()
         rootView.translatesAutoresizingMaskIntoConstraints = false
         rootView.addSubview(contentContainer)
-        rootView.addSubview(titlebarBackdrop)
         rootView.addSubview(progressBar.view)
-        let titlebarBackdropHeight = titlebarBackdrop.heightAnchor.constraint(equalToConstant: 0)
         // The progress bar belongs under the toolbar, not behind it.
-        let contentTopInset = progressBar.view.topAnchor.constraint(equalTo: rootView.topAnchor, constant: 0)
+        let contentTopInset = progressBar.view.topAnchor.constraint(
+            equalTo: rootView.topAnchor, constant: DesignTokens.Layout.normalModeToolbarRowHeight)
         NSLayoutConstraint.activate([
             contentContainer.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
             contentContainer.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
             contentContainer.topAnchor.constraint(equalTo: rootView.topAnchor),
             contentContainer.bottomAnchor.constraint(equalTo: rootView.bottomAnchor),
-            titlebarBackdrop.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
-            titlebarBackdrop.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
-            titlebarBackdrop.topAnchor.constraint(equalTo: rootView.topAnchor),
-            titlebarBackdropHeight,
             progressBar.view.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
             contentTopInset,
         ])
@@ -1197,7 +1194,8 @@ public final class AppKitPlatformOps: PlatformOps {
         )
         // ADR-0009: traffic lights + toolbar content share one native row, rendered with the
         // system's own Liquid Glass material — no `NSGlassEffectView` wrapper needed here.
-        window.titlebarAppearsTransparent = true
+        // Whether the titlebar draws that material or goes transparent is `updateTitlebarBackdrop`'s
+        // call, and it tracks the page's scroll position.
         // The handle owns this window through ARC (#42): AppKit's default of releasing a closed
         // window itself would double-free it under Swift. It is deallocated when `Orchestrator`
         // drops the handle from its will-close callback.
@@ -1216,8 +1214,7 @@ public final class AppKitPlatformOps: PlatformOps {
         let handle = AppKitWidgetWindowHandle(
             window: window, webView: webView, controls: controls,
             emptyPageHostingView: emptyPageHostingView, errorPageHostingView: errorPageHostingView,
-            progressBar: progressBar, titlebarBackdrop: titlebarBackdrop,
-            titlebarBackdropHeight: titlebarBackdropHeight, contentTopInset: contentTopInset
+            progressBar: progressBar, contentTopInset: contentTopInset
         )
 
         let toolbar = NSToolbar(identifier: "MochiNormalModeToolbar")
