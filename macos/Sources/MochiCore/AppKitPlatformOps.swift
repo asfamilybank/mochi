@@ -345,6 +345,8 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// has no scroll position to observe from here, and AppKit's own toolbar/scroll coupling only
     /// works for an `NSScrollView` it can find in the content view, which a web view is not.
     private var isPageAtTop = true
+    /// Held so Normal Mode can put it back after Ghost Mode — see `setNativeChromeVisible`.
+    fileprivate var normalModeToolbar: NSToolbar?
     private let faviconLoader = FaviconLoader()
     /// The current page's favicon, or `nil` while none has been fetched for it. Reset on every
     /// real navigation rather than left to be overwritten — otherwise the previous site's icon
@@ -902,6 +904,14 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     func setNativeChromeVisible(_ visible: Bool) {
         if visible {
             window.styleMask.insert(.titled)
+            // Dropping `.titled` makes AppKit discard the window's toolbar outright — measured:
+            // `window.toolbar` reads back `nil` in Ghost Mode and stays `nil` when `.titled`
+            // returns, so Normal Mode came back with bare traffic lights and no toolbar at all.
+            // Putting the retained one back is the only way it returns. (`.fullSizeContentView`
+            // survives the round trip; only the toolbar is lost.)
+            if window.toolbar == nil {
+                window.toolbar = normalModeToolbar
+            }
         } else {
             window.styleMask.remove(.titled)
         }
@@ -1222,6 +1232,7 @@ public final class AppKitPlatformOps: PlatformOps {
         toolbar.allowsUserCustomization = false
         toolbar.delegate = handle
         window.toolbar = toolbar
+        handle.normalModeToolbar = toolbar
 
         return handle
     }
