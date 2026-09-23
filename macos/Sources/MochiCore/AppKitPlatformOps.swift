@@ -341,6 +341,21 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// The toolbar-row height the web view's obscured inset is currently set to, so a repeated
     /// measurement can be recognised and skipped.
     private var appliedTitlebarHeight: CGFloat
+    /// How much `setNativeChromeVisible(false)` took off the window's height — the toolbar row it
+    /// no longer has — so leaving Ghost Mode can give back exactly that, and a frame captured in
+    /// the meantime can be persisted at its Normal Mode size.
+    private var ghostModeHeightReduction: CGFloat = 0
+    /// Set for the whole of Ghost Mode, transitions included, so `updateTitlebarMetrics` keeps its
+    /// hands off the inset. Removing `.titled` passes through a half-torn-down titlebar, and the
+    /// `contentLayoutRect` observation fires in the middle of it — measured: it read 32pt instead
+    /// of 52, the inset followed, and the page's viewport grew 20pt and shifted up.
+    private var isNativeChromeHidden = false
+    /// The web view's top edge pinned to its container — Normal Mode's sizing.
+    private let webViewTopConstraint: NSLayoutConstraint
+    /// Stands in for `webViewTopConstraint` in Ghost Mode: the web view keeps the height it had
+    /// while the window shrinks around it, so its top (the obscured toolbar strip) hangs off the
+    /// window's top edge and is clipped away.
+    private let webViewGhostModeHeight: NSLayoutConstraint
     /// Whether the page is scrolled to its very top. Reported by an injected script — `WKWebView`
     /// has no scroll position to observe from here, and AppKit's own toolbar/scroll coupling only
     /// works for an `NSScrollView` it can find in the content view, which a web view is not.
@@ -364,7 +379,8 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     fileprivate init(
         window: NSWindow, webView: WKWebView, controls: ToolbarControls,
         emptyPageHostingView: NSHostingView<EmptyPageView>, errorPageHostingView: NSHostingView<ErrorPageView>,
-        progressBar: LoadingProgressBar, contentTopInset: NSLayoutConstraint
+        progressBar: LoadingProgressBar, contentTopInset: NSLayoutConstraint,
+        webViewTopConstraint: NSLayoutConstraint
     ) {
         self.window = window
         self.webView = webView
@@ -374,6 +390,8 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         self.progressBar = progressBar
         self.contentTopInset = contentTopInset
         self.appliedTitlebarHeight = contentTopInset.constant
+        self.webViewTopConstraint = webViewTopConstraint
+        self.webViewGhostModeHeight = webView.heightAnchor.constraint(equalToConstant: 0)
         self.defaultWindowBackgroundColor = window.backgroundColor
         super.init()
         window.delegate = self
@@ -438,7 +456,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// reposition themselves, and none of it changes when the toolbar's background does — so
     /// scrolling never makes the page jump.
     private func updateTitlebarMetrics() {
-        guard let height = titlebarHeight else { return }
+        guard !isNativeChromeHidden, let height = titlebarHeight else { return }
         // Only when it actually changed. Re-assigning the same `obscuredContentInsets` makes
         // WebKit redo layout without repainting, which left the page blank — a flat grey sheet
         // until the first scroll forced a draw. `contentLayoutRect` fires this more than once
@@ -876,7 +894,9 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// The frame `captureWindowState` should persist — `window.frame` itself during element
     /// fullscreen (#38), otherwise the frame from just before entering it.
     var frameToPersist: NSRect {
-        frameBeforeFullscreen ?? window.frame
+        var frame = frameBeforeFullscreen ?? window.frame
+        frame.size.height += ghostModeHeightReduction
+        return frame
     }
 
     /// A page's own fullscreen button (enabled via `isElementFullscreenEnabled`, #38) puts the
@@ -901,6 +921,14 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         frameBeforeFullscreen = nil
     }
 
+    /// Ghost Mode drops the toolbar row from the window itself, without the page ever noticing.
+    /// The window's top edge comes down by the row's height (the origin is the bottom-left, so
+    /// shrinking the height with the origin held does exactly that), but the web view keeps both
+    /// its height and its `obscuredContentInsets`: its obscured strip simply ends up above the
+    /// window and is clipped. Nothing WebKit can see changes, so the page gets no `resize` and
+    /// can't flash. An earlier version zeroed the inset instead, and the inset and the frame
+    /// reach WebKit separately — for a moment the page had the whole old height and reflowed.
+    /// Leaving Ghost Mode raises the top edge back up and re-pins the web view to it.
     func setNativeChromeVisible(_ visible: Bool) {
         if visible {
             window.styleMask.insert(.titled)
@@ -912,18 +940,38 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
             if window.toolbar == nil {
                 window.toolbar = normalModeToolbar
             }
-        } else {
-            window.styleMask.remove(.titled)
-        }
-        // Ghost Mode leaves `obscuredContentInsets` exactly as Normal Mode had it: handing the
-        // toolbar's strip to the page would grow its layout viewport and reflow it on every
-        // toggle. The strip just stays empty while the toolbar is gone. (In Ghost Mode
-        // `titlebarHeight` reads `nil`, so a resize there can't clear the inset either.)
-        if visible {
+            if ghostModeHeightReduction > 0 {
+                var frame = window.frame
+                frame.size.height += ghostModeHeightReduction
+                ghostModeHeightReduction = 0
+                window.setFrame(frame, display: false)
+            }
+            webViewGhostModeHeight.isActive = false
+            webViewTopConstraint.isActive = true
+            contentTopInset.constant = appliedTitlebarHeight
+            isNativeChromeHidden = false
             updateTitlebarMetrics()
+        } else {
+            isNativeChromeHidden = true
+            // A fullscreen window's frame is the screen's, not ours to shrink.
+            let toolbarHeight = window.styleMask.contains(.fullScreen) ? 0 : appliedTitlebarHeight
+            // Pin the height before anything resizes, so no intermediate layout can squeeze it.
+            webViewGhostModeHeight.constant = webView.frame.height
+            webViewTopConstraint.isActive = false
+            webViewGhostModeHeight.isActive = true
+            // The progress bar belongs at the page's visible top, which is now the window's.
+            contentTopInset.constant = 0
+            window.styleMask.remove(.titled)
+            if toolbarHeight > 0 {
+                var frame = window.frame
+                frame.size.height -= toolbarHeight
+                ghostModeHeightReduction = toolbarHeight
+                window.setFrame(frame, display: false)
+            }
         }
         updateTitlebarBackdrop()
     }
+
 
     /// `drawsBackground` is a private WKWebView property (ADR-0001) reached via KVC since it has
     /// no public accessor; it must be `false` for anything below full opacity to show through at
@@ -1149,6 +1197,7 @@ public final class AppKitPlatformOps: PlatformOps {
         // container, each pinned to fill it completely — exactly one is ever visible at a time
         // (see `loadURL`/`showEmptyPage`/`showErrorPage`).
         let contentContainer = NSView()
+        let webViewTopConstraint = webView.topAnchor.constraint(equalTo: contentContainer.topAnchor)
         contentContainer.translatesAutoresizingMaskIntoConstraints = false
         contentContainer.addSubview(webView)
         contentContainer.addSubview(emptyPageHostingView)
@@ -1156,7 +1205,7 @@ public final class AppKitPlatformOps: PlatformOps {
         NSLayoutConstraint.activate([
             webView.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
-            webView.topAnchor.constraint(equalTo: contentContainer.topAnchor),
+            webViewTopConstraint,
             webView.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor),
             emptyPageHostingView.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor),
             emptyPageHostingView.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor),
@@ -1222,7 +1271,8 @@ public final class AppKitPlatformOps: PlatformOps {
         let handle = AppKitWidgetWindowHandle(
             window: window, webView: webView, controls: controls,
             emptyPageHostingView: emptyPageHostingView, errorPageHostingView: errorPageHostingView,
-            progressBar: progressBar, contentTopInset: contentTopInset
+            progressBar: progressBar, contentTopInset: contentTopInset,
+            webViewTopConstraint: webViewTopConstraint
         )
 
         let toolbar = NSToolbar(identifier: "MochiNormalModeToolbar")
