@@ -28,7 +28,7 @@ Widget 的隐身状态，由全局热键整体切换开关。它是一个**不�
 - **始终置顶**（置顶不再是独立开关，只在隐身场景下才有意义）；
 - **永不获得焦点**——进入/停留在 Ghost Mode 期间窗口不成为 key window；只有退出 Ghost Mode 时才激活应用。
 
-退出方式是再次按热键，或点击系统托盘图标（托盘图标在应用运行期间常驻显示，不区分模式）。应用重启后一律先回到 Normal Mode，不自动恢复 Ghost Mode 状态。Ghost Mode 下没有刷新、没有缩放、没有工具栏——要操作就先退出隐身。
+退出方式是再次按热键，或点击系统托盘图标（托盘图标在应用运行期间常驻显示，不区分模式）。应用重启后一律先回到 Normal Mode，不自动恢复 Ghost Mode 状态。Ghost Mode 下没有刷新、没有缩放、没有工具栏——要操作就先退出隐身。网页在 Ghost Mode 期间发起的任何需要用户交互的请求，一律按不打扰的方式直接了结，既不退出隐身、也不挂起等待：权限请求拒绝、弹框按取消/确定了结、下载存到默认位置、Popup Window 不打开。
 _Avoid_: 召唤工具栏（ADR-0006 的旧设计，已被 ADR-0012 砍掉；用户要操作工具栏应先退出 Ghost Mode）
 
 **Hidden（隐藏 / 老板键）**:
@@ -48,8 +48,16 @@ Normal Mode 专属的拖拽磁性吸附，可在设置中关闭：窗口边缘�
 _Avoid_: 磁吸（口语化说法，正式术语用 Snap/吸附）；Pin（置顶）（不再是独立术语——置顶已内化为 Ghost Mode 的固有属性，见 ADR-0012）
 
 **Script Injection（脚本注入）**:
-向 Widget 的网页上下文注入 JavaScript 的统一底层机制，来源分两类：内置的、随应用更新的官方网站适配脚本，与用户自定义脚本。两者技术权限相同，仅在 UI 上区分来源标注。
+向 Widget 的网页上下文注入内容的统一底层机制，来源分三类：内置的、随应用更新的官方网站适配脚本，用户自定义脚本，以及用户自定义样式表（CSS）。三者都在下次加载页面时生效，技术权限相同，仅在 UI 上区分来源标注。
 _Avoid_: 插件、扩展（这两个词专指"安装浏览器扩展/Chrome 插件"这个已延后到 v2 的独立话题，见 [ADR-0005](docs/adr/0005-defer-browser-extension-support.md)）
+
+**Popup Window（弹出窗口）**:
+网页用脚本请求打开、并依赖与原页面保持联系（`window.opener`）的临时子窗口，典型是第三方登录（OAuth）小窗。它从属于 Widget、共享同一份网站数据，页面自行关闭时随之关闭，不是第二个 Widget，也没有 Ghost Mode。用户点击"在新窗口打开"类链接不产生 Popup Window，而是在 Widget 内加载；网页未经用户点击自行弹出的窗口默认被阻止（见 [ADR-0017](docs/adr/0017-popup-window-for-opener-dependent-pages.md)）。
+_Avoid_: 新窗口、第二个 Widget、标签页
+
+**Settings（设置）**:
+应用级的偏好集合，一律全局生效，不按网站区分——Widget 只承载一个网页，没有"网站设置"这一层。与 Safari 语义完全一致的项沿用 Safari 的命名与选项措辞，语义有偏差的另起名字。
+_Avoid_: 网站设置、按站点设置
 
 **Hotkey Forwarding（热键传递）**:
 Ghost Mode 下，把全局热键按用户配置的映射表转发成一次页面按键，用于控制标准网页播放器（播放/暂停/快进等），不需要为每个网站写专属脚本。通过 `CGEventPostToPid` 直接投递给目标进程实现（见 [ADR-0003](docs/adr/0003-hotkey-forwarding-platform-split.md)）。
