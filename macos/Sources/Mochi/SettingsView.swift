@@ -55,7 +55,7 @@ enum SettingsPane: CaseIterable {
             case .window: WindowSettingsTab(viewModel: viewModel)
             case .hotkeys: HotkeysTab(viewModel: viewModel).frame(height: 420)
             case .webContent: EmptySettingsPane()
-            case .scripts: ScriptsTab(viewModel: viewModel).frame(height: 400)
+            case .scripts: ScriptsTab(viewModel: viewModel).frame(height: 560)
             case .advanced: EmptySettingsPane()
             }
         }
@@ -286,10 +286,12 @@ struct HotkeysTab: View {
 struct ScriptsTab: View {
     @ObservedObject var viewModel: SettingsViewModel
     @State private var customScriptText: String
+    @State private var customStylesheetText: String
 
     init(viewModel: SettingsViewModel) {
         self.viewModel = viewModel
         _customScriptText = State(initialValue: viewModel.config.customScript ?? "")
+        _customStylesheetText = State(initialValue: viewModel.config.customStylesheet ?? "")
     }
 
     var body: some View {
@@ -338,6 +340,21 @@ struct ScriptsTab: View {
                 .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3)))
             Button("保存") {
                 viewModel.updateCustomScript(customScriptText.isEmpty ? nil : customScriptText)
+            }
+
+            // #73: third Script Injection source — same next-load rule as the script above.
+            HStack {
+                Text("自定义样式表").font(.headline)
+                Text("用户自定义 · CSS")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            TextEditor(text: $customStylesheetText)
+                .font(.system(.body, design: .monospaced))
+                .frame(minHeight: 120)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3)))
+            Button("保存样式表") {
+                viewModel.updateCustomStylesheet(customStylesheetText.isEmpty ? nil : customStylesheetText)
             }
         }
         .padding(.vertical, 8)

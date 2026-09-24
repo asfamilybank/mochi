@@ -105,6 +105,15 @@ import Testing
         #expect(store.config.customScript == "console.log(1)")
     }
 
+    @Test func updatingCustomStylesheetPersistsThroughTheInjectedStore() {
+        let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
+        let controller = makeController(store: store)
+
+        controller.updateCustomStylesheet("body { color: red; }")
+
+        #expect(store.config.customStylesheet == "body { color: red; }")
+    }
+
     @Test func disablingABuiltInScriptAddsItsIDToTheDisabledSet() {
         let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
         let controller = makeController(store: store)

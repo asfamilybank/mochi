@@ -73,6 +73,10 @@ public final class SettingsController {
         persistAndNotify { $0.updatingCustomScript(script) }
     }
 
+    public func updateCustomStylesheet(_ css: String?) {
+        persistAndNotify { $0.updatingCustomStylesheet(css) }
+    }
+
     public func setBuiltInScript(_ id: String, enabled: Bool) {
         persistAndNotify { config in
             var ids = config.disabledBuiltInScriptIDs

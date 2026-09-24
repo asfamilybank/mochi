@@ -456,6 +456,9 @@ public final class Orchestrator {
         if let customScript = config.customScript, !customScript.isEmpty {
             platformOps.injectScript(customScript, in: window)
         }
+        if let customStylesheet = config.customStylesheet, !customStylesheet.isEmpty {
+            platformOps.injectScript(CustomStylesheet.injectionSource(for: customStylesheet), in: window)
+        }
     }
 
     /// Captures and persists the current window state. Called when the window closes,

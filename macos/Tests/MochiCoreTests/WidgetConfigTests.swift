@@ -144,6 +144,24 @@ import Testing
         #expect(reparsed == original)
     }
 
+    // #73: custom stylesheet — third Script Injection source.
+
+    @Test func customStylesheetIsNilWhenAbsentAndNotSerialized() throws {
+        let config = try WidgetConfig.parse("url = \"https://example.com\"")
+        #expect(config.customStylesheet == nil)
+        #expect(!config.serialized().contains("custom_stylesheet"))
+    }
+
+    @Test func serializingThenReparsingRoundTripsCustomStylesheet() throws {
+        let original = WidgetConfig(url: URL(string: "https://example.com")!)
+            .updatingCustomStylesheet("body { color: red; }\n/* \"q\" */")
+
+        let reparsed = try WidgetConfig.parse(original.serialized())
+
+        #expect(reparsed == original)
+        #expect(reparsed.customStylesheet == "body { color: red; }\n/* \"q\" */")
+    }
+
     @Test func ghostOpacityDefaultsWhenAbsent() throws {
         let config = try WidgetConfig.parse("url = \"https://example.com\"")
         #expect(config.ghostOpacity == WidgetConfig.defaultGhostOpacity)

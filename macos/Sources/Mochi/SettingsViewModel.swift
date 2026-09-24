@@ -49,6 +49,11 @@ final class SettingsViewModel: ObservableObject {
         config = controller.config
     }
 
+    func updateCustomStylesheet(_ css: String?) {
+        controller.updateCustomStylesheet(css)
+        config = controller.config
+    }
+
     func setBuiltInScript(_ id: String, enabled: Bool) {
         controller.setBuiltInScript(id, enabled: enabled)
         config = controller.config

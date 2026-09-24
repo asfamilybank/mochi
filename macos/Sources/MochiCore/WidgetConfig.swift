@@ -39,6 +39,10 @@ public struct WidgetConfig: Equatable {
     /// migration and the file never fills up with entries that just restate the defaults. Read
     /// through `hotkey(for:)`, never directly.
     public var hotkeyOverrides: [HotkeyAction: Hotkey]
+    /// #73: inline CSS injected on every navigation (see `CustomStylesheet`); `nil` = none,
+    /// and then omitted from `config.toml`. Not an init parameter — set via
+    /// `updatingCustomStylesheet`, so the long memberwise init stays untouched.
+    public var customStylesheet: String? = nil
 
     public init(
         url: URL? = nil, windowState: WindowState? = nil, customScript: String? = nil,
@@ -87,7 +91,7 @@ extension WidgetConfig {
 
     public static func parse(_ tomlString: String) throws -> WidgetConfig {
         let table = try TOMLTable(string: tomlString)
-        return WidgetConfig(
+        var config = WidgetConfig(
             url: try parseURL(from: table),
             windowState: parseWindowState(from: table["window"]?.table),
             customScript: table["custom_script"]?.string,
@@ -99,6 +103,8 @@ extension WidgetConfig {
             disabledBuiltInScriptIDs: Set(table["disabled_built_in_scripts"]?.array?.compactMap(\.string) ?? []),
             hotkeyOverrides: parseHotkeyOverrides(from: table["hotkeys"]?.table)
         )
+        config.customStylesheet = table["custom_stylesheet"]?.string
+        return config
     }
 
     /// `nil` when the `url` key is absent (#16: a fresh install with no browsing history yet is
@@ -197,6 +203,9 @@ extension WidgetConfig {
         if let customScript {
             table["custom_script"] = customScript
         }
+        if let customStylesheet {
+            table["custom_stylesheet"] = customStylesheet
+        }
         if let windowState {
             let windowTable = TOMLTable()
             windowTable["x"] = windowState.frame.x
@@ -273,6 +282,12 @@ extension WidgetConfig {
     public func updatingCustomScript(_ customScript: String?) -> WidgetConfig {
         var copy = self
         copy.customScript = customScript
+        return copy
+    }
+
+    public func updatingCustomStylesheet(_ customStylesheet: String?) -> WidgetConfig {
+        var copy = self
+        copy.customStylesheet = customStylesheet
         return copy
     }
 

@@ -1076,6 +1076,33 @@ enum TrayScenario: Sendable {
         #expect(!fake.injectedScripts.map(\.source).contains(BuiltInScripts.all[0].source))
     }
 
+    // #73: the custom stylesheet is injected (as a `<style>`-creating script) on every
+    // navigation, read live; cleared -> nothing injected.
+
+    @Test func injectsTheCustomStylesheetConfiguredAtNavigationTime() {
+        let fake = FakePlatformOps()
+        var config = WidgetConfig(url: URL(string: "https://example.com")!)
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+        orchestrator.start()
+        config.customStylesheet = "body { color: red; }"
+
+        fake.simulateNavigationFinished()
+
+        #expect(fake.injectedScripts.map(\.source).last == CustomStylesheet.injectionSource(for: "body { color: red; }"))
+    }
+
+    @Test func injectsNothingForAClearedCustomStylesheet() {
+        let fake = FakePlatformOps()
+        var config = WidgetConfig(url: URL(string: "https://example.com")!)
+        config.customStylesheet = ""
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+        orchestrator.start()
+
+        fake.simulateNavigationFinished()
+
+        #expect(fake.injectedScripts.count == BuiltInScripts.all.count)
+    }
+
     @Test func entersGhostModeAtTheOpacityConfiguredNowNotAtLaunch() {
         let fake = FakePlatformOps()
         var config = WidgetConfig(url: URL(string: "https://example.com")!, ghostOpacity: 0.2)
