@@ -577,4 +577,46 @@ import Testing
         #expect(snapOff.isSnapEnabled == false && snapOff.isMouseAvoidanceEnabled == true && snapOff.url == config.url)
         #expect(avoidanceOff.isMouseAvoidanceEnabled == false && avoidanceOff.isSnapEnabled == true)
     }
+
+    // #70: autoplay policy and minimum font size.
+
+    @Test func autoplayAndMinimumFontSizeDefaultWhenAbsent() throws {
+        let config = try WidgetConfig.parse("url = \"https://example.com\"")
+        #expect(config.autoplayPolicy == .allowAll)
+        #expect(config.minimumFontSize == nil)
+    }
+
+    @Test(arguments: [
+        (raw: "allow_all", expected: WidgetConfig.AutoplayPolicy.allowAll),
+        (raw: "stop_media_with_sound", expected: .stopMediaWithSound),
+        (raw: "never", expected: .never),
+        (raw: "bogus", expected: .allowAll),
+    ])
+    func parsesAutoplayPolicyFallingBackToDefault(_ row: (raw: String, expected: WidgetConfig.AutoplayPolicy)) throws {
+        let config = try WidgetConfig.parse("autoplay = \"\(row.raw)\"")
+        #expect(config.autoplayPolicy == row.expected)
+    }
+
+    @Test(arguments: [
+        (raw: "14", expected: Optional(14)),
+        (raw: "9", expected: 9),
+        (raw: "13", expected: nil),
+        (raw: "-1", expected: nil),
+        (raw: "\"big\"", expected: nil),
+    ])
+    func parsesMinimumFontSizeOnlyFromTheOfferedSizes(_ row: (raw: String, expected: Int?)) throws {
+        let config = try WidgetConfig.parse("minimum_font_size = \(row.raw)")
+        #expect(config.minimumFontSize == row.expected)
+    }
+
+    @Test func serializingThenReparsingRoundTripsAutoplayAndMinimumFontSize() throws {
+        var original = WidgetConfig(url: URL(string: "https://example.com")!)
+        original.autoplayPolicy = .never
+        original.minimumFontSize = 18
+
+        let reparsed = try WidgetConfig.parse(original.serialized())
+
+        #expect(reparsed == original)
+        #expect(!WidgetConfig().serialized().contains("minimum_font_size"))
+    }
 }

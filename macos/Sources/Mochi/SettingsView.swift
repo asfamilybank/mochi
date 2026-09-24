@@ -54,9 +54,9 @@ enum SettingsPane: CaseIterable {
             case .general: GeneralSettingsTab(viewModel: viewModel)
             case .window: WindowSettingsTab(viewModel: viewModel)
             case .hotkeys: HotkeysTab(viewModel: viewModel).frame(height: 420)
-            case .webContent: EmptySettingsPane()
+            case .webContent: WebContentSettingsTab(viewModel: viewModel)
             case .scripts: ScriptsTab(viewModel: viewModel).frame(height: 560)
-            case .advanced: EmptySettingsPane()
+            case .advanced: AdvancedSettingsTab(viewModel: viewModel)
             }
         }
         .padding(20)
@@ -64,13 +64,96 @@ enum SettingsPane: CaseIterable {
     }
 }
 
-/// 网页内容 and 高级 until their first settings land (#64's child tickets). Empty rather than
-/// hidden so the pane skeleton lives in exactly one place.
-private struct EmptySettingsPane: View {
+/// 网页内容 (#70). A `Form` of `Section`s so later #64 tickets can append their own sections.
+struct WebContentSettingsTab: View {
+    @ObservedObject var viewModel: SettingsViewModel
+
     var body: some View {
-        Form {}
-            .formStyle(.columns)
-            .frame(height: 60)
+        Form {
+            Section {
+                Picker(
+                    "自动播放：",
+                    selection: Binding(
+                        get: { viewModel.config.autoplayPolicy },
+                        set: { viewModel.updateAutoplayPolicy($0) }
+                    )
+                ) {
+                    ForEach(WidgetConfig.AutoplayPolicy.allCases, id: \.self) { policy in
+                        Text(policy.displayName).tag(policy)
+                    }
+                }
+                .pickerStyle(.menu)
+                .fixedSize()
+                // The one setting that is not live: WebKit reads it only when the web view is
+                // created, so say so and offer the reopen that applies it.
+                HStack {
+                    Text("下次打开窗口时生效")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button("重新打开窗口") { viewModel.reopenWidgetNow() }
+                        .controlSize(.small)
+                }
+            }
+        }
+        .formStyle(.columns)
+    }
+}
+
+/// 高级 (#70). Same `Form`/`Section` skeleton as 网页内容, open for later tickets to append to.
+struct AdvancedSettingsTab: View {
+    @ObservedObject var viewModel: SettingsViewModel
+
+    /// The size the popup shows while the checkbox is off, so ticking it restores the last pick.
+    @State private var chosenMinimumFontSize: Int
+
+    init(viewModel: SettingsViewModel) {
+        self.viewModel = viewModel
+        _chosenMinimumFontSize = State(initialValue: viewModel.config.minimumFontSize ?? 9)
+    }
+
+    var body: some View {
+        Form {
+            Section("辅助功能") {
+                HStack {
+                    Toggle(
+                        "字体大小不得小于",
+                        isOn: Binding(
+                            get: { viewModel.config.minimumFontSize != nil },
+                            set: { viewModel.updateMinimumFontSize($0 ? chosenMinimumFontSize : nil) }
+                        )
+                    )
+                    Picker(
+                        "字体大小不得小于",
+                        selection: Binding(
+                            get: { chosenMinimumFontSize },
+                            set: { size in
+                                chosenMinimumFontSize = size
+                                if viewModel.config.minimumFontSize != nil { viewModel.updateMinimumFontSize(size) }
+                            }
+                        )
+                    ) {
+                        ForEach(WidgetConfig.offeredMinimumFontSizes, id: \.self) { size in
+                            Text("\(size)").tag(size)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .fixedSize()
+                    .disabled(viewModel.config.minimumFontSize == nil)
+                }
+            }
+        }
+        .formStyle(.columns)
+    }
+}
+
+extension WidgetConfig.AutoplayPolicy {
+    fileprivate var displayName: String {
+        switch self {
+        case .allowAll: "允许全部自动播放"
+        case .stopMediaWithSound: "停止有声媒体"
+        case .never: "永不自动播放"
+        }
     }
 }
 

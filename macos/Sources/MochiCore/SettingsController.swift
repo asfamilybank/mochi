@@ -69,6 +69,16 @@ public final class SettingsController {
         persistAndNotify { $0.updatingSnapEnabled(enabled) }
     }
 
+    /// #70 — applies on the next widget open (see `WidgetConfig.autoplayPolicy`).
+    public func updateAutoplayPolicy(_ policy: WidgetConfig.AutoplayPolicy) {
+        persistAndNotify { $0.updatingAutoplayPolicy(policy) }
+    }
+
+    /// #70 — `nil` removes the limit; pushed live through `configDidChange`.
+    public func updateMinimumFontSize(_ size: Int?) {
+        persistAndNotify { $0.updatingMinimumFontSize(size) }
+    }
+
     public func updateCustomScript(_ script: String?) {
         persistAndNotify { $0.updatingCustomScript(script) }
     }

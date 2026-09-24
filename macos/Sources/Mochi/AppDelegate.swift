@@ -62,6 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             configDidChange: { orchestrator.reapplyConfiguration() }
         )
         let settingsViewModel = SettingsViewModel(controller: settingsController, reloadPage: { orchestrator.reloadPage() })
+        settingsViewModel.reopenWidget = { orchestrator.reopenWidget() }
         settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)
 
         let mainMenuBuilder = MainMenuBuilder()

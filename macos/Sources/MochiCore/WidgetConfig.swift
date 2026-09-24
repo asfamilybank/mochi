@@ -44,6 +44,22 @@ public struct WidgetConfig: Equatable {
     /// `updatingCustomStylesheet`, so the long memberwise init stays untouched.
     public var customStylesheet: String? = nil
 
+    /// 网页内容 → 自动播放 (#70), Safari's three options mapped onto WebKit's
+    /// `mediaTypesRequiringUserActionForPlayback`. Read once, when the web view is created — the
+    /// public API has no per-navigation equivalent — so an edit applies on the next open.
+    public enum AutoplayPolicy: String, CaseIterable, Equatable, Sendable {
+        case allowAll = "allow_all"
+        case stopMediaWithSound = "stop_media_with_sound"
+        case never = "never"
+    }
+
+    /// Defaults to `.allowAll`: a widget reopened on a video page should just keep playing.
+    public var autoplayPolicy: AutoplayPolicy = .allowAll
+
+    /// 高级 → 字体大小不得小于 (#70). `nil` = no limit (the checkbox unticked); otherwise one of
+    /// `offeredMinimumFontSizes`. Pushed to the live web view by `Orchestrator.reapplyConfiguration`.
+    public var minimumFontSize: Int?
+
     public init(
         url: URL? = nil, windowState: WindowState? = nil, customScript: String? = nil,
         ghostOpacity: Double = WidgetConfig.defaultGhostOpacity, isMouseAvoidanceEnabled: Bool = true,
@@ -78,6 +94,10 @@ public enum WidgetConfigError: Error, Equatable {
 extension WidgetConfig {
     public static let defaultGhostOpacity: Double = 0.2
 
+    /// The sizes the 字体大小不得小于 popup offers (Safari's list, #70). A hand-edited value outside
+    /// it falls back to "no limit" rather than being honoured, so the popup can always show it.
+    public static let offeredMinimumFontSizes: [Int] = [9, 10, 11, 12, 14, 18, 24]
+
     public static var defaultConfigURL: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Mochi", isDirectory: true)
@@ -104,6 +124,11 @@ extension WidgetConfig {
             hotkeyOverrides: parseHotkeyOverrides(from: table["hotkeys"]?.table)
         )
         config.customStylesheet = table["custom_stylesheet"]?.string
+        // #70 — invalid values fall back to the defaults, like the rest of this hand-editable file.
+        config.autoplayPolicy = table["autoplay"]?.string.flatMap(AutoplayPolicy.init(rawValue:)) ?? .allowAll
+        config.minimumFontSize = table["minimum_font_size"]?.int.flatMap {
+            offeredMinimumFontSizes.contains($0) ? $0 : nil
+        }
         return config
     }
 
@@ -250,6 +275,11 @@ extension WidgetConfig {
             }
             table["hotkeys"] = hotkeysTable
         }
+        // #70
+        table["autoplay"] = autoplayPolicy.rawValue
+        if let minimumFontSize {
+            table["minimum_font_size"] = minimumFontSize
+        }
         return table.convert()
     }
 
@@ -318,6 +348,18 @@ extension WidgetConfig {
     public func updatingSnapEnabled(_ enabled: Bool) -> WidgetConfig {
         var copy = self
         copy.isSnapEnabled = enabled
+        return copy
+    }
+
+    public func updatingAutoplayPolicy(_ policy: AutoplayPolicy) -> WidgetConfig {
+        var copy = self
+        copy.autoplayPolicy = policy
+        return copy
+    }
+
+    public func updatingMinimumFontSize(_ size: Int?) -> WidgetConfig {
+        var copy = self
+        copy.minimumFontSize = size
         return copy
     }
 

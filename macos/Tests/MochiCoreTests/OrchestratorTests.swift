@@ -1422,6 +1422,64 @@ private extension FakePlatformOps {
         case .openLocation: addressBarFocuses.count
         }
     }
+
+    // #70: autoplay is fixed at web-view creation; minimum font size is pushed live.
+
+    @Test func createsTheWidgetWithTheAutoplayPolicyConfiguredAtOpenTime() {
+        let fake = FakePlatformOps()
+        var config = WidgetConfig(url: URL(string: "https://example.com")!)
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+        orchestrator.start()
+        config.autoplayPolicy = .never
+
+        orchestrator.reopenWidget()
+
+        #expect(fake.createdAutoplayPolicies == [.allowAll, .never])
+    }
+
+    @Test func reopenWidgetClosesThroughTheRealClosePathThenOpensAFreshWidget() {
+        let fake = FakePlatformOps()
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        var persisted: [WindowState] = []
+        let orchestrator = Orchestrator(
+            platformOps: fake, currentConfig: { config }, persistWindowState: { persisted.append($0) })
+        orchestrator.start()
+
+        orchestrator.reopenWidget()
+
+        #expect(fake.closedWindowIDs == [1])
+        #expect(persisted.count == 1)
+        #expect(fake.createdFrames.count == 2)
+        #expect(fake.loadedURLs.map(\.windowID) == [1, 2])
+        #expect(orchestrator.hasActiveWidget)
+    }
+
+    @Test func reopenWidgetWithNoWidgetJustOpensOne() {
+        let fake = FakePlatformOps()
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+        orchestrator.start()
+        orchestrator.closeWidget()
+
+        orchestrator.reopenWidget()
+
+        #expect(fake.closedWindowIDs == [1])
+        #expect(fake.createdFrames.count == 2)
+    }
+
+    @Test func minimumFontSizeIsAppliedOnOpenAndReappliedLive() {
+        let fake = FakePlatformOps()
+        var config = WidgetConfig(url: URL(string: "https://example.com")!)
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+        orchestrator.start()
+        config.minimumFontSize = 14
+        orchestrator.reapplyConfiguration()
+        config.minimumFontSize = nil
+        orchestrator.reapplyConfiguration()
+
+        #expect(fake.minimumFontSizeChanges.map(\.size) == [nil, 14, nil])
+        #expect(fake.minimumFontSizeChanges.map(\.windowID) == [1, 1, 1])
+    }
 }
 
 private extension Double {

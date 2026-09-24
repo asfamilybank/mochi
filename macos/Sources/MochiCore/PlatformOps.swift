@@ -86,7 +86,9 @@ public struct NavigationState: Equatable {
 }
 
 public protocol PlatformOps: AnyObject {
-    func createWidgetWindow(initialFrame: WindowFrame) -> WidgetWindowHandle
+    /// `autoplayPolicy` (#70) is baked into the web view's configuration here — WebKit only
+    /// reads it at creation, which is why changing it means reopening the widget.
+    func createWidgetWindow(initialFrame: WindowFrame, autoplayPolicy: WidgetConfig.AutoplayPolicy) -> WidgetWindowHandle
     func loadURL(_ url: URL, in window: WidgetWindowHandle)
 
     /// Shows the Empty Page's native content (#16) in place of the page area — the
@@ -242,6 +244,9 @@ public protocol PlatformOps: AnyObject {
     /// snaps from is a `WindowSnapping` constant, not a setting — a knob whose effect nobody can
     /// judge is worse than no knob (ADR-0012). Snapping is inherently Normal-Mode-only: it acts
     /// during a manual drag, and a Ghost Mode window is click-through and usually invisible.
+    /// 字体大小不得小于 (#70): `nil` removes the limit. Applies to the live page immediately.
+    func setMinimumFontSize(_ size: Int?, in window: WidgetWindowHandle)
+
     func setSnapEnabled(_ enabled: Bool, in window: WidgetWindowHandle)
 
     /// Creates the app's persistent menu-bar (tray) icon (#9) — present for the app's entire
@@ -294,4 +299,12 @@ public protocol PlatformOps: AnyObject {
     /// focus from whatever app the user is actually looking at (ADR-0003). Callers are expected
     /// to only invoke this once `isAccessibilityTrusted()` is `true`.
     func forwardKeystroke(_ keystroke: Hotkey)
+}
+
+// #70
+extension PlatformOps {
+    /// Convenience for callers that don't care about autoplay (tests, mostly).
+    func createWidgetWindow(initialFrame: WindowFrame) -> WidgetWindowHandle {
+        createWidgetWindow(initialFrame: initialFrame, autoplayPolicy: .allowAll)
+    }
 }

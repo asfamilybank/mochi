@@ -31,6 +31,9 @@ final class FakePlatformOps: PlatformOps {
     }
     private(set) var presentedAlerts: [(title: String, message: String)] = []
     private(set) var snapEnabledChanges: [(enabled: Bool, windowID: Int)] = []
+    // #70
+    private(set) var createdAutoplayPolicies: [WidgetConfig.AutoplayPolicy] = []
+    private(set) var minimumFontSizeChanges: [(size: Int?, windowID: Int)] = []
     private(set) var trayMenuItems: [TrayMenuItem] = []
     private(set) var createTrayIconCallCount = 0
     private(set) var closedWindowIDs: [Int] = []
@@ -68,7 +71,8 @@ final class FakePlatformOps: PlatformOps {
     var stubbedCapturedWindowState = WindowState(
         frame: WindowFrame(x: 0, y: 0, width: 1024, height: 768), zoom: 1.0)
 
-    func createWidgetWindow(initialFrame: WindowFrame) -> WidgetWindowHandle {
+    func createWidgetWindow(initialFrame: WindowFrame, autoplayPolicy: WidgetConfig.AutoplayPolicy) -> WidgetWindowHandle {
+        createdAutoplayPolicies.append(autoplayPolicy)
         createdFrames.append(initialFrame)
         return FakeWidgetWindowHandle(id: createdFrames.count)
     }
@@ -246,6 +250,11 @@ final class FakePlatformOps: PlatformOps {
 
     func presentAlert(title: String, message: String) {
         presentedAlerts.append((title, message))
+    }
+
+    func setMinimumFontSize(_ size: Int?, in window: WidgetWindowHandle) {
+        let handle = window as! FakeWidgetWindowHandle
+        minimumFontSizeChanges.append((size, handle.id))
     }
 
     func setSnapEnabled(_ enabled: Bool, in window: WidgetWindowHandle) {

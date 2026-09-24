@@ -1616,7 +1616,7 @@ public final class AppKitPlatformOps: PlatformOps {
         reopenRequestedHandler?()
     }
 
-    public func createWidgetWindow(initialFrame: WindowFrame) -> WidgetWindowHandle {
+    public func createWidgetWindow(initialFrame: WindowFrame, autoplayPolicy: WidgetConfig.AutoplayPolicy) -> WidgetWindowHandle {
         let rect = NSRect(x: initialFrame.x, y: initialFrame.y, width: initialFrame.width, height: initialFrame.height)
         // Element Fullscreen (#38) is off by default on macOS — without it, a page's own
         // fullscreen button silently does nothing. Picture-in-Picture needs no configuration
@@ -1626,6 +1626,12 @@ public final class AppKitPlatformOps: PlatformOps {
         // disabling it.
         let webViewConfiguration = WKWebViewConfiguration()
         webViewConfiguration.preferences.isElementFullscreenEnabled = true
+        // 自动播放 (#70): Safari's three options, as the public creation-time switch.
+        switch autoplayPolicy {
+        case .allowAll: webViewConfiguration.mediaTypesRequiringUserActionForPlayback = []
+        case .stopMediaWithSound: webViewConfiguration.mediaTypesRequiringUserActionForPlayback = .audio
+        case .never: webViewConfiguration.mediaTypesRequiringUserActionForPlayback = .all
+        }
         let webView = WidgetWebView(frame: .zero, configuration: webViewConfiguration)
         webView.translatesAutoresizingMaskIntoConstraints = false
         // Set before anything loads — see `normalModeToolbarRowHeight`.
@@ -2046,6 +2052,13 @@ public final class AppKitPlatformOps: PlatformOps {
         alert.informativeText = message
         alert.alertStyle = .warning
         alert.runModal()
+    }
+
+    /// #70. `WKPreferences` is shared by reference with the live web view, so this reaches the
+    /// current page; 0 is WebKit's "no minimum".
+    public func setMinimumFontSize(_ size: Int?, in window: WidgetWindowHandle) {
+        guard let handle = handle(for: window) else { return }
+        handle.webView.configuration.preferences.minimumFontSize = CGFloat(size ?? 0)
     }
 
     public func setSnapEnabled(_ enabled: Bool, in window: WidgetWindowHandle) {

@@ -156,7 +156,7 @@ public final class Orchestrator {
         let config = currentConfig()
         let screens = platformOps.visibleScreens()
         let frame = WindowPlacement.resolve(persisted: config.windowState?.frame, visibleScreens: screens)
-        let window = platformOps.createWidgetWindow(initialFrame: frame)
+        let window = platformOps.createWidgetWindow(initialFrame: frame, autoplayPolicy: config.autoplayPolicy)
         self.window = window
         self.currentZoom = config.windowState?.zoom ?? 1.0
 
@@ -182,6 +182,7 @@ public final class Orchestrator {
         }
         platformOps.setToolbarVisible(true, in: window)
         platformOps.setSnapEnabled(config.isSnapEnabled, in: window)
+        platformOps.setMinimumFontSize(config.minimumFontSize, in: window)
         platformOps.onWindowWillClose(window) { [weak self] in
             self?.handleWindowWillClose()
         }
@@ -213,6 +214,14 @@ public final class Orchestrator {
     public func closeWidget() {
         guard let window else { return }
         platformOps.closeWidgetWindow(window)
+    }
+
+    /// The settings panel's 重新打开窗口 button (#70): the full close + reopen, so the widget comes
+    /// back exactly as a fresh launch would — the one way to apply settings WebKit reads only at
+    /// web-view creation (autoplay). With no widget open it simply opens one.
+    public func reopenWidget() {
+        closeWidget()
+        openWidget()
     }
 
     /// The single teardown point for both close entries. Persists geometry while the window still
@@ -321,6 +330,7 @@ public final class Orchestrator {
     public func reapplyConfiguration() {
         guard let window else { return }
         platformOps.setSnapEnabled(currentConfig().isSnapEnabled, in: window)
+        platformOps.setMinimumFontSize(currentConfig().minimumFontSize, in: window)
         ghostModeController?.reapplyConfiguration()
     }
 

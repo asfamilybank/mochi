@@ -13,6 +13,8 @@ import MochiCore
 final class SettingsViewModel: ObservableObject {
     private let controller: SettingsController
     private let reloadPage: () -> Void
+    /// #70's 重新打开窗口 — `Orchestrator.reopenWidget`. Defaulted so other wiring stays untouched.
+    var reopenWidget: () -> Void = {}
     @Published private(set) var config: WidgetConfig
 
     /// - Parameter reloadPage: the scripts tab's 刷新页面 button (#46) — the one click that makes a
@@ -57,6 +59,21 @@ final class SettingsViewModel: ObservableObject {
     func setBuiltInScript(_ id: String, enabled: Bool) {
         controller.setBuiltInScript(id, enabled: enabled)
         config = controller.config
+    }
+
+    // #70
+    func updateAutoplayPolicy(_ policy: WidgetConfig.AutoplayPolicy) {
+        controller.updateAutoplayPolicy(policy)
+        config = controller.config
+    }
+
+    func updateMinimumFontSize(_ size: Int?) {
+        controller.updateMinimumFontSize(size)
+        config = controller.config
+    }
+
+    func reopenWidgetNow() {
+        reopenWidget()
     }
 
     func reloadPageNow() {

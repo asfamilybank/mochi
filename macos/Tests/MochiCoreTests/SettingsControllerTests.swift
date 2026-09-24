@@ -619,4 +619,29 @@ import Testing
         #expect(store.writeCount == 0)
         #expect(fake.presentedAlerts.count == 1)
     }
+
+    // #70
+
+    @Test func updatingAutoplayPolicyPersistsAndNotifies() {
+        let store = PersistedStore(WidgetConfig())
+        var notified = 0
+        let controller = makeController(store: store, configDidChange: { notified += 1 })
+
+        controller.updateAutoplayPolicy(.stopMediaWithSound)
+
+        #expect(store.config.autoplayPolicy == .stopMediaWithSound)
+        #expect(notified == 1)
+    }
+
+    @Test func updatingMinimumFontSizePersistsAndNotifiesAndNilClearsIt() {
+        let store = PersistedStore(WidgetConfig())
+        var notified = 0
+        let controller = makeController(store: store, configDidChange: { notified += 1 })
+
+        controller.updateMinimumFontSize(12)
+        #expect(store.config.minimumFontSize == 12)
+        controller.updateMinimumFontSize(nil)
+        #expect(store.config.minimumFontSize == nil)
+        #expect(notified == 2)
+    }
 }
