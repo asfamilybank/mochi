@@ -364,7 +364,7 @@ public enum DesignTokens {
             switch self {
             case .siteIcon: return "站点图标"
             case .genericPage: return "页面已加载"
-            case .search: return "输入网址"
+            case .search: return "搜索或输入网址"
             }
         }
     }

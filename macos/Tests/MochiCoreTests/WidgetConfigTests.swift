@@ -655,3 +655,38 @@ import Testing
         #expect(try WidgetConfig.parse(original.serialized()) == original)
     }
 }
+
+@Suite struct WidgetConfigSearchEngineTests {
+    @Test func defaultsToGoogleWhenAbsent() throws {
+        #expect(try WidgetConfig.parse("").searchEngine == .google)
+        #expect(WidgetConfig().searchEngine == .google)
+    }
+
+    @Test(arguments: [
+        (raw: "google", expected: SearchEngine.google),
+        (raw: "bing", expected: SearchEngine.bing),
+        (raw: "duckduckgo", expected: SearchEngine.duckDuckGo),
+        (raw: "baidu", expected: SearchEngine.baidu),
+        (raw: "yahoo", expected: SearchEngine.google),
+    ])
+    func parsesSearchEngineFallingBackToGoogle(_ row: (raw: String, expected: SearchEngine)) throws {
+        #expect(try WidgetConfig.parse("search_engine = '\(row.raw)'").searchEngine == row.expected)
+    }
+
+    @Test func nonStringValueFallsBackToGoogle() throws {
+        #expect(try WidgetConfig.parse("search_engine = 3").searchEngine == .google)
+    }
+
+    @Test(arguments: SearchEngine.allCases)
+    func roundTripsEveryEngine(_ engine: SearchEngine) throws {
+        let config = WidgetConfig().updatingSearchEngine(engine)
+        #expect(try WidgetConfig.parse(config.serialized()).searchEngine == engine)
+    }
+
+    @Test func updatingSearchEngineChangesOnlyThatField() {
+        let config = WidgetConfig(url: URL(string: "https://example.com")!, isSnapEnabled: false)
+        let updated = config.updatingSearchEngine(.baidu)
+        #expect(updated.searchEngine == .baidu)
+        #expect(updated.url == config.url && updated.isSnapEnabled == false)
+    }
+}

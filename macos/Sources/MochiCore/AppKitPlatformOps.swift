@@ -552,6 +552,8 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     private let addressFieldHoverTracker = HoverTracker()
     private var willCloseHandler: (() -> Void)?
     private var urlSubmittedHandler: ((URL) -> Void)?
+    /// Asked on every submit (#71) so a 通用-pane change applies to the very next search.
+    var searchEngineProvider: () -> SearchEngine = { .google }
     private var ghostModeToggleRequestedHandler: (() -> Void)?
     private var navigationFinishedHandler: (() -> Void)?
     private var navigationFailedHandler: ((String) -> Void)?
@@ -1523,21 +1525,13 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         guard control === controls.addressBar.field, commandSelector == #selector(NSResponder.insertNewline(_:)) else {
             return false
         }
-        guard let url = Self.resolveURL(from: controls.addressBar.field.stringValue) else { return true }
+        guard let url = AddressInput.resolve(controls.addressBar.field.stringValue, searchEngine: searchEngineProvider())
+        else { return true }
         urlSubmittedHandler?(url)
         // Blurs the field, which fires `controlTextDidEndEditing` and reverts the display back to
         // the (new) page's title once it loads — matches story #4's "submit closes edit mode".
         window.makeFirstResponder(nil)
         return true
-    }
-
-    private static func resolveURL(from input: String) -> URL? {
-        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        if let url = URL(string: trimmed), url.scheme != nil {
-            return url
-        }
-        return URL(string: "https://\(trimmed)")
     }
 
     func setPageTitleChangedHandler(_ handler: @escaping (String?) -> Void) {
@@ -1635,6 +1629,10 @@ public final class AppKitPlatformOps: PlatformOps {
     private var reopenRequestedHandler: (() -> Void)?
 
     public init() {}
+
+    /// The app target points this at its live config (#71): the Smart Address Field reads the
+    /// search engine at the moment of each submit, never a snapshot.
+    public var searchEngineProvider: () -> SearchEngine = { .google }
 
     /// `AppDelegate`'s `applicationShouldHandleReopen` (#42) — the Dock-icon click — forwards
     /// here; there is no notification for it, only that delegate callback, so the app target has
@@ -1781,6 +1779,7 @@ public final class AppKitPlatformOps: PlatformOps {
         toolbar.centeredItemIdentifiers = [AppKitWidgetWindowHandle.addressItemID]
         window.toolbar = toolbar
         handle.normalModeToolbar = toolbar
+        handle.searchEngineProvider = { [weak self] in self?.searchEngineProvider() ?? .google }
 
         return handle
     }
@@ -1805,7 +1804,7 @@ public final class AppKitPlatformOps: PlatformOps {
         refreshButton.identifier = refreshID
         refreshButton.setAccessibilityIdentifier(refreshID.rawValue)
         let addressBar = AddressBarView(refreshButton: refreshButton)
-        addressBar.field.placeholderString = "输入网址"
+        addressBar.field.placeholderString = "搜索或输入网址"
         // The leading site icon: the page's favicon, or a symbol standing in for it
         // (`updateAddressFieldIcons` owns which).
         addressBar.leadingIconView.image = ToolbarStyle.symbolImage(

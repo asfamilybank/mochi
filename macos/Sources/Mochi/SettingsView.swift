@@ -237,9 +237,23 @@ struct GeneralSettingsTab: View {
                 if startupKind == .url {
                     // Placeholder kept generic rather than a sample domain — an example URL in a
                     // field that already means "type a URL here" only adds a site nobody asked about.
-                    // Same wording as the address bar's own placeholder.
+                    // Not the address bar's "搜索或输入网址": this field only takes a URL.
                     TextField("输入网址", text: $startupURLText)
                         .onSubmit { applyStartupTarget(kind: .url) }
+                }
+            }
+
+            Section("搜索") {
+                Picker(
+                    "搜索引擎",
+                    selection: Binding(
+                        get: { viewModel.config.searchEngine },
+                        set: { viewModel.updateSearchEngine($0) }
+                    )
+                ) {
+                    ForEach(SearchEngine.allCases, id: \.self) { engine in
+                        Text(engine.displayName).tag(engine)
+                    }
                 }
             }
         }

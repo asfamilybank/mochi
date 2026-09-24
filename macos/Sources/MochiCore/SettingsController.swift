@@ -94,6 +94,10 @@ public final class SettingsController {
         platformOps.removeAllWebsiteData()
     }
 
+    public func updateSearchEngine(_ engine: SearchEngine) {
+        persistAndNotify { $0.updatingSearchEngine(engine) }
+    }
+
     public func updateCustomScript(_ script: String?) {
         persistAndNotify { $0.updatingCustomScript(script) }
     }

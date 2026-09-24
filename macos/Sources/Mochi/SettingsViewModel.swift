@@ -41,6 +41,11 @@ final class SettingsViewModel: ObservableObject {
         config = controller.config
     }
 
+    func updateSearchEngine(_ engine: SearchEngine) {
+        controller.updateSearchEngine(engine)
+        config = controller.config
+    }
+
     func updateSnapEnabled(_ enabled: Bool) {
         controller.updateSnapEnabled(enabled)
         config = controller.config

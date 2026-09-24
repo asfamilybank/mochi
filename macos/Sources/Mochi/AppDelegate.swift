@@ -46,6 +46,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             try? currentConfig.write(to: configURL)
         }
 
+        platformOps.searchEngineProvider = { currentConfig.searchEngine }
+
         let orchestrator = Orchestrator(
             platformOps: platformOps,
             currentConfig: { currentConfig },

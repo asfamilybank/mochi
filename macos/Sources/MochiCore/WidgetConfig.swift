@@ -66,13 +66,18 @@ public struct WidgetConfig: Equatable {
     /// 高级 → 显示网页开发者功能 (#72), off by default — `WKWebView.isInspectable`.
     public var isWebInspectorEnabled: Bool = false
 
+    /// Where the Smart Address Field sends non-address input (#71), Google by default. Edited
+    /// from the 通用 pane and read at the moment of each submit, never cached.
+    public var searchEngine: SearchEngine
+
     public init(
         url: URL? = nil, windowState: WindowState? = nil, customScript: String? = nil,
         ghostOpacity: Double = WidgetConfig.defaultGhostOpacity, isMouseAvoidanceEnabled: Bool = true,
         isSnapEnabled: Bool = true,
         hotkeyMappings: [HotkeyMapping] = [], startupTarget: StartupTarget? = nil,
         disabledBuiltInScriptIDs: Set<String> = [],
-        hotkeyOverrides: [HotkeyAction: Hotkey] = [:]
+        hotkeyOverrides: [HotkeyAction: Hotkey] = [:],
+        searchEngine: SearchEngine = .google
     ) {
         self.url = url
         self.windowState = windowState
@@ -84,6 +89,7 @@ public struct WidgetConfig: Equatable {
         self.startupTarget = startupTarget
         self.disabledBuiltInScriptIDs = disabledBuiltInScriptIDs
         self.hotkeyOverrides = hotkeyOverrides
+        self.searchEngine = searchEngine
     }
 
     /// The combo currently in effect for `action`: the user's override if there is one, else the
@@ -127,7 +133,8 @@ extension WidgetConfig {
             hotkeyMappings: parseHotkeyMappings(from: table["hotkey_mappings"]?.array),
             startupTarget: parseStartupTarget(from: table["startup_target"]?.table),
             disabledBuiltInScriptIDs: Set(table["disabled_built_in_scripts"]?.array?.compactMap(\.string) ?? []),
-            hotkeyOverrides: parseHotkeyOverrides(from: table["hotkeys"]?.table)
+            hotkeyOverrides: parseHotkeyOverrides(from: table["hotkeys"]?.table),
+            searchEngine: table["search_engine"]?.string.flatMap(SearchEngine.init(rawValue:)) ?? .google
         )
         config.customStylesheet = table["custom_stylesheet"]?.string
         // #70 — invalid values fall back to the defaults, like the rest of this hand-editable file.
@@ -236,6 +243,7 @@ extension WidgetConfig {
         table["snap_enabled"] = isSnapEnabled
         table["http_warning_enabled"] = isHTTPWarningEnabled
         table["web_inspector_enabled"] = isWebInspectorEnabled
+        table["search_engine"] = searchEngine.rawValue
         if let customScript {
             table["custom_script"] = customScript
         }
@@ -383,6 +391,12 @@ extension WidgetConfig {
     public func updatingWebInspectorEnabled(_ enabled: Bool) -> WidgetConfig {
         var copy = self
         copy.isWebInspectorEnabled = enabled
+        return copy
+    }
+
+    public func updatingSearchEngine(_ searchEngine: SearchEngine) -> WidgetConfig {
+        var copy = self
+        copy.searchEngine = searchEngine
         return copy
     }
 
