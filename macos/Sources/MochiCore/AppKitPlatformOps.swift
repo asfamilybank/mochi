@@ -426,6 +426,41 @@ private final class HoverIconButton: NSButton {
 /// when clicked, so the bar's field editor goes away, but a SwiftUI host never accepts first
 /// responder and a click on it would otherwise leave the bar focused indefinitely. Buttons in the
 /// page (the error page's 重试) still get the click — this only clears focus before passing it on.
+/// The widget's web view. Everything it changes is about the strip it runs under the toolbar
+/// (`.fullSizeContentView` + `obscuredContentInsets`). That strip is harmless while the titlebar
+/// draws its opaque material, but once the page scrolls and the titlebar goes transparent
+/// (`updateTitlebarBackdrop`), AppKit and WebKit both start treating the web view as if it were
+/// what sits there:
+///
+/// - **Dragging.** With a transparent titlebar, AppKit decides whether a drag in the toolbar
+///   moves the window by asking the content under it, and `WKWebView` is opaque, which makes its
+///   `mouseDownCanMoveWindow` `false`. The toolbar stopped moving the window after the slightest
+///   scroll. Returning `true` restores it. This doesn't make the page itself a drag handle: the
+///   window isn't `isMovableByWindowBackground`, and a drag in the page still selects text
+///   (measured with a harness, in both titlebar states).
+/// - **The cursor.** WebKit tracks the mouse over its whole bounds through a private tracking
+///   object, strip included, so pointing at the toolbar showed the page's cursor for whatever lay
+///   beneath (an I-beam over text, a hand over a link). That object can't be overridden, but
+///   WebKit leaves the cursor alone while an AppKit cursor rect is in force, so the strip gets an
+///   arrow rect of its own.
+///
+/// Clicks were never affected: the toolbar hit-tests above the web view in both states.
+private final class WidgetWebView: WKWebView {
+    override var mouseDownCanMoveWindow: Bool { true }
+
+    override var obscuredContentInsets: NSEdgeInsets {
+        didSet { window?.invalidateCursorRects(for: self) }
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        let top = obscuredContentInsets.top
+        guard top > 0 else { return }
+        addCursorRect(
+            NSRect(x: 0, y: isFlipped ? 0 : bounds.height - top, width: bounds.width, height: top), cursor: .arrow)
+    }
+}
+
 private final class NativePageHostingView<Content: View>: NSHostingView<Content> {
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(nil)
@@ -1591,7 +1626,7 @@ public final class AppKitPlatformOps: PlatformOps {
         // disabling it.
         let webViewConfiguration = WKWebViewConfiguration()
         webViewConfiguration.preferences.isElementFullscreenEnabled = true
-        let webView = WKWebView(frame: .zero, configuration: webViewConfiguration)
+        let webView = WidgetWebView(frame: .zero, configuration: webViewConfiguration)
         webView.translatesAutoresizingMaskIntoConstraints = false
         // Set before anything loads — see `normalModeToolbarRowHeight`.
         webView.obscuredContentInsets = NSEdgeInsets(
