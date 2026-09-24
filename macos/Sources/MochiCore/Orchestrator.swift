@@ -6,8 +6,10 @@ import Foundation
 public enum WidgetCommand: CaseIterable, Sendable {
     /// 文件 → 关闭窗口 (⌘W).
     case close
-    /// 显示 → 刷新 (⌘R).
+    /// 显示 → 重新载入页面 (⌘R). Offered mid-load too — reloading is how you retry a stuck page.
     case reload
+    /// 显示 → 停止 (⌘., #60). Only while the page is loading.
+    case stop
     /// 显示 → 放大 (⌘+).
     case zoomIn
     /// 显示 → 缩小 (⌘-).
@@ -316,6 +318,8 @@ public final class Orchestrator {
             return platformOps.navigationState(of: window).canGoForward
         case .close, .reload, .zoomIn, .zoomOut, .resetZoom:
             return window != nil
+        case .stop:
+            return window.map { platformOps.navigationState(of: $0).isLoading } ?? false
         }
     }
 
@@ -326,6 +330,7 @@ public final class Orchestrator {
         switch command {
         case .close: closeWidget()
         case .reload: reloadPage()
+        case .stop: stopLoading()
         case .zoomIn: zoomIn()
         case .zoomOut: zoomOut()
         case .resetZoom: resetZoom()
@@ -346,11 +351,17 @@ public final class Orchestrator {
     }
 
     /// Reloads the current page — the perform side of `WidgetCommand.reload` (#37's Display menu
-    /// "刷新", ⌘R). Also the settings panel's 刷新页面 button (#46), the one action that makes a
+    /// "重新载入页面", ⌘R). Also the settings panel's 刷新页面 button (#46), the one action that makes a
     /// script edit apply.
     public func reloadPage() {
         guard let window else { return }
         platformOps.reloadPage(in: window)
+    }
+
+    /// Stops the page's in-flight load — the perform side of `WidgetCommand.stop` (#60).
+    private func stopLoading() {
+        guard let window else { return }
+        platformOps.stopLoading(in: window)
     }
 
     public func zoomIn() {

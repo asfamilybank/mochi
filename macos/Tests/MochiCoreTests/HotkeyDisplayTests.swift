@@ -30,6 +30,13 @@ import Testing
         #expect(HotkeyDisplay.describe(DefaultHotkeys.openSettings) == "⌘,")
     }
 
+    /// ⌘. (#60) is reserved, so a mapping conflict with it must read as "⌘.", not a key code.
+    @Test func describesTheStopShortcutAndKeepsItReserved() {
+        let stop = Hotkey(keyCode: 0x2F, modifierFlags: 0x0100)
+        #expect(HotkeyDisplay.describe(stop) == "⌘.")
+        #expect(DefaultHotkeys.reservedLocalMenuShortcuts.contains(stop))
+    }
+
     @Test func splitsAComboIntoOneGlyphPerKeyInTheSameOrder() {
         let hotkey = Hotkey(keyCode: 0x0B, modifierFlags: 0x0200 | 0x0100)
         #expect(HotkeyDisplay.keys(of: hotkey) == ["⇧", "⌘", "B"])

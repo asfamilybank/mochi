@@ -50,7 +50,8 @@ public enum DefaultHotkeys {
     /// on a single keypress whenever Mochi has focus (code review finding, #36/#37/#38/#44
     /// review).
     public static let reservedLocalMenuShortcuts: [Hotkey] = [
-        Hotkey(keyCode: 0x0F, modifierFlags: cmd),  // ⌘R 刷新, kVK_ANSI_R
+        Hotkey(keyCode: 0x0F, modifierFlags: cmd),  // ⌘R 重新载入页面, kVK_ANSI_R
+        Hotkey(keyCode: 0x2F, modifierFlags: cmd),  // ⌘. 停止 (#60), kVK_ANSI_Period
         Hotkey(keyCode: 0x18, modifierFlags: cmd),  // ⌘+ 放大, kVK_ANSI_Equal
         Hotkey(keyCode: 0x1B, modifierFlags: cmd),  // ⌘- 缩小, kVK_ANSI_Minus
         Hotkey(keyCode: 0x1D, modifierFlags: cmd),  // ⌘0 实际大小, kVK_ANSI_0

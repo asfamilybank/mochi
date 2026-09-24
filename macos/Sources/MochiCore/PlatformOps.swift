@@ -196,6 +196,10 @@ public protocol PlatformOps: AnyObject {
     /// Reloads the widget's currently-loaded page — the default 刷新页面 hotkey's (#12) action.
     func reloadPage(in window: WidgetWindowHandle)
 
+    /// Stops the widget's in-flight page load (#60) — the Display menu's 停止 (⌘.). The address
+    /// bar's embedded stop icon calls the same AppKit path directly.
+    func stopLoading(in window: WidgetWindowHandle)
+
     /// The page's current back/forward/loading state (#57), read on demand — the answers the
     /// toolbar's own back/forward segments are enabled by, so the main menu can never disagree
     /// with them. Loading is reported as `false` while the Empty Page is up: nothing the user can

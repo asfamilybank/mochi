@@ -37,6 +37,7 @@ final class FakePlatformOps: PlatformOps {
     private var reopenRequestedHandler: (() -> Void)?
     private(set) var terminateAppCallCount = 0
     private(set) var reloadedWindowIDs: [Int] = []
+    private(set) var stoppedLoadingWindowIDs: [Int] = []
     private(set) var accessibilityPermissionRequestCount = 0
     private(set) var forwardedKeystrokes: [Hotkey] = []
     private(set) var windowTitleChanges: [(title: String, windowID: Int)] = []
@@ -259,6 +260,11 @@ final class FakePlatformOps: PlatformOps {
     func reloadPage(in window: WidgetWindowHandle) {
         let handle = window as! FakeWidgetWindowHandle
         reloadedWindowIDs.append(handle.id)
+    }
+
+    func stopLoading(in window: WidgetWindowHandle) {
+        let handle = window as! FakeWidgetWindowHandle
+        stoppedLoadingWindowIDs.append(handle.id)
     }
 
     func navigationState(of window: WidgetWindowHandle) -> NavigationState {

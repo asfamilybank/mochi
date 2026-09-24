@@ -217,6 +217,22 @@ private final class AddressBarView: NSView {
         }
     }
 
+    /// Refresh or stop (#60) — same button, same frame, only its glyph and tooltip change, so the
+    /// swap never moves the text.
+    var trailingAction: AddressFieldPresenter.EmbeddedTrailingAction = .reload {
+        didSet {
+            guard trailingAction != oldValue else { return }
+            applyTrailingAction()
+        }
+    }
+
+    func applyTrailingAction() {
+        refreshButton.image = ToolbarStyle.symbolImage(
+            trailingAction.symbolName, accessibilityDescription: trailingAction.toolTip,
+            pointSize: ToolbarStyle.GlyphSize.addressFieldEmbedded)
+        refreshButton.toolTip = trailingAction.toolTip
+    }
+
     /// The site icon holds the leading edge (mirroring refresh) instead of travelling with the
     /// text — on a page. The Empty Page's magnifying glass stays centered with its placeholder.
     var pinsIcon = false {
@@ -606,7 +622,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         controls.navigationControl.target = self
         controls.navigationControl.action = #selector(navigationSegmentClicked(_:))
         controls.addressBar.refreshButton.target = self
-        controls.addressBar.refreshButton.action = #selector(reload)
+        controls.addressBar.refreshButton.action = #selector(embeddedTrailingButtonClicked)
         observeNavigationState()
         updateAddressFieldIcons()
         updateAddressFieldDisplay()
@@ -938,6 +954,21 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         webView.reload()
     }
 
+    /// Called by `AppKitPlatformOps.stopLoading(in:)` (#60) and the embedded stop icon. The
+    /// `isLoading` KVO that follows swaps the icon back to refresh.
+    func stopLoading() {
+        webView.stopLoading()
+    }
+
+    /// Acts on what the icon shows right now, not on a fresh read of `isLoading` — a click on
+    /// stop must never turn into a reload because the load finished a moment earlier.
+    @objc private func embeddedTrailingButtonClicked() {
+        switch controls.addressBar.trailingAction {
+        case .reload: reload()
+        case .stop: stopLoading()
+        }
+    }
+
     /// Ghost Mode's always-on-top level (ADR-0012). There is no toolbar control or persisted
     /// state behind this any more — `GhostModeController` is the only caller.
     func setPinned(_ pinned: Bool) {
@@ -1015,6 +1046,8 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         // way while editing (`showsEmbeddedRefreshIcon`), and a page pins its icon.
         controls.addressBar.isRefreshVisible = AddressFieldPresenter.showsEmbeddedRefreshIcon(
             hasNavigatedAtLeastOnce: isShowingPage, isEditing: state.isEditable)
+        controls.addressBar.trailingAction = AddressFieldPresenter.embeddedTrailingAction(
+            isLoading: isLoading && !isShowingEmptyPage)
         controls.addressBar.pinsIcon = isShowingPage
         controls.addressBar.isEditing = state.isEditable
         // The display layout hugs the text, so a new title/URL moves it.
@@ -1686,11 +1719,13 @@ public final class AppKitPlatformOps: PlatformOps {
     private func makeToolbarControls() -> ToolbarControls {
         // Refresh lives inside the capsule (ADR-0011) rather than as a standalone `NSToolbarItem`.
         // Visibility (hidden until the first real navigation) is owned by `updateAddressFieldIcons`.
+        // Its glyph and tooltip swap to stop while loading (#60, `AddressBarView.trailingAction`).
+        let initialAction = AddressFieldPresenter.EmbeddedTrailingAction.reload
         let refreshButton = embeddedButton(
             image: ToolbarStyle.symbolImage(
-                DesignTokens.Symbol.refresh, accessibilityDescription: "刷新",
+                initialAction.symbolName, accessibilityDescription: initialAction.toolTip,
                 pointSize: ToolbarStyle.GlyphSize.addressFieldEmbedded))
-        refreshButton.toolTip = "刷新页面"
+        refreshButton.toolTip = initialAction.toolTip
         // Stable handle for UI automation and accessibility tooling (Safari's own is `ReloadButton`).
         let refreshID = NSUserInterfaceItemIdentifier("com.mochi.addressBar.reload")
         refreshButton.identifier = refreshID
@@ -1844,6 +1879,11 @@ public final class AppKitPlatformOps: PlatformOps {
     public func reloadPage(in window: WidgetWindowHandle) {
         guard let handle = handle(for: window) else { return }
         handle.reload()
+    }
+
+    public func stopLoading(in window: WidgetWindowHandle) {
+        guard let handle = handle(for: window) else { return }
+        handle.stopLoading()
     }
 
     public func navigationState(of window: WidgetWindowHandle) -> NavigationState {

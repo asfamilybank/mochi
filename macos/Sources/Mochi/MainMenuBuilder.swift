@@ -102,7 +102,11 @@ final class MainMenuBuilder {
     private func viewMenuItem(orchestrator: Orchestrator) -> NSMenuItem {
         let menu = NSMenu(title: "显示")
 
-        menu.addItem(widgetCommand(.reload, "刷新", symbol: "arrow.clockwise", keyEquivalent: "r", orchestrator: orchestrator))
+        // 停止 (#60) shares the address bar's stop glyph; `canPerform` offers it only mid-load.
+        menu.addItem(
+            widgetCommand(.stop, "停止", symbol: DesignTokens.Symbol.stop, keyEquivalent: ".", orchestrator: orchestrator))
+        menu.addItem(
+            widgetCommand(.reload, "重新载入页面", symbol: "arrow.clockwise", keyEquivalent: "r", orchestrator: orchestrator))
         menu.addItem(.separator())
         menu.addItem(
             widgetCommand(.zoomIn, "放大", symbol: "plus.magnifyingglass", keyEquivalent: "+", orchestrator: orchestrator))

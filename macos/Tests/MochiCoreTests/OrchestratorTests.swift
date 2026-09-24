@@ -1051,7 +1051,7 @@ private struct GhostModeEntrySignature: Equatable {
 
     @Test func leavingGhostModeMakesTheWidgetCommandsPerformableAgain() {
         let (fake, orchestrator) = makeOrchestrator(in: .ghostMode)
-        fake.stubbedNavigationState = NavigationState(canGoBack: true, canGoForward: true)
+        fake.stubbedNavigationState = NavigationState(canGoBack: true, canGoForward: true, isLoading: true)
 
         fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
 
@@ -1168,6 +1168,50 @@ private struct GhostModeEntrySignature: Equatable {
         #expect(fake.mousePassthroughChanges.count == passthroughChanges)
     }
 
+    // #60: 停止 is offered only while the page is loading, on top of #57's rules
+
+    @Test(arguments: [
+        (state: WidgetStateUnderTest.noWidget, isLoading: true, canPerform: false),
+        (state: .noWidget, isLoading: false, canPerform: false),
+        (state: .normalMode, isLoading: true, canPerform: true),
+        (state: .normalMode, isLoading: false, canPerform: false),
+        (state: .ghostMode, isLoading: true, canPerform: false),
+        (state: .ghostMode, isLoading: false, canPerform: false),
+    ])
+    func stopCanOnlyBePerformedWhileTheWidgetsPageIsLoading(
+        _ row: (state: WidgetStateUnderTest, isLoading: Bool, canPerform: Bool)
+    ) {
+        let (fake, orchestrator) = makeOrchestrator(in: row.state)
+        fake.stubbedNavigationState.isLoading = row.isLoading
+
+        #expect(orchestrator.canPerform(.stop) == row.canPerform)
+    }
+
+    @Test(arguments: [
+        (state: WidgetStateUnderTest.noWidget, isLoading: true, performs: false),
+        (state: .normalMode, isLoading: true, performs: true),
+        (state: .normalMode, isLoading: false, performs: false),
+        (state: .ghostMode, isLoading: true, performs: false),
+    ])
+    func performingStopForwardsToPlatformOpsOnlyWhenItCanBePerformed(
+        _ row: (state: WidgetStateUnderTest, isLoading: Bool, performs: Bool)
+    ) {
+        let (fake, orchestrator) = makeOrchestrator(in: row.state)
+        fake.stubbedNavigationState.isLoading = row.isLoading
+
+        orchestrator.perform(.stop)
+
+        #expect(fake.stoppedLoadingWindowIDs == (row.performs ? [1] : []))
+    }
+
+    /// 重新载入页面 stays offered mid-load — only 停止 depends on the loading state.
+    @Test func reloadStaysPerformableWhileThePageIsLoading() {
+        let (fake, orchestrator) = makeOrchestrator(in: .normalMode)
+        fake.stubbedNavigationState.isLoading = true
+
+        #expect(orchestrator.canPerform(.reload))
+    }
+
     private func makeOrchestrator(in state: WidgetStateUnderTest) -> (FakePlatformOps, Orchestrator) {
         let fake = FakePlatformOps()
         let config = WidgetConfig(url: URL(string: "https://example.com")!)
@@ -1192,6 +1236,7 @@ private extension FakePlatformOps {
         switch command {
         case .close: closedWindowIDs.count
         case .reload: reloadedWindowIDs.count
+        case .stop: stoppedLoadingWindowIDs.count
         case .zoomIn, .zoomOut, .resetZoom: appliedZooms.count
         case .goBack: wentBackWindowIDs.count
         case .goForward: wentForwardWindowIDs.count

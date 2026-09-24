@@ -116,6 +116,29 @@ import Testing
             hasNavigatedAtLeastOnce: true, isEditing: true) == false)
     }
 
+    // #60: the trailing embedded icon is refresh when idle and stop while loading (Safari's)
+
+    @Test(arguments: [
+        (isLoading: false, action: AddressFieldPresenter.EmbeddedTrailingAction.reload),
+        (isLoading: true, action: .stop),
+    ])
+    func embeddedTrailingActionFollowsTheLoadingState(
+        _ row: (isLoading: Bool, action: AddressFieldPresenter.EmbeddedTrailingAction)
+    ) {
+        #expect(AddressFieldPresenter.embeddedTrailingAction(isLoading: row.isLoading) == row.action)
+    }
+
+    @Test(arguments: [
+        (action: AddressFieldPresenter.EmbeddedTrailingAction.reload, symbol: "arrow.clockwise", toolTip: "刷新"),
+        (action: .stop, symbol: "xmark", toolTip: "停止"),
+    ])
+    func embeddedTrailingActionsCarryTheirSymbolAndToolTip(
+        _ row: (action: AddressFieldPresenter.EmbeddedTrailingAction, symbol: String, toolTip: String)
+    ) {
+        #expect(row.action.symbolName == row.symbol)
+        #expect(row.action.toolTip == row.toolTip)
+    }
+
     @Test func windowTitleFallsBackFromTitleToHostToMochi() {
         #expect(AddressFieldPresenter.windowTitle(pageTitle: "Title", host: Self.host) == "Title")
         #expect(AddressFieldPresenter.windowTitle(pageTitle: nil, host: Self.host) == Self.host)

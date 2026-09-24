@@ -309,13 +309,15 @@ public enum DesignTokens {
         public static let back = "chevron.left"
         public static let forward = "chevron.right"
         public static let refresh = "arrow.clockwise"
+        /// The address bar's embedded stop (#60) and the Display menu's 停止 — Safari's own.
+        public static let stop = "xmark"
         /// The error page's (#38) failure glyph.
         public static let failure = "exclamationmark.triangle"
 
         /// Every symbol name the app can ask for, the address field's drawn states included.
         /// `.siteIcon` contributes nothing here — it draws a downloaded favicon, not a symbol.
         public static let all: [String] = [
-            back, forward, refresh, failure,
+            back, forward, refresh, stop, failure,
             AddressFieldLeadingIcon.genericPage.symbolName!, AddressFieldLeadingIcon.search.symbolName!,
         ]
     }

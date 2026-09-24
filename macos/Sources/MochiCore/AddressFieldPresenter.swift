@@ -63,11 +63,36 @@ public enum AddressFieldPresenter {
     /// Hidden on the Empty Page — before any real navigation there is nothing to reload, matching
     /// that state's existing "no independent URL input" spirit — and shown from the first
     /// navigation onward — except while the field is being edited: the address being typed is
-    /// not the page refresh would reload, and the room goes to the text instead. Deliberately
-    /// *not* a loading/stop toggle (ADR-0011): the icon means "refresh" in every state, so
-    /// `isLoading` is not an input here.
+    /// not the page refresh would reload, and the room goes to the text instead. Whether the icon
+    /// is refresh or stop is `embeddedTrailingAction(isLoading:)`'s question, not this one's.
     public static func showsEmbeddedRefreshIcon(hasNavigatedAtLeastOnce: Bool, isEditing: Bool) -> Bool {
         hasNavigatedAtLeastOnce && !isEditing
+    }
+
+    /// What the trailing embedded icon does when clicked (#60) — Safari's refresh ↔ stop swap.
+    public enum EmbeddedTrailingAction: Equatable, Sendable {
+        case reload
+        case stop
+
+        public var symbolName: String {
+            switch self {
+            case .reload: DesignTokens.Symbol.refresh
+            case .stop: DesignTokens.Symbol.stop
+            }
+        }
+
+        public var toolTip: String {
+            switch self {
+            case .reload: "刷新"
+            case .stop: "停止"
+            }
+        }
+    }
+
+    /// Stop while the page is loading, refresh otherwise. Visibility is separate
+    /// (`showsEmbeddedRefreshIcon`): the Empty Page and editing still hide the icon either way.
+    public static func embeddedTrailingAction(isLoading: Bool) -> EmbeddedTrailingAction {
+        isLoading ? .stop : .reload
     }
 
     /// `NSWindow.title`'s fallback chain (#18) — one level deeper than the address field's own
