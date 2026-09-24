@@ -36,6 +36,7 @@ public final class Orchestrator {
     private let persistWindowState: (WindowState) -> Void
     private let persistURL: (URL) -> Void
     private let openSettings: () -> Void
+    private let openAbout: () -> Void
     private var window: WidgetWindowHandle?
     private var ghostModeController: GhostModeController?
     private var addressBarController: AddressBarController?
@@ -55,13 +56,15 @@ public final class Orchestrator {
         currentConfig: @escaping () -> WidgetConfig,
         persistWindowState: @escaping (WindowState) -> Void = { _ in },
         persistURL: @escaping (URL) -> Void = { _ in },
-        openSettings: @escaping () -> Void = {}
+        openSettings: @escaping () -> Void = {},
+        openAbout: @escaping () -> Void = {}
     ) {
         self.platformOps = platformOps
         self.currentConfig = currentConfig
         self.persistWindowState = persistWindowState
         self.persistURL = persistURL
         self.openSettings = openSettings
+        self.openAbout = openAbout
     }
 
     /// Launch. Everything app-global — and therefore done exactly once, never again on a reopen
@@ -383,6 +386,17 @@ public final class Orchestrator {
     /// settings entry and the tray's "打开设置" item already share.
     public func openSettingsPanel() {
         openSettings()
+    }
+
+    /// Opens the standard About panel (#62) — the App menu's 关于 Mochi, and the one entry point
+    /// the tray's 关于 Mochi is meant to reuse, so there is only ever one About. `openAbout`
+    /// orders the panel front; activating afterwards (rather than before) makes the panel the key
+    /// window when Mochi wasn't active — the tray case — instead of AppKit reaching for the
+    /// widget, which in Ghost Mode must never become key (ADR-0012). The widget and its mode are
+    /// left untouched either way. Activating an already-active app (the App menu case) is a no-op.
+    public func openAboutPanel() {
+        openAbout()
+        platformOps.activateApp()
     }
 
     private func applyZoomStep(_ step: Double) {

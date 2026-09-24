@@ -191,6 +191,21 @@ import Testing
         #expect(fake.presentedAlerts.count == 1)
     }
 
+    /// #62: the App menu's 隐藏 Mochi (⌘H) and 隐藏其他 (⌥⌘H) are local menu shortcuts too, so a
+    /// mapping can't claim either — ⌥⌘H in particular is the combo #58 gave back to every app.
+    @Test(arguments: [Hotkey(keyCode: 0x04, modifierFlags: 0x0100), Hotkey(keyCode: 0x04, modifierFlags: 0x0900)])
+    func addingAMappingOnAnAppMenuHideShortcutFails(trigger: Hotkey) {
+        let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
+        let fake = FakePlatformOps()
+        let controller = makeController(store: store, platformOps: fake)
+
+        let succeeded = controller.addHotkeyMapping(trigger: trigger, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
+
+        #expect(!succeeded)
+        #expect(store.config.hotkeyMappings.isEmpty)
+        #expect(fake.registeredHotkeys.isEmpty)
+    }
+
     @Test func addingAMappingWhoseTriggerAlreadyExistsInTheMappingTableFailsWithoutTouchingTheOS() {
         let existing = HotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0), pageKeystroke: Hotkey(keyCode: 9, modifierFlags: 0))
         let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!, hotkeyMappings: [existing]))

@@ -59,6 +59,10 @@ public enum DefaultHotkeys {
         Hotkey(keyCode: 0x21, modifierFlags: cmd),  // ⌘[ 返回 (#59), kVK_ANSI_LeftBracket
         Hotkey(keyCode: 0x1E, modifierFlags: cmd),  // ⌘] 前进 (#59), kVK_ANSI_RightBracket
         Hotkey(keyCode: 0x25, modifierFlags: cmd),  // ⌘L 打开位置…, kVK_ANSI_L
+        Hotkey(keyCode: 0x04, modifierFlags: cmd),  // ⌘H 隐藏 Mochi (#62), kVK_ANSI_H
+        // ⌥⌘H 隐藏其他 (#62). Also the combo #58 moved Mochi's own default off of: a mapping
+        // claiming it would steal 隐藏其他 from every app all over again.
+        Hotkey(keyCode: 0x04, modifierFlags: cmd | option),
     ]
 }
 

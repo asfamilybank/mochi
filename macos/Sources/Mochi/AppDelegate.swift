@@ -51,7 +51,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             currentConfig: { currentConfig },
             persistWindowState: { windowState in persist { $0.updatingWindowState(windowState) } },
             persistURL: { url in persist { $0.updatingURL(url) } },
-            openSettings: { [unowned self] in self.settingsWindowController?.show() }
+            openSettings: { [unowned self] in self.settingsWindowController?.show() },
+            openAbout: { AboutPanel.show() }
         )
         self.orchestrator = orchestrator
 

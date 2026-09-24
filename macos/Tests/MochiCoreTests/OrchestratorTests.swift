@@ -478,6 +478,43 @@ private struct GhostModeEntrySignature: Equatable {
         #expect(openSettingsCallCount == 1)
     }
 
+    /// #62: the About panel's one entry point, shared by the App menu and (later) the tray. The
+    /// panel is put up *before* the app is activated — the same order as the settings panel — so
+    /// activation lands on the panel as the key window rather than on the widget.
+    @Test func openingTheAboutPanelShowsItAndThenActivatesTheApp() {
+        let fake = FakePlatformOps()
+        var activationsSeenByTheClosure: [Int] = []
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config }, openAbout: {
+            activationsSeenByTheClosure.append(fake.activateAppCallCount)
+        })
+        orchestrator.start()
+
+        orchestrator.openAboutPanel()
+
+        #expect(activationsSeenByTheClosure == [0])
+        #expect(fake.activateAppCallCount == 1)
+    }
+
+    /// #62 / user story 53: from Ghost Mode, About must neither front the widget (it may never be
+    /// key, ADR-0012) nor knock the widget out of Ghost Mode.
+    @Test func openingTheAboutPanelInGhostModeLeavesTheWidgetAlone() {
+        let fake = FakePlatformOps()
+        var aboutCallCount = 0
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config }, openAbout: { aboutCallCount += 1 })
+        orchestrator.start()
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+        let shownBefore = fake.shownWindowIDs
+        let chromeChangesBefore = fake.nativeChromeVisibilityChanges.count
+
+        orchestrator.openAboutPanel()
+
+        #expect(aboutCallCount == 1)
+        #expect(fake.shownWindowIDs == shownBefore)
+        #expect(fake.nativeChromeVisibilityChanges.count == chromeChangesBefore)
+    }
+
     @Test func pressingHiddenInGhostModeTogglesTheWidgetInAndOutOfInvisibility() {
         let fake = FakePlatformOps()
         let config = WidgetConfig(url: URL(string: "https://example.com")!, ghostOpacity: 0.2)

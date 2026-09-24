@@ -23,24 +23,42 @@ final class MainMenuBuilder {
         mainMenu.addItem(viewMenuItem(orchestrator: orchestrator))
         mainMenu.addItem(historyMenuItem(orchestrator: orchestrator))
         mainMenu.addItem(windowMenuItem())
+        mainMenu.addItem(helpMenuItem())
         return mainMenu
     }
 
     // MARK: - Mochi menu
 
+    /// Safari's App menu, minus what Mochi doesn't have. 服务 and the hide trio are AppKit's own
+    /// (`NSApp.servicesMenu` fills the submenu; the three `NSApplication` selectors need no
+    /// target), and macOS 26 gives those four — and 退出 — their symbols by itself (measured with
+    /// a harness), so no image is set on them here. ⌘H and ⌥⌘H are listed in
+    /// `DefaultHotkeys.reservedLocalMenuShortcuts` so no Hotkey Forwarding mapping can claim them.
     private func appMenuItem(orchestrator: Orchestrator) -> NSMenuItem {
         let menu = NSMenu(title: AppInfo.name)
 
         menu.addItem(action("关于 \(AppInfo.name)", symbol: "info.circle") {
-            NSApp.orderFrontStandardAboutPanel(options: [
-                .applicationName: AppInfo.name,
-                .applicationVersion: AppInfo.version(fromInfoDictionary: Bundle.main.infoDictionary),
-            ])
+            orchestrator.openAboutPanel()
         })
         menu.addItem(.separator())
         menu.addItem(action("设置…", symbol: "gearshape", keyEquivalent: ",") {
             orchestrator.openSettingsPanel()
         })
+        menu.addItem(.separator())
+        let services = NSMenuItem(title: "服务", action: nil, keyEquivalent: "")
+        let servicesMenu = NSMenu(title: "服务")
+        services.submenu = servicesMenu
+        NSApp.servicesMenu = servicesMenu
+        menu.addItem(services)
+        menu.addItem(.separator())
+        menu.addItem(
+            NSMenuItem(title: "隐藏 \(AppInfo.name)", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h"))
+        let hideOthers = NSMenuItem(
+            title: "隐藏其他", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
+        hideOthers.keyEquivalentModifierMask = [.command, .option]
+        menu.addItem(hideOthers)
+        menu.addItem(
+            NSMenuItem(title: "全部显示", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: ""))
         menu.addItem(.separator())
         // The standard `terminate:` selector rather than a closure: AppKit gives an item with that
         // action its own Quit icon — the one Safari's 退出 shows, which is not a public SF Symbol.
@@ -153,6 +171,31 @@ final class MainMenuBuilder {
         let item = NSMenuItem()
         item.submenu = menu
         NSApp.windowsMenu = menu
+        return item
+    }
+
+    // MARK: - Help menu
+
+    /// Last in the bar (#62). Being `NSApp.helpMenu` is what puts the system's menu search field
+    /// at its top. There is no automatic "帮助不可用" item to remove: AppKit ships no "<app> 帮助"
+    /// item of its own (its only help strings are the menu title and the "未找到“%@”的帮助。"
+    /// alert), and that alert is what `showHelp:` shows for an app without a help book — the
+    /// dead end the Xcode template's "<app> Help" item leads to. So the placeholder is kept out
+    /// by construction: nothing here routes to `showHelp:`; 「Mochi 帮助」 opens the README
+    /// instead.
+    private func helpMenuItem() -> NSMenuItem {
+        let menu = NSMenu(title: "帮助")
+
+        menu.addItem(action("\(AppInfo.name) 帮助", symbol: "questionmark.circle") {
+            NSWorkspace.shared.open(AppInfo.helpURL)
+        })
+        menu.addItem(action("反馈问题…", symbol: "exclamationmark.bubble") {
+            NSWorkspace.shared.open(AppInfo.issuesURL)
+        })
+
+        let item = NSMenuItem()
+        item.submenu = menu
+        NSApp.helpMenu = menu
         return item
     }
 

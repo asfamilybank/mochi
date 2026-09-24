@@ -89,6 +89,12 @@ public protocol PlatformOps: AnyObject {
     /// handler specifically, mirroring how `showWindow` is the one call site that takes focus.
     func deactivateApp()
 
+    /// Makes Mochi the active app *without* fronting or keying the widget — for a panel that has
+    /// just been put up (the About panel, #62) and must not sit behind whatever app was frontmost.
+    /// Callers order the panel front first: activation then lands on the panel as key window, so
+    /// a Ghost Mode widget (never key, ADR-0012) is not picked instead.
+    func activateApp()
+
     /// Evaluates `source` in the page's JavaScript context. Callers are expected to only call
     /// this once a page has finished loading (see `onNavigationFinished`).
     func injectScript(_ source: String, in window: WidgetWindowHandle)

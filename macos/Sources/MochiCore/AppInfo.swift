@@ -10,6 +10,21 @@ import Foundation
 public enum AppInfo {
     public static let name = "Mochi"
 
+    /// The project's home, linked from the About panel's credits (#62).
+    public static let repositoryURL = URL(string: "https://github.com/asfamilybank/mochi")!
+
+    /// Where the Help menu's 「Mochi 帮助」 goes (#62): the README on GitHub — Mochi ships no help
+    /// book of its own.
+    public static let helpURL = URL(string: "https://github.com/asfamilybank/mochi#readme")!
+
+    /// Where 「反馈问题」 goes, from both the Help menu and the About panel's credits (#62).
+    public static let issuesURL = URL(string: "https://github.com/asfamilybank/mochi/issues")!
+
+    /// The About panel's copyright line (#62). Passed to the panel directly rather than kept in
+    /// `Info.plist`'s `NSHumanReadableCopyright`, so a `swift run` build — which has no plist —
+    /// shows it too.
+    public static let copyright = "Copyright © 2026 asfamilybank"
+
     /// Reported by any build that has no stamped version — in practice, running from source.
     /// Deliberately not a number: a plausible-looking one would invite mistaking a working copy
     /// for the release that happens to share it.

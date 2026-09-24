@@ -1922,6 +1922,10 @@ public final class AppKitPlatformOps: PlatformOps {
         NSApp.deactivate()
     }
 
+    public func activateApp() {
+        NSApp.activate()
+    }
+
     public func injectScript(_ source: String, in window: WidgetWindowHandle) {
         guard let handle = handle(for: window) else { return }
         handle.injectScript(source)
