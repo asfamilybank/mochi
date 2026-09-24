@@ -14,19 +14,24 @@ public struct Hotkey: Hashable {
 }
 
 public enum DefaultHotkeys {
-    /// Carbon's `cmdKey | optionKey`, shared by every default combo below. Hardcoded rather than
-    /// importing Carbon here so this file stays platform-import-free like the rest of the pure
-    /// MochiCore layer.
-    private static let cmdOption: UInt32 = 0x0100 | 0x0800
+    /// Carbon's `optionKey` alone, shared by both default action combos below. Hardcoded rather
+    /// than importing Carbon here so this file stays platform-import-free like the rest of the
+    /// pure MochiCore layer.
+    ///
+    /// Option-only rather than `⌥⌘` since #58: a Carbon hotkey is claimed system-wide for as long
+    /// as Mochi runs, and `⌥⌘H` is every Mac app's 隐藏其他 — Mochi was stealing it from all of
+    /// them. Accepted cost: while Mochi runs, ⌥G/⌥H no longer type `©`/`˙`, and terminals using
+    /// Option-as-Meta lose `M-g`/`M-h`. Users who rebound either action keep their combo — the
+    /// config stores only overrides.
+    private static let option: UInt32 = 0x0800
 
-    /// ⌥⌘G — the default Normal/Ghost Mode toggle (#8). `0x05` is `kVK_ANSI_G`.
-    public static let toggleGhostMode = Hotkey(keyCode: 0x05, modifierFlags: cmdOption)
+    /// ⌥G — the default Normal/Ghost Mode toggle (#8, ⌥⌘G before #58). `0x05` is `kVK_ANSI_G`.
+    public static let toggleGhostMode = Hotkey(keyCode: 0x05, modifierFlags: option)
 
-    /// ⌥⌘H — the boss key (ADR-0012): hides/unhides the widget while Ghost Mode is active,
-    /// leaving the page running. A silent no-op in Normal Mode, which is a plain macOS window
-    /// (`⌘M` already minimizes it). Same combo as the old Normal-Mode-only 快速隐藏, with both
-    /// its meaning and its scope swapped. `0x04` is `kVK_ANSI_H`.
-    public static let hideWidget = Hotkey(keyCode: 0x04, modifierFlags: cmdOption)
+    /// ⌥H — the boss key (ADR-0012, ⌥⌘H before #58): hides/unhides the widget while Ghost Mode
+    /// is active, leaving the page running. A silent no-op in Normal Mode, which is a plain macOS
+    /// window (`⌘M` already minimizes it). `0x04` is `kVK_ANSI_H`.
+    public static let hideWidget = Hotkey(keyCode: 0x04, modifierFlags: option)
 
     /// Plain `⌘`, no `⌥` — shared by every fixed local menu shortcut below.
     private static let cmd: UInt32 = 0x0100

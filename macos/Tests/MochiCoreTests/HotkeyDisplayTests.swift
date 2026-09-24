@@ -8,6 +8,13 @@ import Testing
         #expect(HotkeyDisplay.describe(hotkey) == "⌥⌘G")
     }
 
+    /// #58: the defaults moved off ⌥⌘ onto a bare ⌥, so ⌥⌘H (隐藏其他) goes back to macOS.
+    @Test func describesTheDefaultActionHotkeysAsOptionOnlyCombos() {
+        #expect(HotkeyDisplay.describe(DefaultHotkeys.toggleGhostMode) == "⌥G")
+        #expect(HotkeyDisplay.describe(DefaultHotkeys.hideWidget) == "⌥H")
+        #expect(HotkeyDisplay.keys(of: DefaultHotkeys.hideWidget) == ["⌥", "H"])
+    }
+
     @Test func describesAllFourModifiersTogether() {
         let hotkey = Hotkey(keyCode: 0x00, modifierFlags: 0x1000 | 0x0800 | 0x0200 | 0x0100)
         #expect(HotkeyDisplay.describe(hotkey) == "⌃⌥⇧⌘A")

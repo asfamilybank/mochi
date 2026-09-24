@@ -527,6 +527,29 @@ import Testing
         #expect(updated.hotkey(for: .hideWidget) == custom)
     }
 
+    /// #58: moving the defaults to ⌥G/⌥H needs no migration because the config only stores
+    /// overrides — a user who customised either action (here: pinned the old ⌥⌘G/⌥⌘H combos
+    /// by hand) keeps exactly what they chose after upgrading.
+    @Test func aStoredOverrideStillWinsOverTheNewOptionOnlyDefaults() throws {
+        let toml = """
+        [hotkeys.toggle_ghost_mode]
+        key_code = 5
+        modifiers = 2304
+
+        [hotkeys.hide_widget]
+        key_code = 4
+        modifiers = 2304
+        """
+
+        let config = try WidgetConfig.parse(toml)
+
+        #expect(config.hotkey(for: .toggleGhostMode) == Hotkey(keyCode: 0x05, modifierFlags: 0x0100 | 0x0800))
+        #expect(config.hotkey(for: .hideWidget) == Hotkey(keyCode: 0x04, modifierFlags: 0x0100 | 0x0800))
+        #expect(config.hotkey(for: .toggleGhostMode) != DefaultHotkeys.toggleGhostMode)
+        #expect(config.hotkey(for: .hideWidget) != DefaultHotkeys.hideWidget)
+        #expect(try WidgetConfig.parse(config.serialized()) == config)
+    }
+
     @Test func updatingSnapAndMouseAvoidanceReturnCopiesWithOnlyThatFieldChanged() {
         let config = WidgetConfig(url: URL(string: "https://example.com")!)
 

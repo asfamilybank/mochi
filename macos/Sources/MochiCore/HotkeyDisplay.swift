@@ -1,6 +1,6 @@
 import Foundation
 
-/// Renders a `Hotkey` as a human-readable label (e.g. "⌥⌘G") for the hotkey mapping editor
+/// Renders a `Hotkey` as a human-readable label (e.g. "⌥G") for the hotkey mapping editor
 /// (#14) — `Hotkey` itself only stores a raw virtual keycode + Carbon modifier bitmask, neither of
 /// which is fit to show a user directly.
 public enum HotkeyDisplay {

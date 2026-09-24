@@ -515,7 +515,7 @@ import Testing
 
     @Test func aMappingMayClaimAFormerDefaultOnceThatActionHasBeenRebound() {
         // Regression guard for the false positive the old "check against `DefaultHotkeys`" scheme
-        // would produce: ⌥⌘G is free again once Ghost Mode's toggle lives on ⌥⌘T.
+        // would produce: ⌥G is free again once Ghost Mode's toggle lives on ⌥⌘T.
         let store = PersistedStore(
             WidgetConfig(url: URL(string: "https://example.com")!, hotkeyOverrides: [.toggleGhostMode: customToggle]))
         let fake = FakePlatformOps()
