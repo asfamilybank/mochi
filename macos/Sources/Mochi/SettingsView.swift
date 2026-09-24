@@ -1,32 +1,76 @@
 import MochiCore
 import SwiftUI
 
-/// The settings panel's content, regrouped into four tabs by the user's mental model rather than
-/// by implementation (#46): 通用 (startup) / 窗口与外观 (how the window behaves on the desktop) /
-/// 热键 (both kinds of hotkey in one place) / 脚本. Every tab is backed by `SettingsViewModel` so
-/// each edit flows through `SettingsController`'s persistence path — view-local `@State` only ever
-/// holds a value mid-edit (text being typed, a slider mid-drag), never the truth.
+/// The settings window's panes (#65), in toolbar order — the Safari-style preferences window
+/// that `SettingsWindowController` builds, one toolbar button per case. Regrouped by the user's
+/// mental model rather than by implementation (#46), then widened from four tabs to six so the
+/// settings #64 adds each have a home: 网页内容 and 高级 start out empty and are filled by later
+/// tickets, which add items to a pane rather than inventing panes of their own.
 ///
-/// Nothing here says "改动将在重启 Mochi 后生效" any more: every setting either is re-read at its
-/// point of use or is actively re-applied on change (#46). Scripts are the one honest exception —
-/// already-executed JavaScript can't be undone — so that tab says "next page load" and offers the
+/// Every pane is backed by `SettingsViewModel` so each edit flows through `SettingsController`'s
+/// persistence path — view-local `@State` only ever holds a value mid-edit (text being typed, a
+/// slider mid-drag), never the truth.
+///
+/// Nothing here says "改动将在重启 Mochi 后生效": every setting either is re-read at its point of
+/// use or is actively re-applied on change (#46). Scripts are the one honest exception —
+/// already-executed JavaScript can't be undone — so that pane says "next page load" and offers the
 /// load as a button.
-struct SettingsView: View {
-    @ObservedObject var viewModel: SettingsViewModel
+enum SettingsPane: CaseIterable {
+    case general, window, hotkeys, webContent, scripts, advanced
 
-    var body: some View {
-        TabView {
-            GeneralSettingsTab(viewModel: viewModel)
-                .tabItem { Text("通用") }
-            WindowAppearanceTab(viewModel: viewModel)
-                .tabItem { Text("窗口与外观") }
-            HotkeysTab(viewModel: viewModel)
-                .tabItem { Text("热键") }
-            ScriptsTab(viewModel: viewModel)
-                .tabItem { Text("脚本") }
+    /// Fixed for every pane, like Safari's: only the height follows the content, so switching
+    /// panes never makes the window jump sideways.
+    static let width: CGFloat = 540
+
+    var title: String {
+        switch self {
+        case .general: "通用"
+        case .window: "窗口"
+        case .hotkeys: "热键"
+        case .webContent: "网页内容"
+        case .scripts: "脚本"
+        case .advanced: "高级"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .general: "gearshape"
+        case .window: "macwindow"
+        case .hotkeys: "command"
+        case .webContent: "globe"
+        case .scripts: "curlybraces"
+        case .advanced: "gearshape.2"
+        }
+    }
+
+    /// The pane's content at its natural height and the shared fixed width. The two list-driven
+    /// panes (hotkeys' mapping table, scripts' editor) have no natural height of their own — a
+    /// `List`/`TextEditor` takes whatever it is offered — so they get an explicit one.
+    @ViewBuilder
+    func content(viewModel: SettingsViewModel) -> some View {
+        Group {
+            switch self {
+            case .general: GeneralSettingsTab(viewModel: viewModel)
+            case .window: WindowSettingsTab(viewModel: viewModel)
+            case .hotkeys: HotkeysTab(viewModel: viewModel).frame(height: 420)
+            case .webContent: EmptySettingsPane()
+            case .scripts: ScriptsTab(viewModel: viewModel).frame(height: 400)
+            case .advanced: EmptySettingsPane()
+            }
         }
         .padding(20)
-        .frame(width: 480, height: 460)
+        .frame(width: Self.width)
+    }
+}
+
+/// 网页内容 and 高级 until their first settings land (#64's child tickets). Empty rather than
+/// hidden so the pane skeleton lives in exactly one place.
+private struct EmptySettingsPane: View {
+    var body: some View {
+        Form {}
+            .formStyle(.columns)
+            .frame(height: 60)
     }
 }
 
@@ -37,7 +81,7 @@ struct SettingsView: View {
 /// address bar already shows where you are, and a settings panel is a poor place to leave the last
 /// site you visited sitting in plain text. `config.url` itself is untouched — it is what
 /// "继续上次访问页面" resolves to, it just isn't displayed any more.
-private struct GeneralSettingsTab: View {
+struct GeneralSettingsTab: View {
     @ObservedObject var viewModel: SettingsViewModel
     @State private var startupKind: StartupKind
     @State private var startupURLText: String
@@ -81,6 +125,7 @@ private struct GeneralSettingsTab: View {
                 }
             }
         }
+        .formStyle(.columns)
     }
 
     private func applyStartupTarget(kind: StartupKind) {
@@ -96,10 +141,11 @@ private struct GeneralSettingsTab: View {
     }
 }
 
-/// #46: everything about how the window behaves on the desktop — Ghost Mode's target opacity,
+/// #46: everything about how the window behaves on the desktop (the 窗口 pane since #65, formerly
+/// 窗口与外观) — Ghost Mode's target opacity,
 /// mouse-entered avoidance (ADR-0012), and Snap (#39). The two switches get their first UI here;
 /// before this they were only reachable by hand-editing the config file.
-private struct WindowAppearanceTab: View {
+struct WindowSettingsTab: View {
     @ObservedObject var viewModel: SettingsViewModel
     @State private var ghostOpacity: Double
 
@@ -146,13 +192,14 @@ private struct WindowAppearanceTab: View {
                 )
             }
         }
+        .formStyle(.columns)
     }
 }
 
 /// #45 + #14, together in one place since the user thinks of both as "hotkeys" (#46): the two
 /// customizable action hotkeys on top, the forwarding mapping table below. Both sections reuse
 /// the same recorder control and display formatting.
-private struct HotkeysTab: View {
+struct HotkeysTab: View {
     @ObservedObject var viewModel: SettingsViewModel
     @State private var newTrigger: Hotkey?
     @State private var newPageKeystroke: Hotkey?
@@ -236,7 +283,7 @@ private struct HotkeysTab: View {
 /// clearly labeled by source, per the ticket's AC. Since #46 the enabled set and the custom script
 /// are re-read on every navigation, so a change applies on the next page load — stated as such,
 /// with the load itself one click away.
-private struct ScriptsTab: View {
+struct ScriptsTab: View {
     @ObservedObject var viewModel: SettingsViewModel
     @State private var customScriptText: String
 
