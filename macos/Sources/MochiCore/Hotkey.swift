@@ -55,6 +55,8 @@ public enum DefaultHotkeys {
         Hotkey(keyCode: 0x1B, modifierFlags: cmd),  // ⌘- 缩小, kVK_ANSI_Minus
         Hotkey(keyCode: 0x1D, modifierFlags: cmd),  // ⌘0 实际大小, kVK_ANSI_0
         openSettings,                               // ⌘, 设置…
+        Hotkey(keyCode: 0x21, modifierFlags: cmd),  // ⌘[ 返回 (#59), kVK_ANSI_LeftBracket
+        Hotkey(keyCode: 0x1E, modifierFlags: cmd),  // ⌘] 前进 (#59), kVK_ANSI_RightBracket
     ]
 }
 

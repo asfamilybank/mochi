@@ -1045,10 +1045,63 @@ private struct GhostModeEntrySignature: Equatable {
 
     @Test func leavingGhostModeMakesTheWidgetCommandsPerformableAgain() {
         let (fake, orchestrator) = makeOrchestrator(in: .ghostMode)
+        fake.stubbedNavigationState = NavigationState(canGoBack: true, canGoForward: true)
 
         fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
 
         #expect(WidgetCommand.allCases.allSatisfy { orchestrator.canPerform($0) })
+    }
+
+    // #59: 历史记录 → 返回 / 前进, offered exactly when the toolbar's segments are
+
+    @Test(arguments: [
+        (state: WidgetStateUnderTest.normalMode, canGoBack: true, canGoForward: false, command: WidgetCommand.goBack, canPerform: true),
+        (state: .normalMode, canGoBack: false, canGoForward: true, command: .goBack, canPerform: false),
+        (state: .normalMode, canGoBack: false, canGoForward: true, command: .goForward, canPerform: true),
+        (state: .normalMode, canGoBack: true, canGoForward: false, command: .goForward, canPerform: false),
+        (state: .noWidget, canGoBack: true, canGoForward: true, command: .goBack, canPerform: false),
+        (state: .noWidget, canGoBack: true, canGoForward: true, command: .goForward, canPerform: false),
+        (state: .ghostMode, canGoBack: true, canGoForward: true, command: .goBack, canPerform: false),
+        (state: .ghostMode, canGoBack: true, canGoForward: true, command: .goForward, canPerform: false),
+    ])
+    func historyCommandsFollowTheNavigationStateOnAWidgetInNormalMode(
+        _ row: (state: WidgetStateUnderTest, canGoBack: Bool, canGoForward: Bool, command: WidgetCommand, canPerform: Bool)
+    ) {
+        let (fake, orchestrator) = makeOrchestrator(in: row.state)
+        fake.stubbedNavigationState = NavigationState(canGoBack: row.canGoBack, canGoForward: row.canGoForward)
+
+        #expect(orchestrator.canPerform(row.command) == row.canPerform)
+    }
+
+    @Test(arguments: [
+        (state: WidgetStateUnderTest.normalMode, command: WidgetCommand.goBack, back: 1, forward: 0),
+        (state: .normalMode, command: .goForward, back: 0, forward: 1),
+        (state: .noWidget, command: .goBack, back: 0, forward: 0),
+        (state: .noWidget, command: .goForward, back: 0, forward: 0),
+        (state: .ghostMode, command: .goBack, back: 0, forward: 0),
+        (state: .ghostMode, command: .goForward, back: 0, forward: 0),
+    ])
+    func performingAHistoryCommandForwardsTheMatchingPlatformOpsCall(
+        _ row: (state: WidgetStateUnderTest, command: WidgetCommand, back: Int, forward: Int)
+    ) {
+        let (fake, orchestrator) = makeOrchestrator(in: row.state)
+        fake.stubbedNavigationState = NavigationState(canGoBack: true, canGoForward: true)
+
+        orchestrator.perform(row.command)
+
+        #expect(fake.wentBackWindowIDs.count == row.back)
+        #expect(fake.wentForwardWindowIDs.count == row.forward)
+    }
+
+    @Test(arguments: [WidgetCommand.goBack, .goForward])
+    func performingAHistoryCommandTheNavigationStateRulesOutDoesNothing(_ command: WidgetCommand) {
+        let (fake, orchestrator) = makeOrchestrator(in: .normalMode)
+        fake.stubbedNavigationState = NavigationState(canGoBack: false, canGoForward: false)
+
+        orchestrator.perform(command)
+
+        #expect(fake.wentBackWindowIDs.isEmpty)
+        #expect(fake.wentForwardWindowIDs.isEmpty)
     }
 
     private func makeOrchestrator(in state: WidgetStateUnderTest) -> (FakePlatformOps, Orchestrator) {
@@ -1076,6 +1129,8 @@ private extension FakePlatformOps {
         case .close: closedWindowIDs.count
         case .reload: reloadedWindowIDs.count
         case .zoomIn, .zoomOut, .resetZoom: appliedZooms.count
+        case .goBack: wentBackWindowIDs.count
+        case .goForward: wentForwardWindowIDs.count
         }
     }
 }

@@ -265,6 +265,18 @@ final class FakePlatformOps: PlatformOps {
         stubbedNavigationState
     }
 
+    /// `goBack(in:)`/`goForward(in:)` calls (#59), by window id.
+    private(set) var wentBackWindowIDs: [Int] = []
+    private(set) var wentForwardWindowIDs: [Int] = []
+
+    func goBack(in window: WidgetWindowHandle) {
+        wentBackWindowIDs.append((window as! FakeWidgetWindowHandle).id)
+    }
+
+    func goForward(in window: WidgetWindowHandle) {
+        wentForwardWindowIDs.append((window as! FakeWidgetWindowHandle).id)
+    }
+
     func isAccessibilityTrusted() -> Bool {
         stubbedAccessibilityTrusted
     }

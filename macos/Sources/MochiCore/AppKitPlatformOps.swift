@@ -863,15 +863,27 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     }
 
     @objc private func navigationSegmentClicked(_ sender: NSSegmentedControl) {
-        let step: EmptyPageHistory.Step?
         switch sender.selectedSegment {
-        case NavigationSegment.back: step = backStep
-        case NavigationSegment.forward: step = forwardStep
+        case NavigationSegment.back: goBack()
+        case NavigationSegment.forward: goForward()
         default: return
         }
+    }
+
+    /// The one back/forward code path (#59): the toolbar segments and the 历史记录 menu's
+    /// 返回/前进 (via `PlatformOps.goBack(in:)`/`goForward(in:)`) both land here.
+    func goBack() {
+        take(backStep, onWebView: webView.goBack)
+    }
+
+    func goForward() {
+        take(forwardStep, onWebView: webView.goForward)
+    }
+
+    private func take(_ step: EmptyPageHistory.Step?, onWebView goWithinWebView: () -> WKNavigation?) {
         switch step {
         case .webView:
-            if sender.selectedSegment == NavigationSegment.back { webView.goBack() } else { webView.goForward() }
+            _ = goWithinWebView()
         case .toEmptyPage:
             returnToEmptyPage()
         case .fromEmptyPage:
@@ -1828,6 +1840,14 @@ public final class AppKitPlatformOps: PlatformOps {
 
     public func navigationState(of window: WidgetWindowHandle) -> NavigationState {
         handle(for: window)?.navigationState ?? NavigationState()
+    }
+
+    public func goBack(in window: WidgetWindowHandle) {
+        handle(for: window)?.goBack()
+    }
+
+    public func goForward(in window: WidgetWindowHandle) {
+        handle(for: window)?.goForward()
     }
 
     public func onURLSubmitted(_ window: WidgetWindowHandle, perform handler: @escaping (URL) -> Void) {

@@ -202,6 +202,12 @@ public protocol PlatformOps: AnyObject {
     /// see is loading then.
     func navigationState(of window: WidgetWindowHandle) -> NavigationState
 
+    /// Goes back / forward one step (#59) — exactly what the toolbar's back/forward segments do,
+    /// Empty Page steps included (the oldest page's back lands on the Empty Page, and forward from
+    /// there returns to it). A no-op when `navigationState(of:)` says that direction is closed.
+    func goBack(in window: WidgetWindowHandle)
+    func goForward(in window: WidgetWindowHandle)
+
     /// Whether the process currently holds Accessibility permission — required for
     /// `forwardKeystroke` to have any effect (ADR-0003). Checked before every forwarding attempt
     /// so a later revocation (the user turning it off in System Settings) is caught immediately,

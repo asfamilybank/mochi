@@ -14,6 +14,10 @@ public enum WidgetCommand: CaseIterable, Sendable {
     case zoomOut
     /// 显示 → 实际大小 (⌘0).
     case resetZoom
+    /// 历史记录 → 返回 (⌘[) (#59).
+    case goBack
+    /// 历史记录 → 前进 (⌘]) (#59).
+    case goForward
 }
 
 public final class Orchestrator {
@@ -293,10 +297,14 @@ public final class Orchestrator {
     /// bar that becomes clickable once the user activates Mochi from the Dock mustn't reopen that
     /// door — leaving Ghost Mode comes first.
     public func canPerform(_ command: WidgetCommand) -> Bool {
-        guard window != nil, ghostModeController?.mode != .ghost else { return false }
+        guard let window, ghostModeController?.mode != .ghost else { return false }
         switch command {
         case .close, .reload, .zoomIn, .zoomOut, .resetZoom:
             return true
+        case .goBack:
+            return platformOps.navigationState(of: window).canGoBack
+        case .goForward:
+            return platformOps.navigationState(of: window).canGoForward
         }
     }
 
@@ -310,6 +318,8 @@ public final class Orchestrator {
         case .zoomIn: zoomIn()
         case .zoomOut: zoomOut()
         case .resetZoom: resetZoom()
+        case .goBack: window.map(platformOps.goBack(in:))
+        case .goForward: window.map(platformOps.goForward(in:))
         }
     }
 

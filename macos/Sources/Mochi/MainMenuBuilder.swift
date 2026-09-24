@@ -21,6 +21,7 @@ final class MainMenuBuilder {
         mainMenu.addItem(fileMenuItem(orchestrator: orchestrator))
         mainMenu.addItem(editMenuItem())
         mainMenu.addItem(viewMenuItem(orchestrator: orchestrator))
+        mainMenu.addItem(historyMenuItem(orchestrator: orchestrator))
         mainMenu.addItem(windowMenuItem())
         return mainMenu
     }
@@ -106,6 +107,23 @@ final class MainMenuBuilder {
             widgetCommand(.zoomOut, "缩小", symbol: "minus.magnifyingglass", keyEquivalent: "-", orchestrator: orchestrator))
         menu.addItem(
             widgetCommand(.resetZoom, "实际大小", symbol: "1.magnifyingglass", keyEquivalent: "0", orchestrator: orchestrator))
+
+        let item = NSMenuItem()
+        item.submenu = menu
+        return item
+    }
+
+    // MARK: - History menu
+
+    /// 返回/前进 only for now (#59) — the same steps as the toolbar's back/forward segments,
+    /// Empty Page included. A real history list can grow in here later.
+    private func historyMenuItem(orchestrator: Orchestrator) -> NSMenuItem {
+        let menu = NSMenu(title: "历史记录")
+
+        menu.addItem(
+            widgetCommand(.goBack, "返回", symbol: "chevron.backward", keyEquivalent: "[", orchestrator: orchestrator))
+        menu.addItem(
+            widgetCommand(.goForward, "前进", symbol: "chevron.forward", keyEquivalent: "]", orchestrator: orchestrator))
 
         let item = NSMenuItem()
         item.submenu = menu
