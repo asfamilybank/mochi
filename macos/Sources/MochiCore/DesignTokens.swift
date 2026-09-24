@@ -247,17 +247,21 @@ public enum DesignTokens {
         public static let addressFieldLeadingIconTextGap: Double = 2
 
         /// Normal Mode's minimum window width — measured, not derived from Safari's 574pt (which
-        /// is calibrated to Safari's larger always-visible set, sidebar toggle included). Sweeping
-        /// the real window width one point at a time (ADR-0011) found the point where AppKit stops
-        /// being able to fit the two items that must never collapse — the back/forward segmented
-        /// control and the address field at `addressFieldMinWidth` — and sweeps the address field
-        /// itself into the overflow menu. That threshold was 428pt when the field was hosted bare;
-        /// it is 434pt now that `addressFieldFocusRingInset` pads the item by 3pt a side (re-swept
-        /// the same way, and the sweep still reproduces the old 428 without the padding). 440 keeps
-        /// its small margin over it. Lowering this below ~436 re-breaks "the address bar is never
-        /// collapsed", so re-measure rather than re-deriving it from the button sizes if any of
-        /// them change.
-        public static let normalModeWindowMinWidth: Double = 440
+        /// is calibrated to Safari's larger always-visible set, sidebar toggle included). Nothing
+        /// in the toolbar is allowed to collapse into an overflow "»": the Ghost Mode button is
+        /// simply hidden once the row can't hold it (`ghostModeButtonMinWindowWidth`), leaving only the
+        /// navigation control and the address field at `addressFieldMinWidth` — and this floor is
+        /// where those two still fit. Sweeping the real window width 2pt at a time found the
+        /// address field going into the overflow menu at 390pt and still in place at 392pt; no
+        /// margin, so lowering it at all brings the "»" back. Re-measure rather than re-deriving
+        /// it from the button sizes if any of them change.
+        public static let normalModeWindowMinWidth: Double = 392
+
+        /// Below this window width the Ghost Mode button is hidden rather than left for AppKit to
+        /// sweep into an overflow "»". Measured the same way as `normalModeWindowMinWidth`: with
+        /// the button shown, AppKit moved it into the overflow menu at 450pt and kept it at 452pt.
+        /// Re-measure if the button, the navigation control or `addressFieldMinWidth` change.
+        public static let ghostModeButtonMinWindowWidth: Double = 452
 
         /// The Loading Progress Bar's (#18) fixed height — a thin line under the toolbar, not a
         /// full-height track, per docs/design-language.md.
@@ -282,7 +286,7 @@ public enum DesignTokens {
     }
 
     public enum ToolbarButton: Equatable, Sendable {
-        case back, forward, refresh, addressField, ghostModeToggle, settings
+        case back, forward, refresh, addressField, ghostModeToggle
     }
 
     /// Normal Mode's full toolbar in visual left-to-right order (ADR-0011). Two entries no longer
@@ -291,7 +295,7 @@ public enum DesignTokens {
     /// edge — which is why it now sits *after* `.addressField` rather than before it. This order
     /// is fixed by the design canvas, not a free choice.
     public static let normalModeToolbarOrder: [ToolbarButton] = [
-        .back, .forward, .addressField, .refresh, .ghostModeToggle, .settings,
+        .back, .forward, .addressField, .refresh, .ghostModeToggle,
     ]
 
     /// The SF Symbols the native chrome draws. Named here rather than written as string
@@ -305,15 +309,13 @@ public enum DesignTokens {
         public static let back = "chevron.left"
         public static let forward = "chevron.right"
         public static let refresh = "arrow.clockwise"
-        /// docs/design-language.md's "更多" (⋯) affordance, which opens settings.
-        public static let settings = "ellipsis"
         /// The error page's (#38) failure glyph.
         public static let failure = "exclamationmark.triangle"
 
         /// Every symbol name the app can ask for, the address field's drawn states included.
         /// `.siteIcon` contributes nothing here — it draws a downloaded favicon, not a symbol.
         public static let all: [String] = [
-            back, forward, refresh, settings, failure,
+            back, forward, refresh, failure,
             AddressFieldLeadingIcon.genericPage.symbolName!, AddressFieldLeadingIcon.search.symbolName!,
         ]
     }

@@ -54,13 +54,13 @@ public final class Orchestrator {
             // First, because while the widget is closed this is the one way back that's always on
             // screen (#42). Not greyed out when the widget is already open — the tray menu is built
             // once with no update hook, so both states get a sensible meaning instead.
-            TrayMenuItem(title: "打开 Widget") { [weak self] in
+            TrayMenuItem(title: "打开窗口") { [weak self] in
                 self?.openWidget()
             },
-            TrayMenuItem(title: "退出 Ghost Mode") { [weak self] in
+            TrayMenuItem(title: "退出幽灵模式") { [weak self] in
                 self?.ghostModeController?.exitGhostMode()
             },
-            TrayMenuItem(title: "切换 Ghost Mode") { [weak self] in
+            TrayMenuItem(title: "切换幽灵模式") { [weak self] in
                 self?.ghostModeController?.toggle()
             },
             TrayMenuItem(title: "打开设置", action: openSettings),
@@ -126,9 +126,6 @@ public final class Orchestrator {
         }
         platformOps.onURLSubmitted(window) { [weak self] url in
             self?.handleURLSubmitted(url)
-        }
-        platformOps.onSettingsRequested(window) { [weak self] in
-            self?.openSettings()
         }
         platformOps.onNavigationFinished(window) { [weak self] in
             self?.injectConfiguredScripts()

@@ -60,11 +60,6 @@ public protocol PlatformOps: AnyObject {
     /// is nothing to persist.
     func setPinned(_ pinned: Bool, in window: WidgetWindowHandle)
 
-    /// Registers a handler invoked when the user clicks the toolbar's settings entry (#13) —
-    /// mirrors the tray icon's existing "打开设置" entry, giving Normal Mode a second way to reach
-    /// the same settings panel.
-    func onSettingsRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void)
-
     /// Registers a handler invoked when the toolbar's Ghost Mode entry button (#44) is clicked.
     /// A one-way "enter" affordance, not a toggle the button tracks state for itself — the
     /// handler routes back to the same `GhostModeController` entry point the default hotkey and

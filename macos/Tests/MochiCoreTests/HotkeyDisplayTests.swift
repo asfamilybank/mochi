@@ -18,6 +18,17 @@ import Testing
         #expect(HotkeyDisplay.describe(hotkey) == "Space")
     }
 
+    /// ⌘, is on the Empty Page's quick reference, so the comma needs a glyph of its own.
+    @Test func describesTheSettingsShortcut() {
+        #expect(HotkeyDisplay.describe(DefaultHotkeys.openSettings) == "⌘,")
+    }
+
+    @Test func splitsAComboIntoOneGlyphPerKeyInTheSameOrder() {
+        let hotkey = Hotkey(keyCode: 0x0B, modifierFlags: 0x0200 | 0x0100)
+        #expect(HotkeyDisplay.keys(of: hotkey) == ["⇧", "⌘", "B"])
+        #expect(HotkeyDisplay.keys(of: Hotkey(keyCode: 0x31, modifierFlags: 0)) == ["Space"])
+    }
+
     @Test func fallsBackToANumericLabelForAnUnmappedKeyCode() {
         let hotkey = Hotkey(keyCode: 999, modifierFlags: 0)
         #expect(HotkeyDisplay.describe(hotkey) == "Key 999")

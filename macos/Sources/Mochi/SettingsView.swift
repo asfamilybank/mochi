@@ -110,7 +110,7 @@ private struct WindowAppearanceTab: View {
 
     var body: some View {
         Form {
-            Section("Ghost Mode") {
+            Section("幽灵模式") {
                 HStack {
                     Slider(
                         value: $ghostOpacity, in: 0...1,
@@ -131,12 +131,12 @@ private struct WindowAppearanceTab: View {
                         set: { viewModel.updateMouseAvoidanceEnabled($0) }
                     )
                 )
-                Text("鼠标移到 Widget 上时窗口暂时让开，移开即恢复。")
+                Text("鼠标移到窗口上时窗口暂时让开，移开即恢复。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            Section("Normal Mode") {
+            Section("普通模式") {
                 Toggle(
                     "拖动时吸附屏幕边缘",
                     isOn: Binding(
@@ -193,7 +193,7 @@ private struct HotkeysTab: View {
             Divider()
 
             Text("热键映射").font(.headline)
-            Text("Ghost Mode 下按触发热键，向页面转发对应按键。")
+            Text("幽灵模式下按触发热键，向页面转发对应按键。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 

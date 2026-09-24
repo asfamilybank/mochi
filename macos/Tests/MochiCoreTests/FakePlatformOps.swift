@@ -43,7 +43,6 @@ final class FakePlatformOps: PlatformOps {
     private(set) var errorPagesShown: [(message: String, windowID: Int)] = []
     private var willCloseHandlers: [Int: () -> Void] = [:]
     private var urlSubmittedHandlers: [Int: (URL) -> Void] = [:]
-    private var settingsRequestedHandlers: [Int: () -> Void] = [:]
     private var navigationFinishedHandlers: [Int: () -> Void] = [:]
     private var navigationFailedHandlers: [Int: (String) -> Void] = [:]
     private var ghostModeToggleRequestedHandlers: [Int: () -> Void] = [:]
@@ -141,15 +140,6 @@ final class FakePlatformOps: PlatformOps {
     func setPinned(_ pinned: Bool, in window: WidgetWindowHandle) {
         let handle = window as! FakeWidgetWindowHandle
         pinnedChanges.append((pinned, handle.id))
-    }
-
-    func onSettingsRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {
-        let handle = window as! FakeWidgetWindowHandle
-        settingsRequestedHandlers[handle.id] = handler
-    }
-
-    func simulateSettingsRequested(windowID: Int = 1) {
-        settingsRequestedHandlers[windowID]?()
     }
 
     func onGhostModeToggleRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {

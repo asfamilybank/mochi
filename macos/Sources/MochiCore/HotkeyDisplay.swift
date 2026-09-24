@@ -7,15 +7,21 @@ public enum HotkeyDisplay {
     /// Modifier glyphs in the fixed left-to-right order macOS itself uses (⌃⌥⇧⌘), independent of
     /// which bits happen to be set.
     public static func describe(_ hotkey: Hotkey) -> String {
-        modifierGlyphs(for: hotkey.modifierFlags) + keyGlyph(for: hotkey.keyCode)
+        keys(of: hotkey).joined()
     }
 
-    private static func modifierGlyphs(for modifierFlags: UInt32) -> String {
-        var glyphs = ""
-        if modifierFlags & 0x1000 != 0 { glyphs += "⌃" }
-        if modifierFlags & 0x0800 != 0 { glyphs += "⌥" }
-        if modifierFlags & 0x0200 != 0 { glyphs += "⇧" }
-        if modifierFlags & 0x0100 != 0 { glyphs += "⌘" }
+    /// The same glyphs as `describe`, one per physical key — for drawing each key as its own
+    /// keycap (the Empty Page's quick reference) rather than as one run of text.
+    public static func keys(of hotkey: Hotkey) -> [String] {
+        modifierGlyphs(for: hotkey.modifierFlags) + [keyGlyph(for: hotkey.keyCode)]
+    }
+
+    private static func modifierGlyphs(for modifierFlags: UInt32) -> [String] {
+        var glyphs: [String] = []
+        if modifierFlags & 0x1000 != 0 { glyphs.append("⌃") }
+        if modifierFlags & 0x0800 != 0 { glyphs.append("⌥") }
+        if modifierFlags & 0x0200 != 0 { glyphs.append("⇧") }
+        if modifierFlags & 0x0100 != 0 { glyphs.append("⌘") }
         return glyphs
     }
 
@@ -35,6 +41,6 @@ public enum HotkeyDisplay {
         0x1C: "8", 0x19: "9",
         0x31: "Space", 0x24: "Return", 0x30: "Tab", 0x33: "Delete", 0x35: "Esc",
         0x7B: "←", 0x7C: "→", 0x7D: "↓", 0x7E: "↑",
-        0x18: "=", 0x1B: "-",
+        0x18: "=", 0x1B: "-", 0x2B: ",",
     ]
 }

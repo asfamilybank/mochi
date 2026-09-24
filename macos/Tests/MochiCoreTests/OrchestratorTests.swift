@@ -198,20 +198,6 @@ private struct GhostModeEntrySignature: Equatable {
         #expect(fake.injectedScripts.count == BuiltInScripts.all.count - 1)
     }
 
-    @Test func openingSettingsFromTheToolbarInvokesTheInjectedCallback() {
-        let fake = FakePlatformOps()
-        var openSettingsCallCount = 0
-        let config = WidgetConfig(url: URL(string: "https://example.com")!)
-        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config }, openSettings: {
-            openSettingsCallCount += 1
-        })
-        orchestrator.start()
-
-        fake.simulateSettingsRequested()
-
-        #expect(openSettingsCallCount == 1)
-    }
-
     @Test func registersBothActionHotkeysOnStartInAFixedOrder() {
         let fake = FakePlatformOps()
         let config = WidgetConfig(url: URL(string: "https://example.com")!)
@@ -278,7 +264,7 @@ private struct GhostModeEntrySignature: Equatable {
 
         orchestrator.start()
 
-        #expect(fake.trayMenuItems.map(\.title) == ["打开 Widget", "退出 Ghost Mode", "切换 Ghost Mode", "打开设置", "退出应用"])
+        #expect(fake.trayMenuItems.map(\.title) == ["打开窗口", "退出幽灵模式", "切换幽灵模式", "打开设置", "退出应用"])
     }
 
     @Test func trayExitGhostModeEntryDoesNothingWhenAlreadyInNormalMode() {

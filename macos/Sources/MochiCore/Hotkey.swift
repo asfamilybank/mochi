@@ -31,6 +31,11 @@ public enum DefaultHotkeys {
     /// Plain `⌘`, no `⌥` — shared by every fixed local menu shortcut below.
     private static let cmd: UInt32 = 0x0100
 
+    /// ⌘, — the main menu's 设置…, a fixed local shortcut rather than a global hotkey (see
+    /// `reservedLocalMenuShortcuts`). Named on its own because the Empty Page lists it.
+    /// `0x2B` is `kVK_ANSI_Comma`.
+    public static let openSettings = Hotkey(keyCode: 0x2B, modifierFlags: cmd)
+
     /// The fixed local menu shortcuts #37 built into `MainMenuBuilder` (⌘R/⌘+/⌘-/⌘0/⌘,) — never
     /// routed through `GlobalHotkeyRegistry` at all (a local `NSMenuItem` key equivalent only
     /// dispatches through the responder chain while Mochi is the key window), but still listed
@@ -44,7 +49,7 @@ public enum DefaultHotkeys {
         Hotkey(keyCode: 0x18, modifierFlags: cmd),  // ⌘+ 放大, kVK_ANSI_Equal
         Hotkey(keyCode: 0x1B, modifierFlags: cmd),  // ⌘- 缩小, kVK_ANSI_Minus
         Hotkey(keyCode: 0x1D, modifierFlags: cmd),  // ⌘0 实际大小, kVK_ANSI_0
-        Hotkey(keyCode: 0x2B, modifierFlags: cmd),  // ⌘, 设置…, kVK_ANSI_Comma
+        openSettings,                               // ⌘, 设置…
     ]
 }
 
@@ -70,8 +75,8 @@ public enum HotkeyAction: String, CaseIterable, Hashable {
 
     public var displayName: String {
         switch self {
-        case .toggleGhostMode: "切换 Ghost Mode"
-        case .hideWidget: "隐藏 Widget"
+        case .toggleGhostMode: "切换幽灵模式"
+        case .hideWidget: "隐藏窗口"
         }
     }
 }

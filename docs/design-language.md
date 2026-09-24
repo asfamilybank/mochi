@@ -16,7 +16,7 @@
   - Green `#34C759`
   - Graphite `#8E8E93`
 - **字体**：系统字体栈，不引入自定义品牌字体——`-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, sans-serif`。
-- **图标**：优先用 SF Symbols 系统符号（`chevron.left`/`chevron.right`、`arrow.clockwise`、`lock`、`magnifyingglass`、`ellipsis`、`exclamationmark.triangle`）；只有系统里没有的字形才自绘，目前唯一一个是 ghost 吉祥物（`GhostGlyph`），且它必须满足 `SymbolMetrics` 记录的系统符号度量契约（画布随字号、`alignmentRect` 取 cap height、描边随字号缩放），否则跟旁边的系统符号对不齐。不用 emoji、不用文字符号（"更多"按钮是 `ellipsis` 符号，不是打三个句点字符）。见 [ADR-0013](adr/0013-sf-symbols-for-every-glyph-but-the-ghost.md)——这条推翻了原先"全部手绘线性 SVG"的规定。
+- **图标**：优先用 SF Symbols 系统符号（`chevron.left`/`chevron.right`、`arrow.clockwise`、`lock`、`magnifyingglass`、`exclamationmark.triangle`）；只有系统里没有的字形才自绘，目前唯一一个是 ghost 吉祥物（`GhostGlyph`），且它必须满足 `SymbolMetrics` 记录的系统符号度量契约（画布随字号、`alignmentRect` 取 cap height、描边随字号缩放），否则跟旁边的系统符号对不齐。不用 emoji、不用文字符号。见 [ADR-0013](adr/0013-sf-symbols-for-every-glyph-but-the-ghost.md)——这条推翻了原先"全部手绘线性 SVG"的规定。
 - **圆角**：窗口内容区、工具栏胶囊、按钮统一用大圆角（现代 macOS 应用的惯例），Ghost Mode 无边框窗口的内容区也保留圆角。
 - **阴影**：跟随透明度渐隐——Normal Mode（完全不透明）阴影正常显示；Ghost Mode 下阴影强度和内容不透明度绑在一起变化，透明度越低阴影越淡，避免一个几乎看不见的窗口还拖着一圈明显的阴影。
 
@@ -30,9 +30,12 @@
 1. 后退/前进——合并成一个原生 `NSSegmentedControl`（不是两个独立按钮），图标用系统的 `chevron.left`/`chevron.right`（[ADR-0013](adr/0013-sf-symbols-for-every-glyph-but-the-ghost.md)）
 2. 地址栏——**智能双态**：标准 `NSSearchField`（不额外包自绘玻璃层，视觉上比周围行更"实"是系统原生效果）。页面加载完成且未交互时显示页面标题；鼠标悬停或点击时显示 URL（点击后可编辑，失焦或移出且非加载中则退回标题）；加载中无论是否有交互都恒定显示 URL。标题取不到时兜底显示域名，再取不到就留空。手动导航会覆盖持久化的"上次访问 URL"。空页面（未导航）状态不受这套切换影响，固定显示占位提示文字，直到用户真正导航一次。宽度改为 Safari 式的弹性伸缩（有 min/max，不再无脑撑满剩余空间）；尾部内嵌刷新图标（替代原来独立的刷新按钮，不做"加载中变停止按钮"这个中止导航能力），Empty Page 态下隐藏；前导图标按"有没有加载页面"双态切换——已加载显示 `lock`、空页面显示 `magnifyingglass`（它跟踪的是有无页面，不是是否走 TLS，所以无障碍标签刻意不说"安全"）
 3. Ghost Mode 切换——单向的"进入"按钮，不是开关：点击直接从 Normal Mode 进入 Ghost Mode，没有激活态可显示（Ghost Mode 会把整条工具栏一起隐藏，用户不可能看到这颗按钮处于"已激活"的样子）
-4. 设置（"更多"入口，⋯）
 
-置顶按钮已随 [ADR-0012](adr/0012-ghost-mode-as-pure-invisibility.md) 移除——置顶内化成了 Ghost Mode 的固有属性，不再是工具栏上的一个开关。窗口变窄放不下时，接入原生 `NSToolbarItem.visibilityPriority` 自动收纳进"更多工具栏项"溢出菜单：地址栏与后退/前进分段控件恒不收纳，设置是唯一会被收进溢出菜单的项；窗口自身也有一个比 Safari 更小的最小宽度（440pt，按"只剩分段控件 + 地址栏最小宽度"反推，不因为少了 Pin 而重新收紧）。设置项做成标准 `NSToolbarItem`（`image` + `action`）而非自绘视图——这原本是为了让它先于 Pin 收纳（AppKit 会把相邻的一串自绘视图项一步全部收走），Pin 移除后保留现状，代价是这一颗图标按 AppKit 自己的控件色与度量渲染而不是 `DesignTokens`。地址栏宽度实测区间 200–320pt。
+布局：地址栏是工具栏的居中项（`NSToolbar.centeredItemIdentifiers`），始终落在窗口水平正中；后退/前进紧贴在它左侧（分段控件前面放一个 flexible space 吃掉交通灯与它之间的余量），Ghost Mode 靠右。窗口变窄到地址栏按最大宽度放不进正中时，AppKit 会放弃居中、把整行往左排——所以每次 resize 都按实测偏移把地址栏的最大宽度收窄到恰好能居中的值；窗口窄到约 576pt 以下，地址栏到了最小宽度仍放不下，就尽量靠近正中。
+
+工具栏上没有设置按钮：设置面板从主菜单"设置…"（⌘,）和托盘菜单进入。原先的设置按钮是唯一会被收进溢出菜单的项，窗口一变窄就冒出一个只装着它的"»"。Ghost Mode 按钮同样不收纳：窗口窄到放不下它（实测 452pt 以下）时直接隐藏（`NSToolbarItem.isHidden`），此时只能用热键或托盘进入 Ghost Mode。
+
+置顶按钮已随 [ADR-0012](adr/0012-ghost-mode-as-pure-invisibility.md) 移除——置顶内化成了 Ghost Mode 的固有属性，不再是工具栏上的一个开关。工具栏里没有任何项会被收进"更多工具栏项"溢出菜单：Ghost Mode 按钮放不下就隐藏，窗口最小宽度 392pt（比 Safari 的 574pt 小得多）保证后退/前进和最小宽度的地址栏始终放得下，是逐点扫窗口宽度实测出来的（地址栏在 390pt 被收走、392pt 仍在，没留余量）。窗口不设最小高度。Ghost Mode 按钮是标准 `NSToolbarItem`（`image` + `action`）而非自绘视图，图标按 AppKit 自己的控件色与度量渲染而不是 `DesignTokens`。地址栏宽度区间 200–480pt。
 
 窗口标题（`NSWindow.title`，供 Mission Control/Cmd-Tab 使用）动态跟随页面标题，取不到时兜底域名，再取不到兜底 `"Mochi"`（这一级不能为空）——这是 `NSWindow.title` 这个供 Mission Control/Cmd-Tab 读取的元数据本身的兜底值，跟上面"标题文字不可视化渲染"是两回事，互不影响。
 
@@ -40,7 +43,7 @@
 
 **Ghost Mode 纯净态**：完全无边框、无原生装饰、无工具栏，只剩网页内容，按目标透明度渐隐；始终置顶（浮在其他应用窗口之上），鼠标移入窗口区域时让开、移出即恢复。见 [issue #8](https://github.com/asfamilybank/mochi/issues/8)、[ADR-0012](adr/0012-ghost-mode-as-pure-invisibility.md)。
 
-**空页面**（对标 Chrome 新标签页，见 [issue #16](https://github.com/asfamilybank/mochi/issues/16)）：完整的 Normal Mode 窗口（标题栏 + 全套工具栏），地址栏在空态下显示占位提示文字 + 放大镜图标（而不是锁形图标）。内容区是一个不依赖 App 图标的抽象 Liquid Glass 构图（两片半透明圆角面板叠加、轻微旋转错位），下方是一个视觉弱化（低透明度、小字号）的默认热键速览，不含独立的 URL 输入框——导航统一走工具栏自带的地址栏。
+**空页面**（对标 Chrome 新标签页，见 [issue #16](https://github.com/asfamilybank/mochi/issues/16)）：完整的 Normal Mode 窗口（标题栏 + 全套工具栏），地址栏在空态下显示占位提示文字 + 放大镜图标（而不是锁形图标）。内容区是一个不依赖 App 图标的抽象 Liquid Glass 构图（两片半透明圆角面板叠加、轻微旋转错位），下方是一个视觉弱化（低透明度、小字号）的默认热键速览（切换幽灵模式 ⌥⌘G、隐藏窗口 ⌥⌘H、打开设置 ⌘,；动作名在左、按键在右，每个键一个键帽；隐藏那一行注明"幽灵模式下"，因为它在空页面所在的 Normal Mode 里不生效），不含独立的 URL 输入框——导航统一走工具栏自带的地址栏。
 
 ## App 图标 / 托盘图标
 

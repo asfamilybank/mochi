@@ -439,6 +439,9 @@ fileprivate struct ToolbarControls {
     /// which AppKit may call again for the same identifier — a fresh bar per call would re-parent
     /// its field and lose its wiring.
     let addressBar: AddressBarView
+    /// The address bar's upper width bound. Normally `addressFieldMaxWidth`; `centerAddressBar`
+    /// lowers it whenever the window is too narrow to hold a bar that wide on its center.
+    let addressBarMaxWidth: NSLayoutConstraint
 }
 
 /// The Loading Progress Bar (#18): a thin line docked to the content area's top edge, overlaid
@@ -452,30 +455,31 @@ fileprivate struct LoadingProgressBar {
 
 /// Normal Mode's window chrome (ADR-0009, refined by ADR-0011): a native `NSToolbar` in
 /// `.unified` style — traffic lights, a back/forward segmented control, the Smart Address
-/// Field (with refresh embedded at its trailing edge), and settings all on one row, rendered
-/// with the system's own Liquid Glass material — sitting above the WKWebView. No title text is
-/// drawn next to the traffic lights (`titleVisibility = .hidden`), and settings collapses into
-/// the system's overflow menu as the window narrows (`NSToolbarItem.visibilityPriority`).
+/// Field (with refresh embedded at its trailing edge), and the Ghost Mode entry all on one row,
+/// rendered with the system's own Liquid Glass material — sitting above the WKWebView. No title
+/// text is drawn next to the traffic lights (`titleVisibility = .hidden`). Nothing collapses into
+/// the system's overflow menu: a narrow window hides the Ghost Mode button outright
+/// (`layoutToolbarItems`), and `normalModeWindowMinWidth` keeps the rest in place.
 ///
 /// Colors, corner radii, spacing, symbol names, and the one bespoke glyph all come from
 /// `DesignTokens`/`GhostGlyph` (#17) — nothing here writes its own numbers.
 final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDelegate, NSTextFieldDelegate, WKNavigationDelegate {
     private static let navigationItemID = NSToolbarItem.Identifier("com.mochi.toolbar.navigation")
-    private static let addressItemID = NSToolbarItem.Identifier("com.mochi.toolbar.address")
+    fileprivate static let addressItemID = NSToolbarItem.Identifier("com.mochi.toolbar.address")
     private static let ghostModeItemID = NSToolbarItem.Identifier("com.mochi.toolbar.ghostMode")
-    private static let settingsItemID = NSToolbarItem.Identifier("com.mochi.toolbar.settings")
     /// The Normal Mode toolbar's fixed item order (`DesignTokens.normalModeToolbarOrder`).
     /// Three items of our own: back and forward share one segmented control, and refresh is
     /// embedded in the address field rather than being an item of its own (ADR-0011).
     ///
-    /// The single `.flexibleSpace` is what makes the address field's bounded width read correctly
-    /// (ADR-0011): once the field stops stretching to fill everything left over, the slack has to
-    /// go somewhere, and parking all of it between the field and the trailing items keeps them
-    /// flush with the window's trailing edge. Without it the whole row packs to the left and
-    /// leaves a dead gap after the trailing items. Ghost Mode (#44) sits between that space and
-    /// settings — always visible while settings is the one item allowed to collapse.
+    /// The address field is the toolbar's centered item (`centeredItemIdentifiers`), so it sits on
+    /// the window's horizontal center whatever the traffic lights and the trailing items weigh.
+    /// The two `.flexibleSpace`s take the slack on either side of it: the leading one sits *before*
+    /// the navigation control, so back/forward hug the field's leading edge instead of the traffic
+    /// lights, and the trailing one keeps Ghost Mode (#44) flush with the window's trailing edge.
+    /// There is no settings item: ⌘, and the tray already open the panel, and a lone collapsible
+    /// item only ever produced an overflow "»" holding a single entry.
     private static let toolbarItemOrder: [NSToolbarItem.Identifier] = [
-        navigationItemID, addressItemID, .flexibleSpace, ghostModeItemID, settingsItemID,
+        .flexibleSpace, navigationItemID, addressItemID, .flexibleSpace, ghostModeItemID,
     ]
 
     let window: NSWindow
@@ -492,7 +496,6 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     private let addressFieldHoverTracker = HoverTracker()
     private var willCloseHandler: (() -> Void)?
     private var urlSubmittedHandler: ((URL) -> Void)?
-    private var settingsRequestedHandler: (() -> Void)?
     private var ghostModeToggleRequestedHandler: (() -> Void)?
     private var navigationFinishedHandler: (() -> Void)?
     private var navigationFailedHandler: ((String) -> Void)?
@@ -623,13 +626,75 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         installPageScrollReporting()
         contentLayoutObservation = window.observe(\.contentLayoutRect, options: [.new]) { [weak self] _, _ in
             self?.updateTitlebarMetrics()
+            self?.layoutToolbarItems()
         }
         updateTitlebarMetrics()
         updateTitlebarBackdrop()
     }
 
+
+    /// Hides the Ghost Mode button ahead of the width the window is *about* to take. AppKit lays
+    /// the toolbar out as part of applying the new frame, before `windowDidResize` — so a fast drag
+    /// that jumps from above `ghostModeButtonMinWindowWidth` to well below it in one step had that
+    /// layout still see the button, sweep it into a "»" for a frame, and only then have
+    /// `layoutToolbarItems` hide it. Only hiding happens here: showing the button while the window
+    /// is still at its old, narrower width would flash the same "»" on the way out; that waits for
+    /// `windowDidResize`, once the room exists.
+    func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+        if frameSize.width < DesignTokens.Layout.ghostModeButtonMinWindowWidth {
+            updateGhostModeItemVisibility(forWindowWidth: frameSize.width)
+        }
+        return frameSize
+    }
+
     func windowDidResize(_ notification: Notification) {
         updateTitlebarMetrics()
+        layoutToolbarItems()
+    }
+
+    /// Fits the toolbar row to the window's width without ever producing an overflow "»":
+    ///
+    /// - The Ghost Mode button is *hidden* (`NSToolbarItem.isHidden`), not collapsed, below the
+    ///   width that holds it (`ghostModeButtonMinWindowWidth`) — Ghost Mode stays reachable from
+    ///   its hotkey and the tray. Decided from the width alone: an earlier version un-hid the
+    ///   button on every resize, laid the row out and re-hid it if AppKit hadn't fit it, and during
+    ///   a live drag AppKit's own later layout passes caught the un-hidden state — the button
+    ///   flickered, and a row laid out as if it were there swept the address bar into a "»".
+    /// - The address bar is kept on the window's horizontal center. `centeredItemIdentifiers` only
+    /// centers an item that fits there at the width its constraints ask for — measured: below
+    /// ~860pt the bar held its full `addressFieldMaxWidth` and AppKit simply packed the row to the
+    /// left instead, drifting the bar up to 60pt right of center. So the bar is laid out at its
+    /// design maximum, and if that lands off-center it is narrowed by twice the offset — exactly
+    /// the width that fits centered between the navigation control and the trailing items. Below
+    /// `addressFieldMinWidth` it can't shrink further and sits as close to center as the row allows.
+    private func updateGhostModeItemVisibility(forWindowWidth width: CGFloat) {
+        guard !isNativeChromeHidden,
+              let ghostModeItem = window.toolbar?.items.first(where: { $0.itemIdentifier == Self.ghostModeItemID })
+        else { return }
+        let hidesGhostMode = width < DesignTokens.Layout.ghostModeButtonMinWindowWidth
+        if ghostModeItem.isHidden != hidesGhostMode {
+            ghostModeItem.isHidden = hidesGhostMode
+        }
+    }
+
+    private func layoutToolbarItems() {
+        let bar = controls.addressBar
+        // Not gated on the bar being in the window: a resize straight from wide to narrow has
+        // AppKit sweep the address bar *and* Ghost Mode into the overflow menu before this runs,
+        // and only hiding Ghost Mode here gets the bar back.
+        guard !isNativeChromeHidden, window.toolbar != nil, let frameView = window.contentView?.superview else { return }
+        let ringInset = DesignTokens.Layout.addressFieldFocusRingInset
+        let maxWidth = DesignTokens.Layout.addressFieldMaxWidth + ringInset * 2
+        let minWidth = DesignTokens.Layout.addressFieldMinWidth + ringInset * 2
+        controls.addressBarMaxWidth.constant = maxWidth
+        updateGhostModeItemVisibility(forWindowWidth: window.frame.width)
+        frameView.layoutSubtreeIfNeeded()
+        guard bar.window != nil else { return }
+        let barFrame = bar.convert(bar.bounds, to: nil)
+        let offset = abs(barFrame.midX - window.frame.width / 2)
+        guard offset > 0.5 else { return }
+        controls.addressBarMaxWidth.constant = max(minWidth, (barFrame.width - offset * 2).rounded(.down))
+        frameView.layoutSubtreeIfNeeded()
     }
 
     /// Height of the strip the toolbar occupies, taken from the window rather than hardcoded so it
@@ -1030,14 +1095,6 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         urlSubmittedHandler = handler
     }
 
-    func setSettingsRequestedHandler(_ handler: @escaping () -> Void) {
-        settingsRequestedHandler = handler
-    }
-
-    @objc private func handleSettingsRequested() {
-        settingsRequestedHandler?()
-    }
-
     func setGhostModeToggleRequestedHandler(_ handler: @escaping () -> Void) {
         ghostModeToggleRequestedHandler = handler
     }
@@ -1261,6 +1318,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
             contentTopInset.constant = appliedTitlebarHeight
             isNativeChromeHidden = false
             updateTitlebarMetrics()
+            layoutToolbarItems()
         } else {
             isNativeChromeHidden = true
             // A fullscreen window's frame is the screen's, not ours to shrink.
@@ -1385,15 +1443,13 @@ extension AppKitWidgetWindowHandle: NSToolbarDelegate {
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
         let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-        // `visibilityPriority` is AppKit's own responsive-collapse mechanism (ADR-0011), not
-        // custom layout code: as the window narrows, the toolbar sweeps its lowest-priority items
-        // into the system's "更多工具栏项" overflow popup first. Three tiers (#44): settings
-        // collapses first (`.low`) — a low-frequency, app-level entry point with two other
-        // affordances (⌘, and the tray) — Ghost Mode sits above it at the default `.standard` so
-        // it survives longer, and the address field/navigation control sit at `.high` so they are
-        // never candidates at all. `label` is what an item is called once it lands in the
-        // overflow menu — it stays invisible in the toolbar itself, which runs in `.iconOnly`
-        // display mode.
+        // `visibilityPriority` is AppKit's own responsive-collapse mechanism (ADR-0011): as the
+        // window narrows, the toolbar sweeps its lowest-priority items into the "更多工具栏项"
+        // overflow popup first. Nothing is ever left there: `layoutToolbarItems` hides Ghost Mode
+        // (`.standard`, the first candidate) before AppKit would move it, and the window's
+        // minimum width keeps the navigation control and the address field (`.high`) in place. `label` is what an item
+        // is called once it lands in the overflow menu — it stays invisible in the toolbar
+        // itself, which runs in `.iconOnly` display mode.
         switch itemIdentifier {
         case Self.navigationItemID:
             item.view = controls.navigationControl
@@ -1406,32 +1462,14 @@ extension AppKitWidgetWindowHandle: NSToolbarDelegate {
         case Self.ghostModeItemID:
             // A stock image+action item, not a custom view (#44) — deliberately, since this
             // button never has an active state to reflect: Ghost Mode hides the whole toolbar the
-            // moment it's entered, so nobody could ever see it drawn "on". Same reasoning as
-            // settings below, just for a different reason (that one has no active state to begin
-            // with; this one has one it can never display).
+            // moment it's entered, so nobody could ever see it drawn "on".
             item.image = ToolbarStyle.ghostImage(
-                pointSize: ToolbarStyle.GlyphSize.toolbarItem, accessibilityDescription: "进入 Ghost Mode")
+                pointSize: ToolbarStyle.GlyphSize.toolbarItem, accessibilityDescription: "进入幽灵模式")
             item.target = self
             item.action = #selector(handleGhostModeToggleRequested)
-            item.toolTip = "进入 Ghost Mode"
-            item.label = "Ghost Mode"
+            item.toolTip = "进入幽灵模式"
+            item.label = "幽灵模式"
             item.visibilityPriority = .standard
-        case Self.settingsItemID:
-            // A stock image+action item rather than a custom view. It was made one so it would
-            // shed into the overflow menu *before* Pin (ADR-0011: AppKit sheds a run of adjacent
-            // custom-view items in a single step, so two views could never collapse one at a
-            // time); Pin is gone now, but leaving this as a stock item keeps the shipped
-            // rendering — a stock item has no `contentTintColor` and no fixed box, so this glyph
-            // draws at AppKit's own control tint and metrics rather than `DesignTokens`'
-            // `iconPrimary`/`normalModeToolbarButtonDiameter`. That is the *correct* rendering
-            // for a toolbar glyph now that this is a system symbol: AppKit's control tint is
-            // what every other native toolbar uses, including its inactive-window dimming.
-            // docs/design-language.md documents this entry as the "更多" (⋯) affordance.
-            item.image = ToolbarStyle.symbolImage(DesignTokens.Symbol.settings, accessibilityDescription: "设置")
-            item.target = self
-            item.action = #selector(handleSettingsRequested)
-            item.label = "设置"
-            item.visibilityPriority = .low
         default:
             return nil
         }
@@ -1605,6 +1643,7 @@ public final class AppKitPlatformOps: PlatformOps {
         toolbar.displayMode = .iconOnly
         toolbar.allowsUserCustomization = false
         toolbar.delegate = handle
+        toolbar.centeredItemIdentifiers = [AppKitWidgetWindowHandle.addressItemID]
         window.toolbar = toolbar
         handle.normalModeToolbar = toolbar
 
@@ -1650,18 +1689,20 @@ public final class AppKitPlatformOps: PlatformOps {
         // by the focus-ring inset on every side, same as when the field itself was the capsule.
         let ringInset = DesignTokens.Layout.addressFieldFocusRingInset
         addressBar.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let addressBarMaxWidth = addressBar.widthAnchor.constraint(
+            lessThanOrEqualToConstant: DesignTokens.Layout.addressFieldMaxWidth + ringInset * 2)
         NSLayoutConstraint.activate([
             addressBar.widthAnchor.constraint(
                 greaterThanOrEqualToConstant: DesignTokens.Layout.addressFieldMinWidth + ringInset * 2),
-            addressBar.widthAnchor.constraint(
-                lessThanOrEqualToConstant: DesignTokens.Layout.addressFieldMaxWidth + ringInset * 2),
+            addressBarMaxWidth,
             addressBar.heightAnchor.constraint(
                 equalToConstant: DesignTokens.Layout.addressFieldHeight + ringInset * 2),
         ])
 
         return ToolbarControls(
             navigationControl: makeNavigationControl(),
-            addressBar: addressBar
+            addressBar: addressBar,
+            addressBarMaxWidth: addressBarMaxWidth
         )
     }
 
@@ -1785,11 +1826,6 @@ public final class AppKitPlatformOps: PlatformOps {
     public func setPinned(_ pinned: Bool, in window: WidgetWindowHandle) {
         guard let handle = handle(for: window) else { return }
         handle.setPinned(pinned)
-    }
-
-    public func onSettingsRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {
-        guard let handle = handle(for: window) else { return }
-        handle.setSettingsRequestedHandler(handler)
     }
 
     public func onGhostModeToggleRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {

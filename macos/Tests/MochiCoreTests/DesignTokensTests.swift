@@ -75,7 +75,7 @@ import Testing
 
     @Test func normalModeToolbarOrderIsFixed() {
         #expect(DesignTokens.normalModeToolbarOrder == [
-            .back, .forward, .addressField, .refresh, .ghostModeToggle, .settings,
+            .back, .forward, .addressField, .refresh, .ghostModeToggle,
         ])
     }
 
