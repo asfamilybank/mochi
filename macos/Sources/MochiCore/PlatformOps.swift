@@ -207,6 +207,9 @@ public protocol PlatformOps: AnyObject {
     /// there returns to it). A no-op when `navigationState(of:)` says that direction is closed.
     func goBack(in window: WidgetWindowHandle)
     func goForward(in window: WidgetWindowHandle)
+    /// Puts the address bar into editing with its whole address selected (#61, 打开位置… ⌘L) —
+    /// the same path a click on the bar takes, so it works on the Empty Page too.
+    func focusAddressBar(in window: WidgetWindowHandle)
 
     /// Whether the process currently holds Accessibility permission — required for
     /// `forwardKeystroke` to have any effect (ADR-0003). Checked before every forwarding attempt

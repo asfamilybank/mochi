@@ -18,6 +18,9 @@ public enum WidgetCommand: CaseIterable, Sendable {
     case goBack
     /// 历史记录 → 前进 (⌘]) (#59).
     case goForward
+    /// 文件 → 打开位置… (⌘L, #61) — the one command that is offered *without* a widget: it
+    /// reopens one first, then focuses its address bar.
+    case openLocation
 }
 
 public final class Orchestrator {
@@ -296,15 +299,23 @@ public final class Orchestrator {
     /// in Ghost Mode either: `CONTEXT.md` has no reload, no zoom and no toolbar there, and a menu
     /// bar that becomes clickable once the user activates Mochi from the Dock mustn't reopen that
     /// door — leaving Ghost Mode comes first.
+    ///
+    /// The one exception is `openLocation` (#61): with no widget it is still offered, and means
+    /// "reopen, then focus the address bar" — Safari's ⌘L with no window open. Ghost Mode still
+    /// rules it out like everything else.
     public func canPerform(_ command: WidgetCommand) -> Bool {
-        guard let window, ghostModeController?.mode != .ghost else { return false }
+        if ghostModeController?.mode == .ghost { return false }
         switch command {
-        case .close, .reload, .zoomIn, .zoomOut, .resetZoom:
+        case .openLocation:
             return true
         case .goBack:
+            guard let window else { return false }
             return platformOps.navigationState(of: window).canGoBack
         case .goForward:
+            guard let window else { return false }
             return platformOps.navigationState(of: window).canGoForward
+        case .close, .reload, .zoomIn, .zoomOut, .resetZoom:
+            return window != nil
         }
     }
 
@@ -320,7 +331,18 @@ public final class Orchestrator {
         case .resetZoom: resetZoom()
         case .goBack: window.map(platformOps.goBack(in:))
         case .goForward: window.map(platformOps.goForward(in:))
+        case .openLocation: openLocation()
         }
+    }
+
+    /// The perform side of `WidgetCommand.openLocation` (#61): focuses the address bar with the
+    /// whole address selected, reopening the widget first when there isn't one. The focus goes to
+    /// the new window as soon as `openWidget()` has put it on screen — not after its startup page
+    /// finishes loading, which would leave the user's first keystrokes going nowhere.
+    private func openLocation() {
+        if window == nil { openWidget() }
+        guard let window else { return }
+        platformOps.focusAddressBar(in: window)
     }
 
     /// Reloads the current page — the perform side of `WidgetCommand.reload` (#37's Display menu

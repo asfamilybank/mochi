@@ -277,6 +277,16 @@ final class FakePlatformOps: PlatformOps {
         wentForwardWindowIDs.append((window as! FakeWidgetWindowHandle).id)
     }
 
+    /// Every `focusAddressBar(in:)` call (#61), with what the window had been through by then —
+    /// so a test can assert the focus came after the window was shown and without waiting for
+    /// any navigation to finish.
+    private(set) var addressBarFocuses: [(windowID: Int, windowWasShown: Bool, loadedURLCount: Int)] = []
+
+    func focusAddressBar(in window: WidgetWindowHandle) {
+        let handle = window as! FakeWidgetWindowHandle
+        addressBarFocuses.append((handle.id, shownWindowIDs.contains(handle.id), loadedURLs.count))
+    }
+
     func isAccessibilityTrusted() -> Bool {
         stubbedAccessibilityTrusted
     }

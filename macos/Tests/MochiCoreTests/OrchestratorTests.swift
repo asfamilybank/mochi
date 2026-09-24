@@ -985,6 +985,9 @@ private struct GhostModeEntrySignature: Equatable {
         (state: .ghostMode, command: .zoomIn, canPerform: false),
         (state: .ghostMode, command: .zoomOut, canPerform: false),
         (state: .ghostMode, command: .resetZoom, canPerform: false),
+        (state: .noWidget, command: .openLocation, canPerform: true),
+        (state: .normalMode, command: .openLocation, canPerform: true),
+        (state: .ghostMode, command: .openLocation, canPerform: false),
     ])
     func widgetCommandsCanOnlyBePerformedOnAWidgetInNormalMode(
         _ row: (state: WidgetStateUnderTest, command: WidgetCommand, canPerform: Bool)
@@ -1012,6 +1015,9 @@ private struct GhostModeEntrySignature: Equatable {
         (state: .ghostMode, command: .zoomIn, performs: false),
         (state: .ghostMode, command: .zoomOut, performs: false),
         (state: .ghostMode, command: .resetZoom, performs: false),
+        (state: .noWidget, command: .openLocation, performs: true),
+        (state: .normalMode, command: .openLocation, performs: true),
+        (state: .ghostMode, command: .openLocation, performs: false),
     ])
     func performingAWidgetCommandReachesPlatformOpsOnlyWhenItCanBePerformed(
         _ row: (state: WidgetStateUnderTest, command: WidgetCommand, performs: Bool)
@@ -1104,6 +1110,64 @@ private struct GhostModeEntrySignature: Equatable {
         #expect(fake.wentForwardWindowIDs.isEmpty)
     }
 
+    // #61: 打开位置… (⌘L)
+
+    @Test func openLocationFocusesTheAddressBarOfTheOpenWidget() {
+        let (fake, orchestrator) = makeOrchestrator(in: .normalMode)
+
+        orchestrator.perform(.openLocation)
+
+        #expect(fake.addressBarFocuses.map(\.windowID) == [1])
+        #expect(fake.createdFrames.count == 1)
+    }
+
+    @Test func openLocationWorksOnTheEmptyPage() {
+        let fake = FakePlatformOps()
+        let config = WidgetConfig(url: nil)
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+        orchestrator.start()
+        #expect(fake.emptyPageShownWindowIDs == [1])
+
+        #expect(orchestrator.canPerform(.openLocation))
+        orchestrator.perform(.openLocation)
+
+        #expect(fake.addressBarFocuses.map(\.windowID) == [1])
+    }
+
+    /// Without a widget, ⌘L is a reopen (the same fresh launch as the tray/Dock) followed by the
+    /// focus — and the focus lands on the *new* window, only once that window is on screen.
+    @Test func openLocationWithoutAWidgetReopensItThenFocusesTheNewAddressBar() {
+        let (fake, orchestrator) = makeOrchestrator(in: .noWidget)
+
+        orchestrator.perform(.openLocation)
+
+        #expect(fake.createdFrames.count == 2)
+        #expect(fake.addressBarFocuses.map(\.windowID) == [2])
+        #expect(fake.addressBarFocuses.map(\.windowWasShown) == [true])
+        #expect(orchestrator.hasActiveWidget)
+    }
+
+    /// The focus doesn't wait for the startup page: it happens during the same call, before any
+    /// navigation has finished.
+    @Test func openLocationAfterAReopenDoesNotWaitForThePageToLoad() {
+        let (fake, orchestrator) = makeOrchestrator(in: .noWidget)
+
+        orchestrator.perform(.openLocation)
+
+        #expect(fake.addressBarFocuses.map(\.loadedURLCount) == [2])
+        #expect(fake.injectedScripts.isEmpty)
+    }
+
+    @Test func openLocationInGhostModeNeitherFocusesNorLeavesGhostMode() {
+        let (fake, orchestrator) = makeOrchestrator(in: .ghostMode)
+        let passthroughChanges = fake.mousePassthroughChanges.count
+
+        orchestrator.perform(.openLocation)
+
+        #expect(fake.addressBarFocuses.isEmpty)
+        #expect(fake.mousePassthroughChanges.count == passthroughChanges)
+    }
+
     private func makeOrchestrator(in state: WidgetStateUnderTest) -> (FakePlatformOps, Orchestrator) {
         let fake = FakePlatformOps()
         let config = WidgetConfig(url: URL(string: "https://example.com")!)
@@ -1131,6 +1195,7 @@ private extension FakePlatformOps {
         case .zoomIn, .zoomOut, .resetZoom: appliedZooms.count
         case .goBack: wentBackWindowIDs.count
         case .goForward: wentForwardWindowIDs.count
+        case .openLocation: addressBarFocuses.count
         }
     }
 }

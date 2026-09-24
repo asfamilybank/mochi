@@ -57,6 +57,7 @@ public enum DefaultHotkeys {
         openSettings,                               // ⌘, 设置…
         Hotkey(keyCode: 0x21, modifierFlags: cmd),  // ⌘[ 返回 (#59), kVK_ANSI_LeftBracket
         Hotkey(keyCode: 0x1E, modifierFlags: cmd),  // ⌘] 前进 (#59), kVK_ANSI_RightBracket
+        Hotkey(keyCode: 0x25, modifierFlags: cmd),  // ⌘L 打开位置…, kVK_ANSI_L
     ]
 }
 

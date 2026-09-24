@@ -53,12 +53,15 @@ final class MainMenuBuilder {
 
     // MARK: - File menu
 
-    /// One item only (#42): 关闭窗口. Mochi has no concept of new/open/export, so no such items are
-    /// invented to fill the menu out. `⌘W` routes to `WidgetCommand.close` (rather than a
+    /// 打开位置… (#61) and 关闭窗口 (#42). Mochi has no concept of new/export, so no such items are
+    /// invented to fill the menu out. 打开位置… stays enabled with the widget closed — it reopens it
+    /// (`Orchestrator.canPerform(_:)`). `⌘W` routes to `WidgetCommand.close` (rather than a
     /// responder-chain `performClose:`) so that it means "close the widget" specifically.
     private func fileMenuItem(orchestrator: Orchestrator) -> NSMenuItem {
         let menu = NSMenu(title: "文件")
 
+        menu.addItem(
+            widgetCommand(.openLocation, "打开位置…", symbol: "link", keyEquivalent: "l", orchestrator: orchestrator))
         menu.addItem(widgetCommand(.close, "关闭窗口", symbol: "xmark.square", keyEquivalent: "w", orchestrator: orchestrator))
 
         let item = NSMenuItem()

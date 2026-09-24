@@ -1088,6 +1088,14 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         window.makeFirstResponder(controls.addressBar.field)
     }
 
+    /// 打开位置… (⌘L, #61): the click path above, plus an explicit select-all — so a second ⌘L
+    /// while the user is already mid-edit reselects the whole address instead of keeping the caret
+    /// wherever it was.
+    func focusAddressField() {
+        activateAddressField()
+        controls.addressBar.field.currentEditor()?.selectAll(nil)
+    }
+
     /// Leaves the editable state — but only once the field has genuinely lost its field editor.
     ///
     /// AppKit posts `textDidEndEditing:` *while it is installing* the field editor this very
@@ -1848,6 +1856,11 @@ public final class AppKitPlatformOps: PlatformOps {
 
     public func goForward(in window: WidgetWindowHandle) {
         handle(for: window)?.goForward()
+    }
+
+    public func focusAddressBar(in window: WidgetWindowHandle) {
+        guard let handle = handle(for: window) else { return }
+        handle.focusAddressField()
     }
 
     public func onURLSubmitted(_ window: WidgetWindowHandle, perform handler: @escaping (URL) -> Void) {
