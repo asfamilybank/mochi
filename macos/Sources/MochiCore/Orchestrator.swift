@@ -4,8 +4,6 @@ import Foundation
 /// `perform(_:)` take, so every widget-bound menu item is gated by one set of rules instead of
 /// each menu item carrying its own.
 public enum WidgetCommand: CaseIterable, Sendable {
-    /// 文件 → 关闭窗口 (⌘W).
-    case close
     /// 显示 → 重新载入页面 (⌘R). Offered mid-load too — reloading is how you retry a stuck page.
     case reload
     /// 显示 → 停止 (⌘., #60). Only while the page is loading.
@@ -209,10 +207,9 @@ public final class Orchestrator {
         }
     }
 
-    /// Really closes the widget (#42) — the File menu's 关闭窗口 (`⌘W`). Routes through the
-    /// platform's close so the window's own will-close callback (`handleWindowWillClose`) does the
-    /// teardown, exactly as it does for the red close button: one close path, one place that
-    /// persists geometry first.
+    /// Really closes the widget (#42). Routes through the platform's close so the window's own
+    /// will-close callback (`handleWindowWillClose`) does the teardown, exactly as it does for the
+    /// red close button and `⌘W`: one close path, one place that persists geometry first.
     public func closeWidget() {
         guard let window else { return }
         platformOps.closeWidgetWindow(window)
@@ -354,7 +351,7 @@ public final class Orchestrator {
         case .goForward:
             guard let window else { return false }
             return platformOps.navigationState(of: window).canGoForward
-        case .close, .reload, .zoomIn, .zoomOut, .resetZoom:
+        case .reload, .zoomIn, .zoomOut, .resetZoom:
             return window != nil
         case .stop:
             return window.map { platformOps.navigationState(of: $0).isLoading } ?? false
@@ -366,7 +363,6 @@ public final class Orchestrator {
     public func perform(_ command: WidgetCommand) {
         guard canPerform(command) else { return }
         switch command {
-        case .close: closeWidget()
         case .reload: reloadPage()
         case .stop: stopLoading()
         case .zoomIn: zoomIn()

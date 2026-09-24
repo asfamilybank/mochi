@@ -73,14 +73,21 @@ final class MainMenuBuilder {
 
     /// 打开位置… (#61) and 关闭窗口 (#42). Mochi has no concept of new/export, so no such items are
     /// invented to fill the menu out. 打开位置… stays enabled with the widget closed — it reopens it
-    /// (`Orchestrator.canPerform(_:)`). `⌘W` routes to `WidgetCommand.close` (rather than a
-    /// responder-chain `performClose:`) so that it means "close the widget" specifically.
+    /// (`Orchestrator.canPerform(_:)`).
+    ///
+    /// `⌘W` is the responder-chain `performClose:`, so it closes whichever window is key — 设置 or
+    /// 关于 as much as the widget. It used to be a widget command, and closed the widget even with
+    /// 设置 in front. For the widget, `performClose:` is the red button's own path, so
+    /// `windowWillClose` still does the teardown. Ghost Mode needs no rule of its own: the window
+    /// is borderless there, a borderless window can't become key, and so `⌘W` can't reach it.
     private func fileMenuItem(orchestrator: Orchestrator) -> NSMenuItem {
         let menu = NSMenu(title: "文件")
 
         menu.addItem(
             widgetCommand(.openLocation, "打开位置…", symbol: "link", keyEquivalent: "l", orchestrator: orchestrator))
-        menu.addItem(widgetCommand(.close, "关闭窗口", symbol: "xmark.square", keyEquivalent: "w", orchestrator: orchestrator))
+        let close = responderChainItem("关闭窗口", selectorName: "performClose:", keyEquivalent: "w")
+        close.image = NSImage(systemSymbolName: "xmark.square", accessibilityDescription: nil)
+        menu.addItem(close)
 
         let item = NSMenuItem()
         item.submenu = menu

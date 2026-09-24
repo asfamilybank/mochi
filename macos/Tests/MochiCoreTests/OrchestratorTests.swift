@@ -1129,17 +1129,14 @@ enum TrayScenario: Sendable {
     // #57: the main menu's widget commands, gated in one place
 
     @Test(arguments: [
-        (state: WidgetStateUnderTest.noWidget, command: WidgetCommand.close, canPerform: false),
-        (state: .noWidget, command: .reload, canPerform: false),
+        (state: WidgetStateUnderTest.noWidget, command: WidgetCommand.reload, canPerform: false),
         (state: .noWidget, command: .zoomIn, canPerform: false),
         (state: .noWidget, command: .zoomOut, canPerform: false),
         (state: .noWidget, command: .resetZoom, canPerform: false),
-        (state: .normalMode, command: .close, canPerform: true),
         (state: .normalMode, command: .reload, canPerform: true),
         (state: .normalMode, command: .zoomIn, canPerform: true),
         (state: .normalMode, command: .zoomOut, canPerform: true),
         (state: .normalMode, command: .resetZoom, canPerform: true),
-        (state: .ghostMode, command: .close, canPerform: false),
         (state: .ghostMode, command: .reload, canPerform: false),
         (state: .ghostMode, command: .zoomIn, canPerform: false),
         (state: .ghostMode, command: .zoomOut, canPerform: false),
@@ -1159,17 +1156,14 @@ enum TrayScenario: Sendable {
     /// The perform side refuses exactly what the can-perform side reports — a key equivalent that
     /// slips past menu validation still can't reload or zoom a Ghost Mode window.
     @Test(arguments: [
-        (state: WidgetStateUnderTest.noWidget, command: WidgetCommand.close, performs: false),
-        (state: .noWidget, command: .reload, performs: false),
+        (state: WidgetStateUnderTest.noWidget, command: WidgetCommand.reload, performs: false),
         (state: .noWidget, command: .zoomIn, performs: false),
         (state: .noWidget, command: .zoomOut, performs: false),
         (state: .noWidget, command: .resetZoom, performs: false),
-        (state: .normalMode, command: .close, performs: true),
         (state: .normalMode, command: .reload, performs: true),
         (state: .normalMode, command: .zoomIn, performs: true),
         (state: .normalMode, command: .zoomOut, performs: true),
         (state: .normalMode, command: .resetZoom, performs: true),
-        (state: .ghostMode, command: .close, performs: false),
         (state: .ghostMode, command: .reload, performs: false),
         (state: .ghostMode, command: .zoomIn, performs: false),
         (state: .ghostMode, command: .zoomOut, performs: false),
@@ -1393,7 +1387,6 @@ private extension FakePlatformOps {
     /// How many times `command`'s platform-side effect has happened so far.
     func effectCount(of command: WidgetCommand) -> Int {
         switch command {
-        case .close: closedWindowIDs.count
         case .reload: reloadedWindowIDs.count
         case .stop: stoppedLoadingWindowIDs.count
         case .zoomIn, .zoomOut, .resetZoom: appliedZooms.count
