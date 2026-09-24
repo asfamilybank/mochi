@@ -1480,6 +1480,38 @@ private extension FakePlatformOps {
         #expect(fake.minimumFontSizeChanges.map(\.size) == [nil, 14, nil])
         #expect(fake.minimumFontSizeChanges.map(\.windowID) == [1, 1, 1])
     }
+
+    // MARK: - #72: 高级 pane switches reach the window
+
+    @Test(arguments: [true, false])
+    func openingTheWidgetAppliesTheAdvancedSwitches(_ enabled: Bool) {
+        let fake = FakePlatformOps()
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+            .updatingHTTPWarningEnabled(enabled)
+            .updatingWebInspectorEnabled(enabled)
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+        orchestrator.start()
+
+        #expect(fake.webInspectableChanges.map(\.enabled) == [enabled])
+        #expect(fake.httpWarningChanges.map(\.enabled) == [enabled])
+        #expect(fake.webInspectableChanges.map(\.windowID) == [1])
+    }
+
+    @Test(arguments: [true, false])
+    func reapplyConfigurationPushesTheAdvancedSwitchesToTheWindow(_ enabled: Bool) {
+        let fake = FakePlatformOps()
+        var config = WidgetConfig(url: URL(string: "https://example.com")!)
+            .updatingHTTPWarningEnabled(!enabled)
+            .updatingWebInspectorEnabled(!enabled)
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+        orchestrator.start()
+        config = config.updatingHTTPWarningEnabled(enabled).updatingWebInspectorEnabled(enabled)
+
+        orchestrator.reapplyConfiguration()
+
+        #expect(fake.webInspectableChanges.map(\.enabled) == [!enabled, enabled])
+        #expect(fake.httpWarningChanges.map(\.enabled) == [!enabled, enabled])
+    }
 }
 
 private extension Double {

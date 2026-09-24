@@ -76,6 +76,21 @@ final class SettingsViewModel: ObservableObject {
         reopenWidget()
     }
 
+    // #72: 高级 pane
+    func updateHTTPWarningEnabled(_ enabled: Bool) {
+        controller.updateHTTPWarningEnabled(enabled)
+        config = controller.config
+    }
+
+    func updateWebInspectorEnabled(_ enabled: Bool) {
+        controller.updateWebInspectorEnabled(enabled)
+        config = controller.config
+    }
+
+    func removeAllWebsiteData() {
+        controller.removeAllWebsiteData()
+    }
+
     func reloadPageNow() {
         reloadPage()
     }

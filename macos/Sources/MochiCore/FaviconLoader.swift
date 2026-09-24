@@ -26,6 +26,14 @@ final class FaviconLoader {
     private var misses: Set<String> = []
     private var missOrder: [String] = []
 
+    /// 移除所有网站数据… (#72) drops both caches — hits and remembered misses.
+    func removeAll() {
+        cache.removeAll()
+        cacheOrder.removeAll()
+        misses.removeAll()
+        missOrder.removeAll()
+    }
+
     /// Ephemeral on purpose: a favicon needs no cookies, and not sending them keeps this request
     /// from being one more thing a site can tie to the session it already has with the page.
     private let session: URLSession = {

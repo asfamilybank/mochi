@@ -619,4 +619,39 @@ import Testing
         #expect(reparsed == original)
         #expect(!WidgetConfig().serialized().contains("minimum_font_size"))
     }
+
+    // MARK: - #72: 高级 pane switches
+
+    @Test func advancedSwitchesDefaultToOffWhenAbsent() throws {
+        let config = try WidgetConfig.parse("url = \"https://example.com\"")
+        #expect(config.isHTTPWarningEnabled == false)
+        #expect(config.isWebInspectorEnabled == false)
+    }
+
+    @Test func parsesAdvancedSwitchesWhenPresent() throws {
+        let config = try WidgetConfig.parse("""
+            url = "https://example.com"
+            http_warning_enabled = true
+            web_inspector_enabled = true
+            """)
+        #expect(config.isHTTPWarningEnabled == true)
+        #expect(config.isWebInspectorEnabled == true)
+    }
+
+    @Test func invalidAdvancedSwitchValuesFallBackToOff() throws {
+        let config = try WidgetConfig.parse("""
+            url = "https://example.com"
+            http_warning_enabled = "yes"
+            web_inspector_enabled = 1
+            """)
+        #expect(config.isHTTPWarningEnabled == false)
+        #expect(config.isWebInspectorEnabled == false)
+    }
+
+    @Test func serializingThenReparsingRoundTripsAdvancedSwitches() throws {
+        let original = WidgetConfig(url: URL(string: "https://example.com")!)
+            .updatingHTTPWarningEnabled(true)
+            .updatingWebInspectorEnabled(true)
+        #expect(try WidgetConfig.parse(original.serialized()) == original)
+    }
 }

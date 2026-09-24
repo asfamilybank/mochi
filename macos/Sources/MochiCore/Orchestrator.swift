@@ -183,6 +183,8 @@ public final class Orchestrator {
         platformOps.setToolbarVisible(true, in: window)
         platformOps.setSnapEnabled(config.isSnapEnabled, in: window)
         platformOps.setMinimumFontSize(config.minimumFontSize, in: window)
+        platformOps.setWebInspectable(config.isWebInspectorEnabled, in: window)
+        platformOps.setHTTPWarningEnabled(config.isHTTPWarningEnabled, in: window)
         platformOps.onWindowWillClose(window) { [weak self] in
             self?.handleWindowWillClose()
         }
@@ -331,6 +333,8 @@ public final class Orchestrator {
         guard let window else { return }
         platformOps.setSnapEnabled(currentConfig().isSnapEnabled, in: window)
         platformOps.setMinimumFontSize(currentConfig().minimumFontSize, in: window)
+        platformOps.setWebInspectable(currentConfig().isWebInspectorEnabled, in: window)
+        platformOps.setHTTPWarningEnabled(currentConfig().isHTTPWarningEnabled, in: window)
         ghostModeController?.reapplyConfiguration()
     }
 

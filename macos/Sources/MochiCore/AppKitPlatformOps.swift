@@ -1469,6 +1469,33 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         (window as? MochiWidgetWindow)?.isSnapEnabled = enabled
     }
 
+    // #72: 高级 pane
+    private var isHTTPWarningEnabled = false
+
+    func setWebInspectable(_ enabled: Bool) {
+        webView.isInspectable = enabled
+    }
+
+    func setHTTPWarningEnabled(_ enabled: Bool) {
+        isHTTPWarningEnabled = enabled
+    }
+
+    func clearFaviconCache() {
+        faviconLoader.removeAll()
+    }
+
+    /// Read on every navigation, so toggling the setting affects the very next one.
+    /// `.userMediatedFallbackToHTTP` tries HTTPS first and shows WebKit's own warning page before
+    /// falling back to HTTP; `.keepAsRequested` is WebKit's default (behaviour before #72).
+    func webView(
+        _ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+        preferences: WKWebpagePreferences,
+        decisionHandler: @escaping (WKNavigationActionPolicy, WKWebpagePreferences) -> Void
+    ) {
+        preferences.preferredHTTPSNavigationPolicy = isHTTPWarningEnabled ? .userMediatedFallbackToHTTP : .keepAsRequested
+        decisionHandler(.allow, preferences)
+    }
+
     /// A tracking area on the whole content view is what lets Ghost Mode detect the mouse moving
     /// into and back out of the widget (#8) even though the window ignores mouse events at the
     /// time — AppKit evaluates tracking-rect enter/exit from raw cursor position, independent of
@@ -1745,6 +1772,7 @@ public final class AppKitPlatformOps: PlatformOps {
             nativePageTopConstraints: nativePageTopConstraints,
             contentContainerTopConstraint: contentContainerTopConstraint
         )
+        liveHandles.add(handle)
 
         let toolbar = NSToolbar(identifier: "MochiNormalModeToolbar")
         toolbar.displayMode = .iconOnly
@@ -2064,6 +2092,30 @@ public final class AppKitPlatformOps: PlatformOps {
     public func setSnapEnabled(_ enabled: Bool, in window: WidgetWindowHandle) {
         guard let handle = handle(for: window) else { return }
         handle.setSnapEnabled(enabled)
+    }
+
+    // #72: 高级 pane
+    /// Every window handle created, weakly — so removing website data can also clear each live
+    /// window's favicon cache.
+    private let liveHandles = NSHashTable<AppKitWidgetWindowHandle>.weakObjects()
+
+    public func setWebInspectable(_ enabled: Bool, in window: WidgetWindowHandle) {
+        handle(for: window)?.setWebInspectable(enabled)
+    }
+
+    public func setHTTPWarningEnabled(_ enabled: Bool, in window: WidgetWindowHandle) {
+        handle(for: window)?.setHTTPWarningEnabled(enabled)
+    }
+
+    /// Every web view shares `WKWebsiteDataStore.default()` (none is configured otherwise), so
+    /// clearing it logs every site out. `config.toml` is not WebKit data and is left alone.
+    public func removeAllWebsiteData() {
+        WKWebsiteDataStore.default().removeData(
+            ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast
+        ) {}
+        for handle in liveHandles.allObjects {
+            handle.clearFaviconCache()
+        }
     }
 
     /// The tray glyph is `MochiGlyph` — the brand mark the app icon also wears, rather than the

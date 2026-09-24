@@ -249,6 +249,21 @@ public protocol PlatformOps: AnyObject {
 
     func setSnapEnabled(_ enabled: Bool, in window: WidgetWindowHandle)
 
+    /// 显示网页开发者功能 (#72): whether the page offers 检查元素 in its context menu
+    /// (`WKWebView.isInspectable`). Pushed on open and on every `reapplyConfiguration()`.
+    func setWebInspectable(_ enabled: Bool, in window: WidgetWindowHandle)
+
+    /// 通过 HTTP 连接网站前接收警告 (#72): when on, a navigation that can't be upgraded to HTTPS
+    /// shows WebKit's warning and continues only after the user confirms
+    /// (`.userMediatedFallbackToHTTP`); when off, requests go out as typed (`.keepAsRequested`). The
+    /// platform consults the pushed value in every navigation policy decision.
+    func setHTTPWarningEnabled(_ enabled: Bool, in window: WidgetWindowHandle)
+
+    /// 移除所有网站数据… (#72): removes every WebKit website data type (cookies, caches, local
+    /// storage, …) plus Mochi's favicon cache. App-global — not tied to a window, and works with
+    /// the widget closed. Never touches `config.toml`. Confirmation is the caller's job.
+    func removeAllWebsiteData()
+
     /// Creates the app's persistent menu-bar (tray) icon (#9) — present for the app's entire
     /// lifetime regardless of Normal/Ghost Mode — populated with `items` in order. Not tied to a
     /// `WidgetWindowHandle` since the tray icon is app-global, not per-window. Called once, at

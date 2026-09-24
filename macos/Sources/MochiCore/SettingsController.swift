@@ -79,6 +79,21 @@ public final class SettingsController {
         persistAndNotify { $0.updatingMinimumFontSize(size) }
     }
 
+    // #72: 高级 pane
+    public func updateHTTPWarningEnabled(_ enabled: Bool) {
+        persistAndNotify { $0.updatingHTTPWarningEnabled(enabled) }
+    }
+
+    public func updateWebInspectorEnabled(_ enabled: Bool) {
+        persistAndNotify { $0.updatingWebInspectorEnabled(enabled) }
+    }
+
+    /// Not a config edit: nothing is persisted and `configDidChange` doesn't fire. The UI asks for
+    /// confirmation before calling this.
+    public func removeAllWebsiteData() {
+        platformOps.removeAllWebsiteData()
+    }
+
     public func updateCustomScript(_ script: String?) {
         persistAndNotify { $0.updatingCustomScript(script) }
     }

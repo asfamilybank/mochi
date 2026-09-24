@@ -262,6 +262,23 @@ final class FakePlatformOps: PlatformOps {
         snapEnabledChanges.append((enabled, handle.id))
     }
 
+    // #72: 高级 pane
+    private(set) var webInspectableChanges: [(enabled: Bool, windowID: Int)] = []
+    private(set) var httpWarningChanges: [(enabled: Bool, windowID: Int)] = []
+    private(set) var removeAllWebsiteDataCallCount = 0
+
+    func setWebInspectable(_ enabled: Bool, in window: WidgetWindowHandle) {
+        webInspectableChanges.append((enabled, (window as! FakeWidgetWindowHandle).id))
+    }
+
+    func setHTTPWarningEnabled(_ enabled: Bool, in window: WidgetWindowHandle) {
+        httpWarningChanges.append((enabled, (window as! FakeWidgetWindowHandle).id))
+    }
+
+    func removeAllWebsiteData() {
+        removeAllWebsiteDataCallCount += 1
+    }
+
     func createTrayIcon(items: [TrayMenuItem]) {
         createTrayIconCallCount += 1
         trayMenuItems = items

@@ -60,6 +60,12 @@ public struct WidgetConfig: Equatable {
     /// `offeredMinimumFontSizes`. Pushed to the live web view by `Orchestrator.reapplyConfiguration`.
     public var minimumFontSize: Int?
 
+    /// 高级 → 安全性 → 通过 HTTP 连接网站前接收警告 (#72), off by default. Consulted by the
+    /// platform in every navigation policy decision.
+    public var isHTTPWarningEnabled: Bool = false
+    /// 高级 → 显示网页开发者功能 (#72), off by default — `WKWebView.isInspectable`.
+    public var isWebInspectorEnabled: Bool = false
+
     public init(
         url: URL? = nil, windowState: WindowState? = nil, customScript: String? = nil,
         ghostOpacity: Double = WidgetConfig.defaultGhostOpacity, isMouseAvoidanceEnabled: Bool = true,
@@ -129,6 +135,9 @@ extension WidgetConfig {
         config.minimumFontSize = table["minimum_font_size"]?.int.flatMap {
             offeredMinimumFontSizes.contains($0) ? $0 : nil
         }
+        // #72
+        config.isHTTPWarningEnabled = table["http_warning_enabled"]?.bool ?? false
+        config.isWebInspectorEnabled = table["web_inspector_enabled"]?.bool ?? false
         return config
     }
 
@@ -225,6 +234,8 @@ extension WidgetConfig {
         table["ghost_opacity"] = ghostOpacity
         table["mouse_avoidance_enabled"] = isMouseAvoidanceEnabled
         table["snap_enabled"] = isSnapEnabled
+        table["http_warning_enabled"] = isHTTPWarningEnabled
+        table["web_inspector_enabled"] = isWebInspectorEnabled
         if let customScript {
             table["custom_script"] = customScript
         }
@@ -360,6 +371,18 @@ extension WidgetConfig {
     public func updatingMinimumFontSize(_ size: Int?) -> WidgetConfig {
         var copy = self
         copy.minimumFontSize = size
+        return copy
+    }
+
+    public func updatingHTTPWarningEnabled(_ enabled: Bool) -> WidgetConfig {
+        var copy = self
+        copy.isHTTPWarningEnabled = enabled
+        return copy
+    }
+
+    public func updatingWebInspectorEnabled(_ enabled: Bool) -> WidgetConfig {
+        var copy = self
+        copy.isWebInspectorEnabled = enabled
         return copy
     }
 

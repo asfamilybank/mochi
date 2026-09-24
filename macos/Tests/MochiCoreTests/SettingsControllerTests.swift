@@ -644,4 +644,53 @@ import Testing
         #expect(store.config.minimumFontSize == nil)
         #expect(notified == 2)
     }
+
+    // MARK: - #72: 高级 pane
+
+    @Test func updatingHTTPWarningPersistsAndNotifies() {
+        let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
+        var notified = 0
+        let controller = makeController(store: store, configDidChange: { notified += 1 })
+
+        controller.updateHTTPWarningEnabled(true)
+
+        #expect(store.config.isHTTPWarningEnabled == true)
+        #expect(notified == 1)
+    }
+
+    @Test func updatingWebInspectorPersistsAndNotifies() {
+        let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
+        var notified = 0
+        let controller = makeController(store: store, configDidChange: { notified += 1 })
+
+        controller.updateWebInspectorEnabled(true)
+
+        #expect(store.config.isWebInspectorEnabled == true)
+        #expect(notified == 1)
+    }
+
+    @Test func removingAllWebsiteDataReachesThePlatformWithoutTouchingTheConfig() {
+        let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
+        let fake = FakePlatformOps()
+        var notified = 0
+        let controller = makeController(store: store, platformOps: fake, configDidChange: { notified += 1 })
+
+        controller.removeAllWebsiteData()
+
+        #expect(fake.removeAllWebsiteDataCallCount == 1)
+        #expect(store.writeCount == 0)
+        #expect(notified == 0)
+    }
+
+    @Test func aWebInspectorEditReachesTheLiveWindowWhenWiredToTheOrchestrator() {
+        let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { store.config })
+        orchestrator.start()
+        let controller = makeController(store: store, platformOps: fake, configDidChange: orchestrator.reapplyConfiguration)
+
+        controller.updateWebInspectorEnabled(true)
+
+        #expect(fake.webInspectableChanges.map(\.enabled) == [false, true])
+    }
 }
