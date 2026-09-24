@@ -1,5 +1,21 @@
 import Foundation
 
+/// A main-menu command that acts on the widget (#57) — what `Orchestrator.canPerform(_:)` and
+/// `perform(_:)` take, so every widget-bound menu item is gated by one set of rules instead of
+/// each menu item carrying its own.
+public enum WidgetCommand: CaseIterable, Sendable {
+    /// 文件 → 关闭窗口 (⌘W).
+    case close
+    /// 显示 → 刷新 (⌘R).
+    case reload
+    /// 显示 → 放大 (⌘+).
+    case zoomIn
+    /// 显示 → 缩小 (⌘-).
+    case zoomOut
+    /// 显示 → 实际大小 (⌘0).
+    case resetZoom
+}
+
 public final class Orchestrator {
     /// The step `zoomIn`/`zoomOut` (#37) move by on each call, and the range they clamp to —
     /// matching a typical browser's zoom-shortcut feel rather than a jump straight to the extreme.
@@ -17,8 +33,8 @@ public final class Orchestrator {
     private var hotkeyForwarder: HotkeyForwarder?
     private var currentZoom: Double = 1.0
 
-    /// Whether a widget window currently exists (#42) — what the main menu's item validation
-    /// asks to grey out 关闭窗口/刷新/缩放 while the widget is closed.
+    /// Whether a widget window currently exists (#42). The main menu asks `canPerform(_:)`
+    /// instead, which also rules out Ghost Mode.
     public var hasActiveWidget: Bool { window != nil }
 
     /// - Parameter currentConfig: read at every point of use — the resolved startup content on
@@ -271,9 +287,35 @@ public final class Orchestrator {
         persistURL(url)
     }
 
-    /// Reloads the current page — #37's Display menu "刷新" (⌘R), reachable through the responder
-    /// chain since Mochi's main menu routes there rather than adding a `PlatformOps` method. Also
-    /// the settings panel's 刷新页面 button (#46), the one action that makes a script edit apply.
+    /// Whether the main menu should offer `command` right now (#57) — asked every time the menu
+    /// opens or a key equivalent fires. Nothing is offered without a widget to act on, and nothing
+    /// in Ghost Mode either: `CONTEXT.md` has no reload, no zoom and no toolbar there, and a menu
+    /// bar that becomes clickable once the user activates Mochi from the Dock mustn't reopen that
+    /// door — leaving Ghost Mode comes first.
+    public func canPerform(_ command: WidgetCommand) -> Bool {
+        guard window != nil, ghostModeController?.mode != .ghost else { return false }
+        switch command {
+        case .close, .reload, .zoomIn, .zoomOut, .resetZoom:
+            return true
+        }
+    }
+
+    /// Runs `command` if `canPerform(_:)` allows it, and otherwise does nothing — so a key
+    /// equivalent that reaches here without passing menu validation still obeys the same rules.
+    public func perform(_ command: WidgetCommand) {
+        guard canPerform(command) else { return }
+        switch command {
+        case .close: closeWidget()
+        case .reload: reloadPage()
+        case .zoomIn: zoomIn()
+        case .zoomOut: zoomOut()
+        case .resetZoom: resetZoom()
+        }
+    }
+
+    /// Reloads the current page — the perform side of `WidgetCommand.reload` (#37's Display menu
+    /// "刷新", ⌘R). Also the settings panel's 刷新页面 button (#46), the one action that makes a
+    /// script edit apply.
     public func reloadPage() {
         guard let window else { return }
         platformOps.reloadPage(in: window)

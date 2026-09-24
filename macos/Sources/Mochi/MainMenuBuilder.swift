@@ -12,9 +12,9 @@ final class MainMenuBuilder {
     private var targets: [MenuItemActionTarget] = []
 
     /// - Parameters:
-    ///   - orchestrator: supplies the operations the Mochi/Display menus call — reload, zoom,
-    ///     open settings — all already public on `Orchestrator` (#37) rather than reached for via
-    ///     new `PlatformOps` methods.
+    ///   - orchestrator: supplies everything the menus do. Widget-bound items go through its
+    ///     `canPerform(_:)`/`perform(_:)` pair (#57), so whether an item is offered — no widget,
+    ///     Ghost Mode — is decided there, never here.
     func build(orchestrator: Orchestrator) -> NSMenu {
         let mainMenu = NSMenu()
         mainMenu.addItem(appMenuItem(orchestrator: orchestrator))
@@ -30,20 +30,20 @@ final class MainMenuBuilder {
     private func appMenuItem(orchestrator: Orchestrator) -> NSMenuItem {
         let menu = NSMenu(title: AppInfo.name)
 
-        menu.addItem(action("关于 \(AppInfo.name)") {
+        menu.addItem(action("关于 \(AppInfo.name)", symbol: "info.circle") {
             NSApp.orderFrontStandardAboutPanel(options: [
                 .applicationName: AppInfo.name,
                 .applicationVersion: AppInfo.version(fromInfoDictionary: Bundle.main.infoDictionary),
             ])
         })
         menu.addItem(.separator())
-        menu.addItem(action("设置…", keyEquivalent: ",") {
+        menu.addItem(action("设置…", symbol: "gearshape", keyEquivalent: ",") {
             orchestrator.openSettingsPanel()
         })
         menu.addItem(.separator())
-        menu.addItem(action("退出 \(AppInfo.name)", keyEquivalent: "q") {
-            NSApp.terminate(nil)
-        })
+        // The standard `terminate:` selector rather than a closure: AppKit gives an item with that
+        // action its own Quit icon — the one Safari's 退出 shows, which is not a public SF Symbol.
+        menu.addItem(responderChainItem("退出 \(AppInfo.name)", selectorName: "terminate:", keyEquivalent: "q"))
 
         let item = NSMenuItem()
         item.submenu = menu
@@ -53,16 +53,12 @@ final class MainMenuBuilder {
     // MARK: - File menu
 
     /// One item only (#42): 关闭窗口. Mochi has no concept of new/open/export, so no such items are
-    /// invented to fill the menu out. `⌘W` routes to `Orchestrator.closeWidget` (rather than a
-    /// responder-chain `performClose:`) so that it means "close the widget" specifically, and is
-    /// greyed out — via the standard validation hook, not manual `isEnabled` flips — whenever
-    /// there is no widget to close.
+    /// invented to fill the menu out. `⌘W` routes to `WidgetCommand.close` (rather than a
+    /// responder-chain `performClose:`) so that it means "close the widget" specifically.
     private func fileMenuItem(orchestrator: Orchestrator) -> NSMenuItem {
         let menu = NSMenu(title: "文件")
 
-        menu.addItem(widgetAction("关闭窗口", keyEquivalent: "w", orchestrator: orchestrator) {
-            orchestrator.closeWidget()
-        })
+        menu.addItem(widgetCommand(.close, "关闭窗口", symbol: "xmark.square", keyEquivalent: "w", orchestrator: orchestrator))
 
         let item = NSMenuItem()
         item.submenu = menu
@@ -102,19 +98,14 @@ final class MainMenuBuilder {
     private func viewMenuItem(orchestrator: Orchestrator) -> NSMenuItem {
         let menu = NSMenu(title: "显示")
 
-        menu.addItem(widgetAction("刷新", keyEquivalent: "r", orchestrator: orchestrator) {
-            orchestrator.reloadPage()
-        })
+        menu.addItem(widgetCommand(.reload, "刷新", symbol: "arrow.clockwise", keyEquivalent: "r", orchestrator: orchestrator))
         menu.addItem(.separator())
-        menu.addItem(widgetAction("放大", keyEquivalent: "+", orchestrator: orchestrator) {
-            orchestrator.zoomIn()
-        })
-        menu.addItem(widgetAction("缩小", keyEquivalent: "-", orchestrator: orchestrator) {
-            orchestrator.zoomOut()
-        })
-        menu.addItem(widgetAction("实际大小", keyEquivalent: "0", orchestrator: orchestrator) {
-            orchestrator.resetZoom()
-        })
+        menu.addItem(
+            widgetCommand(.zoomIn, "放大", symbol: "plus.magnifyingglass", keyEquivalent: "+", orchestrator: orchestrator))
+        menu.addItem(
+            widgetCommand(.zoomOut, "缩小", symbol: "minus.magnifyingglass", keyEquivalent: "-", orchestrator: orchestrator))
+        menu.addItem(
+            widgetCommand(.resetZoom, "实际大小", symbol: "1.magnifyingglass", keyEquivalent: "0", orchestrator: orchestrator))
 
         let item = NSMenuItem()
         item.submenu = menu
@@ -142,16 +133,22 @@ final class MainMenuBuilder {
 
     // MARK: - Item construction
 
-    /// An item that only makes sense while a widget window exists (#42) — validated against
-    /// `Orchestrator.hasActiveWidget` every time the menu opens or the key equivalent fires.
-    private func widgetAction(
-        _ title: String, keyEquivalent: String, orchestrator: Orchestrator, perform: @escaping () -> Void
+    /// An item that acts on the widget (#57) — offered and performed strictly per
+    /// `Orchestrator.canPerform(_:)`/`perform(_:)`, which the standard validation hook consults
+    /// every time the menu opens or the key equivalent fires.
+    private func widgetCommand(
+        _ command: WidgetCommand, _ title: String, symbol: String, keyEquivalent: String, orchestrator: Orchestrator
     ) -> NSMenuItem {
-        action(title, keyEquivalent: keyEquivalent, isEnabled: { orchestrator.hasActiveWidget }, perform: perform)
+        action(
+            title, symbol: symbol, keyEquivalent: keyEquivalent,
+            isEnabled: { orchestrator.canPerform(command) },
+            perform: { orchestrator.perform(command) })
     }
 
+    /// - Parameter symbol: the item's SF Symbol (ADR-0013). AppKit only picks icons by itself for
+    ///   standard selectors, and these items all route through `MenuItemActionTarget`.
     private func action(
-        _ title: String, keyEquivalent: String = "",
+        _ title: String, symbol: String, keyEquivalent: String = "",
         modifierMask: NSEvent.ModifierFlags = [.command], isEnabled: @escaping () -> Bool = { true },
         perform: @escaping () -> Void
     ) -> NSMenuItem {
@@ -160,6 +157,7 @@ final class MainMenuBuilder {
         let item = NSMenuItem(title: title, action: #selector(MenuItemActionTarget.invoke), keyEquivalent: keyEquivalent)
         item.target = target
         item.keyEquivalentModifierMask = modifierMask
+        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         return item
     }
 

@@ -966,6 +966,118 @@ private struct GhostModeEntrySignature: Equatable {
 
         #expect(fake.contentOpacityChanges.isEmpty)
     }
+
+    // #57: the main menu's widget commands, gated in one place
+
+    @Test(arguments: [
+        (state: WidgetStateUnderTest.noWidget, command: WidgetCommand.close, canPerform: false),
+        (state: .noWidget, command: .reload, canPerform: false),
+        (state: .noWidget, command: .zoomIn, canPerform: false),
+        (state: .noWidget, command: .zoomOut, canPerform: false),
+        (state: .noWidget, command: .resetZoom, canPerform: false),
+        (state: .normalMode, command: .close, canPerform: true),
+        (state: .normalMode, command: .reload, canPerform: true),
+        (state: .normalMode, command: .zoomIn, canPerform: true),
+        (state: .normalMode, command: .zoomOut, canPerform: true),
+        (state: .normalMode, command: .resetZoom, canPerform: true),
+        (state: .ghostMode, command: .close, canPerform: false),
+        (state: .ghostMode, command: .reload, canPerform: false),
+        (state: .ghostMode, command: .zoomIn, canPerform: false),
+        (state: .ghostMode, command: .zoomOut, canPerform: false),
+        (state: .ghostMode, command: .resetZoom, canPerform: false),
+    ])
+    func widgetCommandsCanOnlyBePerformedOnAWidgetInNormalMode(
+        _ row: (state: WidgetStateUnderTest, command: WidgetCommand, canPerform: Bool)
+    ) {
+        let (_, orchestrator) = makeOrchestrator(in: row.state)
+
+        #expect(orchestrator.canPerform(row.command) == row.canPerform)
+    }
+
+    /// The perform side refuses exactly what the can-perform side reports — a key equivalent that
+    /// slips past menu validation still can't reload or zoom a Ghost Mode window.
+    @Test(arguments: [
+        (state: WidgetStateUnderTest.noWidget, command: WidgetCommand.close, performs: false),
+        (state: .noWidget, command: .reload, performs: false),
+        (state: .noWidget, command: .zoomIn, performs: false),
+        (state: .noWidget, command: .zoomOut, performs: false),
+        (state: .noWidget, command: .resetZoom, performs: false),
+        (state: .normalMode, command: .close, performs: true),
+        (state: .normalMode, command: .reload, performs: true),
+        (state: .normalMode, command: .zoomIn, performs: true),
+        (state: .normalMode, command: .zoomOut, performs: true),
+        (state: .normalMode, command: .resetZoom, performs: true),
+        (state: .ghostMode, command: .close, performs: false),
+        (state: .ghostMode, command: .reload, performs: false),
+        (state: .ghostMode, command: .zoomIn, performs: false),
+        (state: .ghostMode, command: .zoomOut, performs: false),
+        (state: .ghostMode, command: .resetZoom, performs: false),
+    ])
+    func performingAWidgetCommandReachesPlatformOpsOnlyWhenItCanBePerformed(
+        _ row: (state: WidgetStateUnderTest, command: WidgetCommand, performs: Bool)
+    ) {
+        let (fake, orchestrator) = makeOrchestrator(in: row.state)
+        let before = fake.effectCount(of: row.command)
+
+        orchestrator.perform(row.command)
+
+        #expect(fake.effectCount(of: row.command) == before + (row.performs ? 1 : 0))
+    }
+
+    @Test(arguments: [
+        (command: WidgetCommand.zoomIn, zoom: 1.6),
+        (command: .zoomOut, zoom: 1.4),
+        (command: .resetZoom, zoom: 1.0),
+    ])
+    func performingAZoomCommandStepsFromTheCurrentZoom(_ row: (command: WidgetCommand, zoom: Double)) {
+        let fake = FakePlatformOps()
+        let config = WidgetConfig(
+            url: URL(string: "https://example.com")!,
+            windowState: WindowState(frame: WindowFrame(x: 0, y: 0, width: 800, height: 600), zoom: 1.5)
+        )
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+        orchestrator.start()
+
+        orchestrator.perform(row.command)
+
+        #expect(fake.appliedZooms.map(\.zoom).last!.isApproximatelyEqual(to: row.zoom))
+    }
+
+    @Test func leavingGhostModeMakesTheWidgetCommandsPerformableAgain() {
+        let (fake, orchestrator) = makeOrchestrator(in: .ghostMode)
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+
+        #expect(WidgetCommand.allCases.allSatisfy { orchestrator.canPerform($0) })
+    }
+
+    private func makeOrchestrator(in state: WidgetStateUnderTest) -> (FakePlatformOps, Orchestrator) {
+        let fake = FakePlatformOps()
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+        orchestrator.start()
+        switch state {
+        case .noWidget: orchestrator.closeWidget()
+        case .normalMode: break
+        case .ghostMode: fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+        }
+        return (fake, orchestrator)
+    }
+}
+
+enum WidgetStateUnderTest: Sendable {
+    case noWidget, normalMode, ghostMode
+}
+
+private extension FakePlatformOps {
+    /// How many times `command`'s platform-side effect has happened so far.
+    func effectCount(of command: WidgetCommand) -> Int {
+        switch command {
+        case .close: closedWindowIDs.count
+        case .reload: reloadedWindowIDs.count
+        case .zoomIn, .zoomOut, .resetZoom: appliedZooms.count
+        }
+    }
 }
 
 private extension Double {

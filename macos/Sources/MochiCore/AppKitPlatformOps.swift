@@ -854,6 +854,14 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         setNavigationSegment(NavigationSegment.forward, enabled: forwardStep != nil)
     }
 
+    /// Built from the same `backStep`/`forwardStep` the segments above are enabled by, and the
+    /// same Empty-Page-aware loading flag the address bar displays — one source for both.
+    var navigationState: NavigationState {
+        NavigationState(
+            canGoBack: backStep != nil, canGoForward: forwardStep != nil,
+            isLoading: isLoading && !isShowingEmptyPage)
+    }
+
     @objc private func navigationSegmentClicked(_ sender: NSSegmentedControl) {
         let step: EmptyPageHistory.Step?
         switch sender.selectedSegment {
@@ -1816,6 +1824,10 @@ public final class AppKitPlatformOps: PlatformOps {
     public func reloadPage(in window: WidgetWindowHandle) {
         guard let handle = handle(for: window) else { return }
         handle.reload()
+    }
+
+    public func navigationState(of window: WidgetWindowHandle) -> NavigationState {
+        handle(for: window)?.navigationState ?? NavigationState()
     }
 
     public func onURLSubmitted(_ window: WidgetWindowHandle, perform handler: @escaping (URL) -> Void) {

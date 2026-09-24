@@ -59,6 +59,8 @@ final class FakePlatformOps: PlatformOps {
     /// still succeeds — the rollback tests need exactly one combo to fail.
     var hotkeysThatFailToRegister: Set<Hotkey> = []
     var stubbedAccessibilityTrusted = true
+    /// What `navigationState(of:)` answers — the AppKit side's effective back/forward/loading.
+    var stubbedNavigationState = NavigationState()
 
     var stubbedScreens: [CGRect] = [CGRect(x: 0, y: 0, width: 1440, height: 900)]
     var stubbedCapturedWindowState = WindowState(
@@ -257,6 +259,10 @@ final class FakePlatformOps: PlatformOps {
     func reloadPage(in window: WidgetWindowHandle) {
         let handle = window as! FakeWidgetWindowHandle
         reloadedWindowIDs.append(handle.id)
+    }
+
+    func navigationState(of window: WidgetWindowHandle) -> NavigationState {
+        stubbedNavigationState
     }
 
     func isAccessibilityTrusted() -> Bool {

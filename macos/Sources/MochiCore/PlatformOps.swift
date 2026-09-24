@@ -15,6 +15,21 @@ public struct TrayMenuItem {
     }
 }
 
+/// Where the widget's page stands in its history and loading (#57) — the *effective* answers, the
+/// same ones the Normal Mode toolbar's back/forward segments show: back and forward include
+/// `EmptyPageHistory`'s steps onto and off the Empty Page, not just the web view's own list.
+public struct NavigationState: Equatable {
+    public var canGoBack: Bool
+    public var canGoForward: Bool
+    public var isLoading: Bool
+
+    public init(canGoBack: Bool = false, canGoForward: Bool = false, isLoading: Bool = false) {
+        self.canGoBack = canGoBack
+        self.canGoForward = canGoForward
+        self.isLoading = isLoading
+    }
+}
+
 public protocol PlatformOps: AnyObject {
     func createWidgetWindow(initialFrame: WindowFrame) -> WidgetWindowHandle
     func loadURL(_ url: URL, in window: WidgetWindowHandle)
@@ -180,6 +195,12 @@ public protocol PlatformOps: AnyObject {
 
     /// Reloads the widget's currently-loaded page — the default 刷新页面 hotkey's (#12) action.
     func reloadPage(in window: WidgetWindowHandle)
+
+    /// The page's current back/forward/loading state (#57), read on demand — the answers the
+    /// toolbar's own back/forward segments are enabled by, so the main menu can never disagree
+    /// with them. Loading is reported as `false` while the Empty Page is up: nothing the user can
+    /// see is loading then.
+    func navigationState(of window: WidgetWindowHandle) -> NavigationState
 
     /// Whether the process currently holds Accessibility permission — required for
     /// `forwardKeystroke` to have any effect (ADR-0003). Checked before every forwarding attempt
