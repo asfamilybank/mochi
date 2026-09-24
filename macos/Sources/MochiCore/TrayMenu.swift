@@ -13,10 +13,11 @@ import AppKit
 /// - `menuHasKeyEquivalent` answers `false`, so while the menu is closed AppKit never searches it
 ///   for a match (a status item's menu is not in the main-menu key-equivalent path anyway; this
 ///   makes it explicit and also spares a full re-sync on every keystroke).
-/// - While the menu is open, a keypress can still select an item by its key equivalent; the
-///   action of a hinted item ignores activations whose triggering event is a key press, so only
-///   a click runs it. The Carbon hotkey — if it fires during menu tracking — is then the single
-///   path, as it is everywhere else.
+/// - While the menu is open, a keypress can still select an item by its key equivalent; an
+///   item's action ignores an activation whose triggering event is exactly its own hint combo
+///   (`isHintKeypress`). The Carbon hotkey — if it fires during menu tracking — is then the
+///   single path, as it is everywhere else. Any other keypress (Return/Space on a highlighted
+///   item, keyboard navigation) still runs the item, like a click does.
 ///
 /// Quit is the exception to the second guard: an item wearing `.appQuit` goes through the
 /// standard `terminate:` (that selector is what earns it the system's Quit icon), and ⌘Q is not a
@@ -41,10 +42,11 @@ final class TrayMenu: NSObject, NSMenuDelegate {
                 menuItem = NSMenuItem(title: item.title, action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
             } else {
                 let action = item.action
+                let hotkeyHint = item.hotkeyHint
                 let target = MenuItemActionTarget(isEnabled: item.isEnabled) {
-                    // A key-equivalent match inside the open menu, not a click: the Carbon
-                    // hotkey owns keyboard activation (see the type's doc comment).
-                    if NSApp.currentEvent?.type == .keyDown { return }
+                    // The hint's own combo matched inside the open menu: the Carbon hotkey owns
+                    // that keypress (see the type's doc comment).
+                    if Self.isHintKeypress(NSApp.currentEvent, hint: hotkeyHint()) { return }
                     action()
                 }
                 targets.append(target)
@@ -106,6 +108,16 @@ final class TrayMenu: NSObject, NSMenuDelegate {
             // `.appQuit`: AppKit draws the Quit icon itself for a `terminate:` item.
             return nil
         }
+    }
+
+    /// Whether `event` is a key press of exactly `hint` — the one activation a hinted item must
+    /// drop. Compared by keycode and the four device-independent modifiers, the same identity
+    /// `Hotkey` itself has, so Return/Space on a highlighted item never counts.
+    static func isHintKeypress(_ event: NSEvent?, hint: Hotkey?) -> Bool {
+        guard let event, let hint, event.type == .keyDown else { return false }
+        let relevant: NSEvent.ModifierFlags = [.control, .option, .shift, .command]
+        return UInt32(event.keyCode) == hint.keyCode
+            && event.modifierFlags.intersection(relevant) == modifierMask(forCarbonFlags: hint.modifierFlags)
     }
 
     /// Carbon's modifier bits (as `Hotkey` stores them) to AppKit's.
