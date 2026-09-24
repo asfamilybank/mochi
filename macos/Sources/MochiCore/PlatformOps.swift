@@ -314,6 +314,18 @@ public protocol PlatformOps: AnyObject {
     /// focus from whatever app the user is actually looking at (ADR-0003). Callers are expected
     /// to only invoke this once `isAccessibilityTrusted()` is `true`.
     func forwardKeystroke(_ keystroke: Hotkey)
+
+    // MARK: 网页交互请求 (#66) — see `WebInteractionRequests.swift` for the seam's shape. Each kind
+    // gets its own hook; the handler's return value is the decision the platform must execute.
+
+    /// Registers the handler that decides how a page's `alert`/`confirm`/`prompt` is settled.
+    /// The platform presents a sheet on `.presentSheet` and settles silently otherwise; either
+    /// way it must complete WebKit's callback exactly once.
+    func onJavaScriptDialogRequested(
+        _ window: WidgetWindowHandle, perform handler: @escaping (JavaScriptDialogRequest) -> JavaScriptDialogDecision)
+
+    /// Registers the handler that decides how a page's file-upload request is settled.
+    func onFileUploadRequested(_ window: WidgetWindowHandle, perform handler: @escaping (FileUploadRequest) -> FileUploadDecision)
 }
 
 // #70

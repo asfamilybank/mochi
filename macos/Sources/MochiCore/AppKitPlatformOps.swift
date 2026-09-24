@@ -562,6 +562,10 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     private var emptyPageVisibilityChangedHandler: ((Bool) -> Void)?
     private var loadingStateChangedHandler: ((Bool) -> Void)?
     private var loadingProgressChangedHandler: ((Double) -> Void)?
+    /// 网页交互请求 (#66): MochiCore's deciders, consulted by the `WKUIDelegate` extension in
+    /// `WebInteractionUIDelegate.swift`. `nil` until registered — requests then settle as cancelled.
+    var javaScriptDialogRequestedHandler: ((JavaScriptDialogRequest) -> JavaScriptDialogDecision)?
+    var fileUploadRequestedHandler: ((FileUploadRequest) -> FileUploadDecision)?
     /// Set on `windowWillEnterFullScreen`, cleared on `windowDidExitFullScreen` — `window.frame`
     /// itself is the screen-filling fullscreen frame for the whole time in between, so anything
     /// reading a persistable window geometry (`frameToPersist`) needs this instead. Without it, a
@@ -655,6 +659,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         super.init()
         window.delegate = self
         webView.navigationDelegate = self
+        webView.uiDelegate = self
         installGhostModeMouseTracking()
         installAddressFieldHoverTracking()
         controls.addressBar.field.delegate = self
@@ -1357,6 +1362,9 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     private func tearDownWebContent() {
         navigationObservations = []
         webView.navigationDelegate = nil
+        // Any dialog/Open panel sheet still up must end now so WebKit's completion is called.
+        endWebInteractionSheets()
+        webView.uiDelegate = nil
         webView.stopLoading()
         webView.loadHTMLString("", baseURL: nil)
     }
@@ -2037,6 +2045,18 @@ public final class AppKitPlatformOps: PlatformOps {
     public func onLoadingProgressChanged(_ window: WidgetWindowHandle, perform handler: @escaping (Double) -> Void) {
         guard let handle = handle(for: window) else { return }
         handle.setLoadingProgressChangedHandler(handler)
+    }
+
+    // MARK: 网页交互请求 (#66)
+
+    public func onJavaScriptDialogRequested(
+        _ window: WidgetWindowHandle, perform handler: @escaping (JavaScriptDialogRequest) -> JavaScriptDialogDecision
+    ) {
+        handle(for: window)?.javaScriptDialogRequestedHandler = handler
+    }
+
+    public func onFileUploadRequested(_ window: WidgetWindowHandle, perform handler: @escaping (FileUploadRequest) -> FileUploadDecision) {
+        handle(for: window)?.fileUploadRequestedHandler = handler
     }
 
     public func setWindowTitle(_ title: String, in window: WidgetWindowHandle) {

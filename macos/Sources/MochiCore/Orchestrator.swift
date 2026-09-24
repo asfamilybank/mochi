@@ -197,6 +197,7 @@ public final class Orchestrator {
         platformOps.onNavigationFailed(window) { [weak self] message in
             self?.handleNavigationFailed(message)
         }
+        registerWebInteractionRequestHandlers(for: window)
 
         let ghostModeController = GhostModeController(platformOps: platformOps, window: window, currentConfig: currentConfig)
         self.ghostModeController = ghostModeController
@@ -450,6 +451,23 @@ public final class Orchestrator {
         currentZoom = clamped
         platformOps.applyZoom(currentZoom, in: window)
     }
+
+    // MARK: 网页交互请求 (#66)
+
+    /// Wires every page-initiated interaction request to its decision. Ghost Mode is read at
+    /// request time — CONTEXT.md's "不打扰" rule: while in Ghost Mode nothing is shown, Ghost Mode
+    /// is not left, and the request is settled at once so the page never hangs waiting. Follow-up
+    /// request kinds (#67/#68/#69) register their own hook here, one line each.
+    private func registerWebInteractionRequestHandlers(for window: WidgetWindowHandle) {
+        platformOps.onJavaScriptDialogRequested(window) { [weak self] _ in
+            (self?.isGhostModeActive ?? false) ? .settleWithoutUI : .presentSheet
+        }
+        platformOps.onFileUploadRequested(window) { [weak self] _ in
+            (self?.isGhostModeActive ?? false) ? .cancel : .presentOpenPanel
+        }
+    }
+
+    private var isGhostModeActive: Bool { ghostModeController?.mode == .ghost }
 
     private func handleNavigationFailed(_ message: String) {
         guard let window else { return }

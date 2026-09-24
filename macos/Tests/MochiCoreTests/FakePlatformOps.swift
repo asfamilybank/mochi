@@ -385,4 +385,30 @@ final class FakePlatformOps: PlatformOps {
         let handle = window as! FakeWidgetWindowHandle
         windowTitleChanges.append((title, handle.id))
     }
+
+    // MARK: 网页交互请求 (#66) — each `simulate…` returns the decision MochiCore gave, or `nil`
+    // when no handler was registered for that window (nothing would answer WebKit).
+
+    private var javaScriptDialogRequestedHandlers: [Int: (JavaScriptDialogRequest) -> JavaScriptDialogDecision] = [:]
+    private var fileUploadRequestedHandlers: [Int: (FileUploadRequest) -> FileUploadDecision] = [:]
+
+    func onJavaScriptDialogRequested(
+        _ window: WidgetWindowHandle, perform handler: @escaping (JavaScriptDialogRequest) -> JavaScriptDialogDecision
+    ) {
+        let handle = window as! FakeWidgetWindowHandle
+        javaScriptDialogRequestedHandlers[handle.id] = handler
+    }
+
+    func simulateJavaScriptDialogRequested(_ request: JavaScriptDialogRequest, windowID: Int = 1) -> JavaScriptDialogDecision? {
+        javaScriptDialogRequestedHandlers[windowID]?(request)
+    }
+
+    func onFileUploadRequested(_ window: WidgetWindowHandle, perform handler: @escaping (FileUploadRequest) -> FileUploadDecision) {
+        let handle = window as! FakeWidgetWindowHandle
+        fileUploadRequestedHandlers[handle.id] = handler
+    }
+
+    func simulateFileUploadRequested(_ request: FileUploadRequest, windowID: Int = 1) -> FileUploadDecision? {
+        fileUploadRequestedHandlers[windowID]?(request)
+    }
 }
