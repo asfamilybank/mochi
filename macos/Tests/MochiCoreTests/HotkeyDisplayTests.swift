@@ -47,4 +47,24 @@ import Testing
         let hotkey = Hotkey(keyCode: 999, modifierFlags: 0)
         #expect(HotkeyDisplay.describe(hotkey) == "Key 999")
     }
+
+    // #63: the tray draws its hints in the menu's key-equivalent column.
+
+    /// Lowercase, because an uppercase key equivalent means "with ⇧" to AppKit — ⌥G would come
+    /// out as ⌥⇧G.
+    @Test func menuKeyEquivalentOfALetterIsLowercase() {
+        #expect(HotkeyDisplay.menuKeyEquivalent(for: DefaultHotkeys.toggleGhostMode) == "g")
+        #expect(HotkeyDisplay.menuKeyEquivalent(for: DefaultHotkeys.quit) == "q")
+    }
+
+    @Test func menuKeyEquivalentOfPunctuationAndNamedKeysIsTheCharacterItself() {
+        #expect(HotkeyDisplay.menuKeyEquivalent(for: DefaultHotkeys.openSettings) == ",")
+        #expect(HotkeyDisplay.menuKeyEquivalent(for: Hotkey(keyCode: 0x31, modifierFlags: 0)) == " ")
+        #expect(HotkeyDisplay.menuKeyEquivalent(for: Hotkey(keyCode: 0x24, modifierFlags: 0)) == "\r")
+        #expect(HotkeyDisplay.menuKeyEquivalent(for: Hotkey(keyCode: 0x7E, modifierFlags: 0)) == "\u{F700}")
+    }
+
+    @Test func menuKeyEquivalentIsNilForAnUnmappedKeyCode() {
+        #expect(HotkeyDisplay.menuKeyEquivalent(for: Hotkey(keyCode: 999, modifierFlags: 0)) == nil)
+    }
 }

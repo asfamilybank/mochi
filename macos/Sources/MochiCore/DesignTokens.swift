@@ -313,11 +313,19 @@ public enum DesignTokens {
         public static let stop = "xmark"
         /// The error page's (#38) failure glyph.
         public static let failure = "exclamationmark.triangle"
+        /// The tray's 打开窗口 (#63).
+        public static let openWidget = "macwindow"
+        /// The tray's 隐藏窗口 (#63) — the boss key.
+        public static let hideWidget = "eye.slash"
+        /// 设置… — the App menu's and the tray's (#63).
+        public static let settings = "gearshape"
+        /// 关于 Mochi — the App menu's and the tray's (#63).
+        public static let about = "info.circle"
 
         /// Every symbol name the app can ask for, the address field's drawn states included.
         /// `.siteIcon` contributes nothing here — it draws a downloaded favicon, not a symbol.
         public static let all: [String] = [
-            back, forward, refresh, stop, failure,
+            back, forward, refresh, stop, failure, openWidget, hideWidget, settings, about,
             AddressFieldLeadingIcon.genericPage.symbolName!, AddressFieldLeadingIcon.search.symbolName!,
         ]
     }

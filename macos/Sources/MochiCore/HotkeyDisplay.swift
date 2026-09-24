@@ -16,6 +16,25 @@ public enum HotkeyDisplay {
         modifierGlyphs(for: hotkey.modifierFlags) + [keyGlyph(for: hotkey.keyCode)]
     }
 
+    /// The character an `NSMenuItem.keyEquivalent` needs to draw `hotkey` in a menu's
+    /// key-equivalent column (the tray's hints, #63) — AppKit adds the modifier glyphs from the
+    /// item's modifier mask. Letters are lowercase, because an uppercase key equivalent means
+    /// "with ⇧" to AppKit; arrows are AppKit's function-key characters. `nil` for a keycode with
+    /// no known character, where a hint is better left off than drawn wrong.
+    public static func menuKeyEquivalent(for hotkey: Hotkey) -> String? {
+        if let special = menuSpecialKeysByCode[hotkey.keyCode] { return special }
+        guard let glyph = keyGlyphsByCode[hotkey.keyCode], glyph.count == 1 else { return nil }
+        return glyph.lowercased()
+    }
+
+    /// Keys whose display glyph is a word or an arrow rather than the character itself.
+    /// The arrows are `NSUpArrowFunctionKey` and friends (U+F700…U+F703), spelled out here so
+    /// this file stays free of AppKit.
+    private static let menuSpecialKeysByCode: [UInt32: String] = [
+        0x31: " ", 0x24: "\r", 0x30: "\t", 0x33: "\u{8}", 0x35: "\u{1b}",
+        0x7E: "\u{F700}", 0x7D: "\u{F701}", 0x7B: "\u{F702}", 0x7C: "\u{F703}",
+    ]
+
     private static func modifierGlyphs(for modifierFlags: UInt32) -> [String] {
         var glyphs: [String] = []
         if modifierFlags & 0x1000 != 0 { glyphs.append("⌃") }

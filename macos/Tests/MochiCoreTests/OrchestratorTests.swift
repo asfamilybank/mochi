@@ -12,6 +12,11 @@ private struct GhostModeEntrySignature: Equatable {
     let pinned: [Bool]
 }
 
+/// The four states the tray's mode entries (#63) have to reflect.
+enum TrayScenario: Sendable {
+    case noWidget, normal, ghost, ghostHidden
+}
+
 @Suite struct OrchestratorTests {
     @Test func startsWidgetWindowUsingPersistedFrameAndLoadsConfiguredURL() {
         let fake = FakePlatformOps()
@@ -257,29 +262,107 @@ private struct GhostModeEntrySignature: Equatable {
         #expect(fake.snapEnabledChanges.map(\.windowID) == [1])
     }
 
-    @Test func createsTheTrayIconWithFiveEntriesInOrderOnStart() {
+    // #63: the tray menu, regrouped after Bob — icons, checkmarks, live hints, per-state greying.
+
+    @Test func createsTheTrayMenuWithItsEntriesSeparatorsAndIconsInOrderOnStart() {
         let fake = FakePlatformOps()
         let config = WidgetConfig(url: URL(string: "https://example.com")!)
         let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
 
         orchestrator.start()
 
-        #expect(fake.trayMenuItems.map(\.title) == ["打开窗口", "退出幽灵模式", "切换幽灵模式", "打开设置", "退出应用"])
+        #expect(fake.trayMenuItems.map { $0.isSeparator ? "—" : $0.title }
+            == ["打开窗口", "幽灵模式", "隐藏窗口", "—", "设置…", "关于 Mochi", "—", "退出"])
+        #expect(fake.trayMenuItems.map(\.icon) == [
+            .symbol(DesignTokens.Symbol.openWidget), .ghost, .symbol(DesignTokens.Symbol.hideWidget), nil,
+            .symbol(DesignTokens.Symbol.settings), .symbol(DesignTokens.Symbol.about), nil, .appQuit,
+        ])
     }
 
-    @Test func trayExitGhostModeEntryDoesNothingWhenAlreadyInNormalMode() {
+    @Test func trayHintsShowTheEffectiveHotkeysAndTheFixedMenuShortcuts() {
         let fake = FakePlatformOps()
         let config = WidgetConfig(url: URL(string: "https://example.com")!)
         let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
         orchestrator.start()
 
-        fake.trayMenuItems[1].action()
-
-        #expect(fake.mousePassthroughChanges.isEmpty)
-        #expect(fake.contentOpacityChanges.isEmpty)
+        #expect(fake.trayMenuItems.map { $0.hotkeyHint() } == [
+            nil, DefaultHotkeys.toggleGhostMode, DefaultHotkeys.hideWidget, nil,
+            DefaultHotkeys.openSettings, nil, nil, DefaultHotkeys.quit,
+        ])
     }
 
-    @Test func trayExitGhostModeEntryRestoresNormalModeEvenWhileFullyHiddenAndClickThrough() {
+    /// The tray is built once, so a hint has to be read from the config each time the menu opens:
+    /// a rebind in the settings panel shows up on the very next open, with no second tray.
+    @Test func trayHintsFollowARebindWithoutRebuildingTheTray() {
+        let fake = FakePlatformOps()
+        var config = WidgetConfig(url: URL(string: "https://example.com")!)
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+        orchestrator.start()
+        let reboundToggle = Hotkey(keyCode: 0x0E, modifierFlags: 0x0800 | 0x0200)  // ⌥⇧E
+        let reboundHide = Hotkey(keyCode: 0x1F, modifierFlags: 0x1000)  // ⌃O
+
+        config = config
+            .updatingHotkeyOverride(.toggleGhostMode, to: reboundToggle)
+            .updatingHotkeyOverride(.hideWidget, to: reboundHide)
+
+        #expect(fake.trayItem("幽灵模式").hotkeyHint() == reboundToggle)
+        #expect(fake.trayItem("隐藏窗口").hotkeyHint() == reboundHide)
+        #expect(fake.createTrayIconCallCount == 1)
+    }
+
+    @Test(arguments: [
+        (scenario: TrayScenario.noWidget, ghostChecked: false, ghostEnabled: false, hideChecked: false, hideEnabled: false),
+        (scenario: .normal, ghostChecked: false, ghostEnabled: true, hideChecked: false, hideEnabled: false),
+        (scenario: .ghost, ghostChecked: true, ghostEnabled: true, hideChecked: false, hideEnabled: true),
+        (scenario: .ghostHidden, ghostChecked: true, ghostEnabled: true, hideChecked: true, hideEnabled: true),
+    ])
+    func trayModeEntriesReflectTheCurrentState(
+        _ row: (scenario: TrayScenario, ghostChecked: Bool, ghostEnabled: Bool, hideChecked: Bool, hideEnabled: Bool)
+    ) {
+        let fake = FakePlatformOps()
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+        orchestrator.start()
+        switch row.scenario {
+        case .noWidget:
+            orchestrator.closeWidget()
+        case .normal:
+            break
+        case .ghost:
+            fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+        case .ghostHidden:
+            fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+            fake.simulateHotkeyPressed(DefaultHotkeys.hideWidget)
+        }
+
+        let ghost = fake.trayItem("幽灵模式")
+        let hide = fake.trayItem("隐藏窗口")
+        #expect(ghost.isChecked() == row.ghostChecked)
+        #expect(ghost.isEnabled() == row.ghostEnabled)
+        #expect(hide.isChecked() == row.hideChecked)
+        #expect(hide.isEnabled() == row.hideEnabled)
+        // Everything else is always on offer, and nothing else is ever checked.
+        for item in fake.trayMenuItems where !item.isSeparator && item.title != "幽灵模式" && item.title != "隐藏窗口" {
+            #expect(item.isEnabled())
+            #expect(!item.isChecked())
+        }
+    }
+
+    @Test func trayGhostModeEntryEntersGhostModeFromNormalMode() {
+        let fake = FakePlatformOps()
+        let config = WidgetConfig(url: URL(string: "https://example.com")!, ghostOpacity: 0.3)
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+        orchestrator.start()
+
+        fake.trayItem("幽灵模式").action()
+
+        #expect(fake.mousePassthroughChanges.map(\.enabled) == [true])
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.3])
+    }
+
+    /// The tray is the one control that is always reachable, so it must get the widget back even
+    /// when Ghost Mode has left it fully hidden and click-through.
+    @Test func trayGhostModeEntryExitsGhostModeEvenWhileFullyHiddenAndClickThrough() {
         let fake = FakePlatformOps()
         let config = WidgetConfig(url: URL(string: "https://example.com")!, ghostOpacity: 0.2)
         let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
@@ -287,22 +370,61 @@ private struct GhostModeEntrySignature: Equatable {
         fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
         fake.simulateHotkeyPressed(DefaultHotkeys.hideWidget)
 
-        fake.trayMenuItems[1].action()
+        fake.trayItem("幽灵模式").action()
 
         #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 0.0, 1.0])
         #expect(fake.mousePassthroughChanges.map(\.enabled) == [true, false])
+        #expect(!fake.trayItem("幽灵模式").isChecked())
+        #expect(!fake.trayItem("隐藏窗口").isChecked())
     }
 
-    @Test func trayToggleGhostModeEntryTogglesModeThroughPlatformOps() {
+    @Test func trayHideEntryTogglesHiddenInGhostMode() {
         let fake = FakePlatformOps()
-        let config = WidgetConfig(url: URL(string: "https://example.com")!, ghostOpacity: 0.3)
+        let config = WidgetConfig(url: URL(string: "https://example.com")!, ghostOpacity: 0.2)
         let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
         orchestrator.start()
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
 
-        fake.trayMenuItems[2].action()
+        fake.trayItem("隐藏窗口").action()
+        #expect(fake.trayItem("隐藏窗口").isChecked())
+        fake.trayItem("隐藏窗口").action()
 
-        #expect(fake.mousePassthroughChanges.map(\.enabled) == [true])
-        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.3])
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 0.0, 0.2])
+        #expect(!fake.trayItem("隐藏窗口").isChecked())
+    }
+
+    @Test func trayModeEntriesDoNothingWithoutAWidget() {
+        let fake = FakePlatformOps()
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+        orchestrator.start()
+        orchestrator.closeWidget()
+
+        fake.trayItem("幽灵模式").action()
+        fake.trayItem("隐藏窗口").action()
+
+        #expect(fake.mousePassthroughChanges.isEmpty)
+        #expect(fake.contentOpacityChanges.isEmpty)
+        #expect(!orchestrator.hasActiveWidget)
+    }
+
+    /// The tray's 关于 Mochi is the App menu's About (#62) — the same panel, then activation, so
+    /// from Ghost Mode the panel becomes key and the widget is left alone.
+    @Test func trayAboutEntryOpensTheAboutPanelLikeTheAppMenu() {
+        let fake = FakePlatformOps()
+        var aboutCallCount = 0
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config }, openAbout: { aboutCallCount += 1 })
+        orchestrator.start()
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+        let shownBefore = fake.shownWindowIDs
+
+        fake.trayItem("关于 Mochi").action()
+
+        #expect(aboutCallCount == 1)
+        #expect(fake.activateAppCallCount == 1)
+        #expect(fake.shownWindowIDs == shownBefore)
+        #expect(fake.trayItem("幽灵模式").isChecked())
     }
 
     // #44: the toolbar's Ghost Mode button must converge on the exact same entry point as the
@@ -325,7 +447,7 @@ private struct GhostModeEntrySignature: Equatable {
 
         let viaButton = captureEntrySignature { $0.simulateGhostModeToggleRequested() }
         let viaHotkey = captureEntrySignature { $0.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode) }
-        let viaTray = captureEntrySignature { $0.trayMenuItems[2].action() }
+        let viaTray = captureEntrySignature { $0.trayItem("幽灵模式").action() }
 
         #expect(viaButton == viaHotkey)
         #expect(viaButton == viaTray)
@@ -363,7 +485,7 @@ private struct GhostModeEntrySignature: Equatable {
         orchestrator.start()
 
         fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
-        fake.trayMenuItems[2].action()
+        fake.trayItem("幽灵模式").action()
 
         #expect(fake.deactivateAppCallCount == 0)
     }
@@ -377,7 +499,7 @@ private struct GhostModeEntrySignature: Equatable {
         })
         orchestrator.start()
 
-        fake.trayMenuItems[3].action()
+        fake.trayItem("设置…").action()
 
         #expect(openSettingsCallCount == 1)
     }
@@ -388,7 +510,7 @@ private struct GhostModeEntrySignature: Equatable {
         let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
         orchestrator.start()
 
-        fake.trayMenuItems[4].action()
+        fake.trayItem("退出").action()
 
         #expect(fake.terminateAppCallCount == 1)
     }
@@ -906,7 +1028,7 @@ private struct GhostModeEntrySignature: Equatable {
         orchestrator.start()
         orchestrator.closeWidget()
 
-        fake.trayMenuItems[0].action()
+        fake.trayItem("打开窗口").action()
 
         #expect(fake.createdFrames.count == 2)
         #expect(orchestrator.hasActiveWidget)
@@ -918,7 +1040,7 @@ private struct GhostModeEntrySignature: Equatable {
         let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
         orchestrator.start()
 
-        fake.trayMenuItems[0].action()
+        fake.trayItem("打开窗口").action()
 
         #expect(fake.createdFrames.count == 1)
         #expect(fake.shownWindowIDs == [1, 1])

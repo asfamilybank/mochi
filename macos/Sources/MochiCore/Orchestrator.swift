@@ -78,26 +78,61 @@ public final class Orchestrator {
             isGhostModeActive: { [weak self] in self?.ghostModeController?.mode == .ghost }
         )
         registerGlobalHotkeys()
-        platformOps.createTrayIcon(items: [
-            // First, because while the widget is closed this is the one way back that's always on
-            // screen (#42). Not greyed out when the widget is already open — the tray menu is built
-            // once with no update hook, so both states get a sensible meaning instead.
-            TrayMenuItem(title: "打开窗口") { [weak self] in
-                self?.openWidget()
-            },
-            TrayMenuItem(title: "退出幽灵模式") { [weak self] in
-                self?.ghostModeController?.exitGhostMode()
-            },
-            TrayMenuItem(title: "切换幽灵模式") { [weak self] in
-                self?.ghostModeController?.toggle()
-            },
-            TrayMenuItem(title: "打开设置", action: openSettings),
-            TrayMenuItem(title: "退出应用", action: platformOps.terminateApp),
-        ])
+        platformOps.createTrayIcon(items: trayMenuItems())
         platformOps.onReopenRequested { [weak self] in
             self?.openWidget()
         }
         openWidget()
+    }
+
+    /// The tray menu (#63), grouped after Bob: the widget's three states, then the app's own
+    /// panels, then quit. Built once by `start()`, so every checkmark, greyed-out state and hint
+    /// is a closure the platform re-evaluates each time the menu opens — the hints read the
+    /// *configured* combo live, so a rebind shows on the next open, and a combo that failed to
+    /// register is still shown (it is what the user asked for, and the settings panel says so).
+    /// Hotkey Forwarding mappings are not listed; they are page keystrokes, not Mochi commands.
+    private func trayMenuItems() -> [TrayMenuItem] {
+        [
+            // First, because while the widget is closed this is the one way back that's always
+            // on screen (#42). Never greyed out: with a widget open it brings it forward instead.
+            TrayMenuItem(title: "打开窗口", icon: .symbol(DesignTokens.Symbol.openWidget)) { [weak self] in
+                self?.openWidget()
+            },
+            // The same `perform` the global hotkey dispatches to, so entering Ghost Mode from the
+            // tray is indistinguishable from the hotkey (#44). From Ghost Mode — fully Hidden and
+            // click-through included — a toggle is a plain exit: the tray is the one control that
+            // always reaches the user, so it must always be able to bring the widget back.
+            TrayMenuItem(
+                title: "幽灵模式", icon: .ghost,
+                hotkeyHint: { [weak self] in self?.currentConfig().hotkey(for: .toggleGhostMode) },
+                isChecked: { [weak self] in self?.ghostModeController?.mode == .ghost },
+                isEnabled: { [weak self] in self?.window != nil }
+            ) { [weak self] in
+                self?.perform(HotkeyAction.toggleGhostMode)
+            },
+            // Shown but greyed out in Normal Mode, where Hidden has no meaning (ADR-0012) — the
+            // same no-op the hotkey is there, made visible rather than silent.
+            TrayMenuItem(
+                title: "隐藏窗口", icon: .symbol(DesignTokens.Symbol.hideWidget),
+                hotkeyHint: { [weak self] in self?.currentConfig().hotkey(for: .hideWidget) },
+                isChecked: { [weak self] in self?.ghostModeController?.isHidden ?? false },
+                isEnabled: { [weak self] in self?.ghostModeController?.mode == .ghost }
+            ) { [weak self] in
+                self?.perform(HotkeyAction.hideWidget)
+            },
+            .separator,
+            TrayMenuItem(
+                title: "设置…", icon: .symbol(DesignTokens.Symbol.settings),
+                hotkeyHint: { DefaultHotkeys.openSettings }, action: openSettings),
+            // The App menu's About (#62): the panel becomes key, the widget is left alone.
+            TrayMenuItem(title: "关于 \(AppInfo.name)", icon: .symbol(DesignTokens.Symbol.about)) { [weak self] in
+                self?.openAboutPanel()
+            },
+            .separator,
+            TrayMenuItem(
+                title: "退出", icon: .appQuit,
+                hotkeyHint: { DefaultHotkeys.quit }, action: platformOps.terminateApp),
+        ]
     }
 
     /// Opens the widget window (#42) — at launch and again after a `⌘W`/red-button close. A
@@ -106,7 +141,7 @@ public final class Orchestrator {
     /// loaded from scratch, and a brand-new `GhostModeController` means the widget is back in
     /// Normal Mode; only window geometry and zoom carry over, via the persisted `windowState`.
     ///
-    /// Idempotent while a widget already exists: the tray's 打开 Widget entry then just brings it
+    /// Idempotent while a widget already exists: the tray's 打开窗口 entry then just brings it
     /// forward. If that widget is sitting in Ghost Mode this leaves Ghost Mode rather than fronting
     /// a click-through window — "bring it back so I can use it" is the only reading of the request
     /// that doesn't hand focus to a window ADR-0012 says may never be key.
@@ -383,7 +418,7 @@ public final class Orchestrator {
     }
 
     /// Opens the settings panel — #37's Mochi menu "设置…" (⌘,), the same callback the toolbar's
-    /// settings entry and the tray's "打开设置" item already share.
+    /// settings entry and the tray's 设置… item already share.
     public func openSettingsPanel() {
         openSettings()
     }

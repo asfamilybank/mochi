@@ -258,6 +258,15 @@ final class FakePlatformOps: PlatformOps {
         trayMenuItems = items
     }
 
+    /// The tray entry titled `title` — by name rather than index, so reordering the menu (#63)
+    /// doesn't silently retarget a test at a neighbouring entry.
+    func trayItem(_ title: String) -> TrayMenuItem {
+        guard let item = trayMenuItems.first(where: { !$0.isSeparator && $0.title == title }) else {
+            preconditionFailure("no tray entry titled \(title)")
+        }
+        return item
+    }
+
     func terminateApp() {
         terminateAppCallCount += 1
     }

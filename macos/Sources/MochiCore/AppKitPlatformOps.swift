@@ -10,7 +10,8 @@ import WebKit
 /// `DesignTokens.Symbol` names into system symbol images.
 /// Kept separate from `DesignTokens.swift` itself so that module stays free of AppKit-specific
 /// rendering concerns beyond accent-color resolution.
-private enum ToolbarStyle {
+/// Module-internal rather than file-private since #63: the tray menu (`TrayMenu`) draws with it too.
+enum ToolbarStyle {
     /// A color that re-resolves its light/dark RGBA at draw time, the same mechanism system
     /// dynamic colors (like `NSColor.controlAccentColor`) use — so callers get correct
     /// appearance-switching for free wherever AppKit resolves `NSColor` at render time
@@ -128,6 +129,10 @@ private enum ToolbarStyle {
         /// The tray glyph. `NSStatusBar.system.thickness` is 22pt, and a 15pt symbol's canvas is
         /// 18pt tall — the size Apple's own menu-bar glyphs occupy.
         static let tray: Double = 15
+        /// The ghost in the tray menu's 幽灵模式 entry (#63): the size AppKit's default symbol
+        /// configuration draws its neighbours at (cap height 9, i.e. the 13pt menu font), and one
+        /// `GhostGlyphTests` has measured against the live symbols.
+        static let trayMenuItem: Double = 13
         /// A stock `NSToolbarItem`'s glyph, so the hand-drawn ghost matches the SF Symbols in
         /// the neighbouring items, which AppKit renders at its own default configuration.
         static let toolbarItem: Double = 13
@@ -1561,10 +1566,10 @@ final class MochiWidgetWindow: NSWindow {
 }
 
 public final class AppKitPlatformOps: PlatformOps {
-    /// Retains the tray icon's `NSStatusItem` and its menu's `MenuItemActionTarget`s for as long
-    /// as the tray exists — `NSStatusBar` doesn't keep the status item alive on its own, and
-    /// `NSMenuItem.target` doesn't retain its target either.
-    private var tray: (statusItem: NSStatusItem, targets: [MenuItemActionTarget])?
+    /// Retains the tray icon's `NSStatusItem` and its `TrayMenu` for as long as the tray exists —
+    /// `NSStatusBar` doesn't keep the status item alive on its own, and `NSMenu.delegate` and
+    /// `NSMenuItem.target` don't retain theirs either.
+    private var tray: (statusItem: NSStatusItem, menu: TrayMenu)?
     private var reopenRequestedHandler: (() -> Void)?
 
     public init() {}
@@ -2023,18 +2028,10 @@ public final class AppKitPlatformOps: PlatformOps {
         statusItem.button?.image = ToolbarStyle.mochiImage(
             pointSize: ToolbarStyle.GlyphSize.tray, accessibilityDescription: "Mochi")
 
-        let menu = NSMenu()
-        var targets: [MenuItemActionTarget] = []
-        for item in items {
-            let target = MenuItemActionTarget(action: item.action)
-            targets.append(target)
-            let menuItem = NSMenuItem(title: item.title, action: #selector(MenuItemActionTarget.invoke), keyEquivalent: "")
-            menuItem.target = target
-            menu.addItem(menuItem)
-        }
-        statusItem.menu = menu
+        let menu = TrayMenu(items: items)
+        statusItem.menu = menu.menu
 
-        tray = (statusItem, targets)
+        tray = (statusItem, menu)
     }
 
     public func terminateApp() {

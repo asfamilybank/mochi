@@ -2,17 +2,72 @@ import Foundation
 
 public protocol WidgetWindowHandle {}
 
-/// One entry in the tray (menu-bar) icon's menu (#9) — a title paired with the action to run
-/// when it's clicked. Not `Equatable` since `action` is a closure; tests compare `.title` and
-/// invoke `.action` directly to observe its effect instead.
+/// What a tray menu entry draws in its icon column (#63). Named cases rather than an `NSImage`
+/// so `MochiCore`'s logic stays testable without AppKit, and so the AppKit layer is the one place
+/// that knows how each is rendered.
+public enum TrayMenuIcon: Equatable {
+    /// An SF Symbol by name (ADR-0013) — one of `DesignTokens.Symbol`'s tray names.
+    case symbol(String)
+    /// The hand-drawn ghost — SF Symbols has none — at menu-item size, the same `GhostGlyph`
+    /// the toolbar's Ghost Mode button wears, rendered through `SymbolMetrics`.
+    case ghost
+    /// The system's own Quit icon, the one the App menu's 退出 shows. It is not a public SF
+    /// Symbol: AppKit draws it only for an item whose action is the standard `terminate:`, so the
+    /// AppKit layer routes an item wearing this icon through that selector — which is exactly
+    /// what `PlatformOps.terminateApp()` does anyway.
+    case appQuit
+}
+
+/// One entry in the tray (menu-bar) icon's menu (#9, reshaped by #63) — or a separator.
+///
+/// Every closure is evaluated each time the menu opens, never once when the tray is built: the
+/// tray is built exactly once, in `Orchestrator.start()`, and a checkmark, a greyed-out state
+/// or a hotkey hint captured then would go stale on the first mode change or rebind.
+///
+/// `hotkeyHint` is display only: the platform shows the combo in the menu's key-equivalent
+/// column, but it must never become a live key equivalent — the global hotkeys already fire
+/// through Carbon, and a second path would run the action twice.
+///
+/// Not `Equatable` since the members are closures; tests compare `title`/`icon`/`isSeparator` and
+/// call the closures directly to observe their effect.
 public struct TrayMenuItem {
     public let title: String
+    public let icon: TrayMenuIcon?
+    public let isSeparator: Bool
+    public let hotkeyHint: () -> Hotkey?
+    public let isChecked: () -> Bool
+    public let isEnabled: () -> Bool
     public let action: () -> Void
 
-    public init(title: String, action: @escaping () -> Void) {
+    public init(
+        title: String,
+        icon: TrayMenuIcon? = nil,
+        hotkeyHint: @escaping () -> Hotkey? = { nil },
+        isChecked: @escaping () -> Bool = { false },
+        isEnabled: @escaping () -> Bool = { true },
+        action: @escaping () -> Void
+    ) {
         self.title = title
+        self.icon = icon
+        self.isSeparator = false
+        self.hotkeyHint = hotkeyHint
+        self.isChecked = isChecked
+        self.isEnabled = isEnabled
         self.action = action
     }
+
+    private init(separator: Void) {
+        title = ""
+        icon = nil
+        isSeparator = true
+        hotkeyHint = { nil }
+        isChecked = { false }
+        isEnabled = { false }
+        action = {}
+    }
+
+    /// A separator line between groups.
+    public static let separator = TrayMenuItem(separator: ())
 }
 
 /// Where the widget's page stands in its history and loading (#57) — the *effective* answers, the
@@ -192,7 +247,8 @@ public protocol PlatformOps: AnyObject {
     /// Creates the app's persistent menu-bar (tray) icon (#9) — present for the app's entire
     /// lifetime regardless of Normal/Ghost Mode — populated with `items` in order. Not tied to a
     /// `WidgetWindowHandle` since the tray icon is app-global, not per-window. Called once, at
-    /// launch.
+    /// launch — so the items' closures (checked, enabled, hotkey hint) must be re-evaluated by
+    /// the platform every time the menu opens (#63).
     func createTrayIcon(items: [TrayMenuItem])
 
     /// Terminates the app — the tray icon's "Quit" entry (#9) must work on its own, since Ghost

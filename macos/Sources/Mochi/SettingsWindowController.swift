@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Owns the settings panel's (#13) window — a single persistent instance reused across opens
-/// (from either the toolbar's settings entry or the tray's "打开设置" item), rather than
+/// (from either the toolbar's settings entry or the tray's 设置… item), rather than
 /// recreated per-request, so its editing state (and the `SettingsViewModel` it observes) survives
 /// being closed and reopened.
 final class SettingsWindowController: NSWindowController {

@@ -36,8 +36,9 @@ public final class GhostModeController {
     private let currentConfig: () -> WidgetConfig
     public private(set) var mode: WidgetMode = .normal
     /// The boss key's (ADR-0012) own bookkeeping: deliberate, persists until deliberately undone
-    /// (or until Ghost Mode is left), and never decays on its own.
-    private var isHidden = false
+    /// (or until Ghost Mode is left), and never decays on its own. Readable so the tray's
+    /// 隐藏窗口 (#63) can show a checkmark; only `toggleHidden()` and leaving Ghost Mode write it.
+    public private(set) var isHidden = false
     /// Whether the cursor is currently over the widget. Tracked in both modes so entering Ghost
     /// Mode with the mouse already parked on the widget avoids straight away, rather than waiting
     /// for the next crossing.
@@ -72,9 +73,10 @@ public final class GhostModeController {
         }
     }
 
-    /// Forces the widget back to Normal Mode regardless of current state — the tray icon's
-    /// "Exit Ghost Mode" entry (#9) must work even while the window is fully hidden/click-through,
+    /// Forces the widget back to Normal Mode regardless of current state — `Orchestrator.openWidget()`
+    /// (the tray's 打开窗口, the Dock) must work even while the window is fully hidden/click-through,
     /// and must be a no-op when already in Normal Mode rather than toggling back into Ghost Mode.
+    /// (The tray's own 退出幽灵模式 entry from #9 was folded into its 幽灵模式 toggle by #63.)
     public func exitGhostMode() {
         guard mode == .ghost else { return }
         leaveGhostMode()

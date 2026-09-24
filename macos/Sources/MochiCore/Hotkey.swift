@@ -41,6 +41,10 @@ public enum DefaultHotkeys {
     /// `0x2B` is `kVK_ANSI_Comma`.
     public static let openSettings = Hotkey(keyCode: 0x2B, modifierFlags: cmd)
 
+    /// ⌘Q — the App menu's 退出, AppKit's own `terminate:` shortcut. Named so the tray's 退出 (#63)
+    /// can show it as a hint. `0x0C` is `kVK_ANSI_Q`.
+    public static let quit = Hotkey(keyCode: 0x0C, modifierFlags: cmd)
+
     /// The fixed local menu shortcuts #37 built into `MainMenuBuilder` (⌘R/⌘+/⌘-/⌘0/⌘,) — never
     /// routed through `GlobalHotkeyRegistry` at all (a local `NSMenuItem` key equivalent only
     /// dispatches through the responder chain while Mochi is the key window), but still listed

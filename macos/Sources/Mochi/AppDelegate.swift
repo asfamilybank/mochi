@@ -72,7 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// `false` since #42: closing the widget leaves Mochi running in the tray, exactly as the
-    /// domain doc defines closing. `⌘Q` and the tray's 退出应用 are the only ways to terminate.
+    /// domain doc defines closing. `⌘Q` and the tray's 退出 are the only ways to terminate.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
     }
