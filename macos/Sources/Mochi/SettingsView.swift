@@ -293,13 +293,15 @@ struct GeneralSettingsTab: View {
                 .pickerStyle(.radioGroup)
                 .onChange(of: startupKind) { _, newValue in applyStartupTarget(kind: newValue) }
 
-                if startupKind == .url {
-                    // Placeholder kept generic rather than a sample domain — an example URL in a
-                    // field that already means "type a URL here" only adds a site nobody asked about.
-                    // Not the address bar's "搜索或输入网址": this field only takes a URL.
-                    TextField("输入网址", text: $startupURLText)
-                        .onSubmit { applyStartupTarget(kind: .url) }
-                }
+                // Always shown, greyed out unless 指定网址 is chosen — the pane's height stays put
+                // when switching options, and what was typed survives a detour through the other
+                // two (switching never touches `startupURLText`), so coming back restores it.
+                // Placeholder kept generic rather than a sample domain — an example URL in a
+                // field that already means "type a URL here" only adds a site nobody asked about.
+                // Not the address bar's "搜索或输入网址": this field only takes a URL.
+                TextField("输入网址", text: $startupURLText)
+                    .onSubmit { applyStartupTarget(kind: .url) }
+                    .disabled(startupKind != .url)
             }
 
             Section("搜索") {
