@@ -70,6 +70,9 @@ public struct WidgetConfig: Equatable {
     /// from the 通用 pane and read at the moment of each submit, never cached.
     public var searchEngine: SearchEngine
 
+    /// 通用 → 文件下载位置 (#68), 下载 by default. Read at the moment of each download, never cached.
+    public var downloadLocation: DownloadLocation = .downloadsFolder
+
     public init(
         url: URL? = nil, windowState: WindowState? = nil, customScript: String? = nil,
         ghostOpacity: Double = WidgetConfig.defaultGhostOpacity, isMouseAvoidanceEnabled: Bool = true,
@@ -145,6 +148,7 @@ extension WidgetConfig {
         // #72
         config.isHTTPWarningEnabled = table["http_warning_enabled"]?.bool ?? false
         config.isWebInspectorEnabled = table["web_inspector_enabled"]?.bool ?? false
+        config.downloadLocation = parseDownloadLocation(from: table)
         return config
     }
 
@@ -220,6 +224,23 @@ extension WidgetConfig {
             overrides[action] = hotkey
         }
         return overrides
+    }
+
+    /// #68: `download_location = "downloads" | "ask" | "folder"`, the last with an absolute
+    /// `download_folder` path (`~` expanded, for hand edits). Anything else — an unknown kind, a
+    /// `folder` without a usable path — falls back to 下载 rather than failing the launch.
+    private static func parseDownloadLocation(from table: TOMLTable) -> DownloadLocation {
+        switch table["download_location"]?.string {
+        case "ask":
+            return .askEachTime
+        case "folder":
+            guard let raw = table["download_folder"]?.string else { return .downloadsFolder }
+            let path = (raw as NSString).expandingTildeInPath
+            guard path.hasPrefix("/") else { return .downloadsFolder }
+            return .folder(URL(fileURLWithPath: path, isDirectory: true))
+        default:
+            return .downloadsFolder
+        }
     }
 
     private static func parseWindowState(from table: TOMLTable?) -> WindowState? {
@@ -298,6 +319,16 @@ extension WidgetConfig {
         table["autoplay"] = autoplayPolicy.rawValue
         if let minimumFontSize {
             table["minimum_font_size"] = minimumFontSize
+        }
+        // #68 — the default (下载) is not written.
+        switch downloadLocation {
+        case .downloadsFolder:
+            break
+        case .askEachTime:
+            table["download_location"] = "ask"
+        case .folder(let folder):
+            table["download_location"] = "folder"
+            table["download_folder"] = folder.path
         }
         return table.convert()
     }
@@ -397,6 +428,12 @@ extension WidgetConfig {
     public func updatingSearchEngine(_ searchEngine: SearchEngine) -> WidgetConfig {
         var copy = self
         copy.searchEngine = searchEngine
+        return copy
+    }
+
+    public func updatingDownloadLocation(_ location: DownloadLocation) -> WidgetConfig {
+        var copy = self
+        copy.downloadLocation = location
         return copy
     }
 

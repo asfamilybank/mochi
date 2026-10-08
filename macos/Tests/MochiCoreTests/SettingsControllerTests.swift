@@ -397,6 +397,21 @@ import Testing
         #expect(notified == 1)
     }
 
+    @Test(arguments: [
+        DownloadLocation.askEachTime, .folder(URL(fileURLWithPath: "/fake/Chosen", isDirectory: true)), .downloadsFolder,
+    ])
+    func updatingDownloadLocationPersistsAndNotifies(_ location: DownloadLocation) {
+        let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!).updatingSearchEngine(.bing))
+        var notified = 0
+        let controller = makeController(store: store, configDidChange: { notified += 1 })
+
+        controller.updateDownloadLocation(location)
+
+        #expect(store.config.downloadLocation == location)
+        #expect(store.config.searchEngine == .bing)
+        #expect(notified == 1)
+    }
+
     @Test func everyPersistedEditFiresTheChangeNotificationExactlyOnce() {
         let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
         var notified = 0

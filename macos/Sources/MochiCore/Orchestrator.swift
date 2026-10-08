@@ -465,7 +465,20 @@ public final class Orchestrator {
         platformOps.onFileUploadRequested(window) { [weak self] _ in
             (self?.isGhostModeActive ?? false) ? .cancel : .presentOpenPanel
         }
+        // #68: setting, Ghost Mode and the disk are all read now, at the moment of the download.
+        platformOps.onDownloadRequested(window) { [weak self] request in
+            let config = self?.currentConfig()
+            return DownloadDestination.decide(
+                suggestedFilename: request.suggestedFilename,
+                location: config?.downloadLocation ?? .downloadsFolder,
+                isGhostModeActive: self?.isGhostModeActive ?? false,
+                fileSystem: self?.downloadFileSystem ?? .live)
+        }
     }
+
+    /// #68: the disk facts download destinations are decided against. Tests swap in a fake so
+    /// nothing reads (let alone writes) the real ~/Downloads.
+    public var downloadFileSystem: DownloadFileSystem = .live
 
     private var isGhostModeActive: Bool { ghostModeController?.mode == .ghost }
 

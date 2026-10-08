@@ -256,6 +256,8 @@ struct GeneralSettingsTab: View {
                     }
                 }
             }
+
+            DownloadLocationSection(viewModel: viewModel)
         }
         .formStyle(.columns)
     }

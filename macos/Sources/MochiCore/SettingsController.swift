@@ -98,6 +98,11 @@ public final class SettingsController {
         persistAndNotify { $0.updatingSearchEngine(engine) }
     }
 
+    /// #68 — read at each download, so persisting is applying.
+    public func updateDownloadLocation(_ location: DownloadLocation) {
+        persistAndNotify { $0.updatingDownloadLocation(location) }
+    }
+
     public func updateCustomScript(_ script: String?) {
         persistAndNotify { $0.updatingCustomScript(script) }
     }

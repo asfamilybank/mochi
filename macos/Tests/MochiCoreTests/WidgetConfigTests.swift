@@ -690,3 +690,63 @@ import Testing
         #expect(updated.url == config.url && updated.isSnapEnabled == false)
     }
 }
+
+/// #68: 文件下载位置.
+@Suite struct WidgetConfigDownloadLocationTests {
+    @Test func defaultsToDownloadsFolderWhenAbsent() throws {
+        #expect(try WidgetConfig.parse("").downloadLocation == .downloadsFolder)
+        #expect(WidgetConfig().downloadLocation == .downloadsFolder)
+    }
+
+    @Test(arguments: [
+        (toml: "download_location = 'downloads'", expected: DownloadLocation.downloadsFolder),
+        (toml: "download_location = 'ask'", expected: .askEachTime),
+        (toml: "download_location = 'folder'\ndownload_folder = '/Volumes/外置/下载'",
+            expected: .folder(URL(fileURLWithPath: "/Volumes/外置/下载", isDirectory: true))),
+        // Invalid values fall back to 下载.
+        (toml: "download_location = 'desktop'", expected: .downloadsFolder),
+        (toml: "download_location = 3", expected: .downloadsFolder),
+        (toml: "download_location = 'folder'", expected: .downloadsFolder),
+        (toml: "download_location = 'folder'\ndownload_folder = 'relative/path'", expected: .downloadsFolder),
+        (toml: "download_location = 'folder'\ndownload_folder = 7", expected: .downloadsFolder),
+        // A folder path left over in the file doesn't matter unless 其他… is selected.
+        (toml: "download_location = 'ask'\ndownload_folder = '/tmp/x'", expected: .askEachTime),
+    ])
+    func parsesDownloadLocationLeniently(_ row: (toml: String, expected: DownloadLocation)) throws {
+        #expect(try WidgetConfig.parse(row.toml).downloadLocation == row.expected)
+    }
+
+    @Test func expandsTildeInAHandEditedFolder() throws {
+        let config = try WidgetConfig.parse("download_location = 'folder'\ndownload_folder = '~/Stuff'")
+        let expected = URL(fileURLWithPath: ("~/Stuff" as NSString).expandingTildeInPath, isDirectory: true)
+        #expect(config.downloadLocation == .folder(expected))
+    }
+
+    @Test(arguments: [
+        DownloadLocation.downloadsFolder, .askEachTime,
+        .folder(URL(fileURLWithPath: "/Users/someone/My Files", isDirectory: true)),
+    ])
+    func roundTripsEveryLocation(_ location: DownloadLocation) throws {
+        let config = WidgetConfig().updatingDownloadLocation(location)
+        #expect(try WidgetConfig.parse(config.serialized()).downloadLocation == location)
+    }
+
+    @Test func defaultIsNotWritten() {
+        let toml = WidgetConfig().serialized()
+        #expect(!toml.contains("download_location"))
+        #expect(!toml.contains("download_folder"))
+    }
+
+    @Test func folderPathIsWrittenOnlyForTheFolderKind() {
+        #expect(!WidgetConfig().updatingDownloadLocation(.askEachTime).serialized().contains("download_folder"))
+        let folder = WidgetConfig().updatingDownloadLocation(.folder(URL(fileURLWithPath: "/a/b", isDirectory: true)))
+        #expect(folder.serialized().contains("download_folder = '/a/b'"))
+    }
+
+    @Test func updatingDownloadLocationChangesOnlyThatField() {
+        let config = WidgetConfig(url: URL(string: "https://example.com")!, isSnapEnabled: false)
+        let updated = config.updatingDownloadLocation(.askEachTime)
+        #expect(updated.downloadLocation == .askEachTime)
+        #expect(updated.url == config.url && updated.isSnapEnabled == false)
+    }
+}

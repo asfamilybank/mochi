@@ -73,3 +73,26 @@ public enum FileUploadDecision: Equatable, Sendable {
     /// Complete as if the user cancelled (Ghost Mode) — no UI.
     case cancel
 }
+
+// MARK: Download (#68)
+
+/// A page's download (#68): a navigation WebKit can't show, or a link with a `download`
+/// attribute, has become a `WKDownload` and needs somewhere on disk to land.
+public struct DownloadRequest: Equatable, Sendable {
+    /// WebKit's suggestion (from `Content-Disposition`, the `download` attribute or the URL).
+    public var suggestedFilename: String
+
+    public init(suggestedFilename: String) {
+        self.suggestedFilename = suggestedFilename
+    }
+}
+
+/// Where a download lands — decided by `DownloadDestination.decide`; the platform only executes it.
+public enum DownloadDestinationDecision: Equatable, Sendable {
+    /// Write straight to this file URL. Already made unique (a " (n)" suffix), so nothing that
+    /// exists is overwritten.
+    case saveTo(URL)
+    /// 每次询问 in Normal Mode: show the Save panel as a sheet, opened on `directory` with
+    /// `suggestedFilename` pre-filled. Cancelling the panel cancels the download.
+    case askWithSavePanel(directory: URL, suggestedFilename: String)
+}

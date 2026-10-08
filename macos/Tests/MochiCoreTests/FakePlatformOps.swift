@@ -411,4 +411,16 @@ final class FakePlatformOps: PlatformOps {
     func simulateFileUploadRequested(_ request: FileUploadRequest, windowID: Int = 1) -> FileUploadDecision? {
         fileUploadRequestedHandlers[windowID]?(request)
     }
+
+    // #68
+    private var downloadRequestedHandlers: [Int: (DownloadRequest) -> DownloadDestinationDecision] = [:]
+
+    func onDownloadRequested(_ window: WidgetWindowHandle, perform handler: @escaping (DownloadRequest) -> DownloadDestinationDecision) {
+        let handle = window as! FakeWidgetWindowHandle
+        downloadRequestedHandlers[handle.id] = handler
+    }
+
+    func simulateDownloadRequested(_ request: DownloadRequest, windowID: Int = 1) -> DownloadDestinationDecision? {
+        downloadRequestedHandlers[windowID]?(request)
+    }
 }

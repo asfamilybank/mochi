@@ -566,6 +566,10 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// `WebInteractionUIDelegate.swift`. `nil` until registered — requests then settle as cancelled.
     var javaScriptDialogRequestedHandler: ((JavaScriptDialogRequest) -> JavaScriptDialogDecision)?
     var fileUploadRequestedHandler: ((FileUploadRequest) -> FileUploadDecision)?
+    /// #68: MochiCore's destination decider, consulted by `WebDownloadDelegate.swift`, and each
+    /// in-flight download's destination — kept so completion can bounce the Dock with the path.
+    var downloadRequestedHandler: ((DownloadRequest) -> DownloadDestinationDecision)?
+    var downloadDestinations: [ObjectIdentifier: URL] = [:]
     /// Set on `windowWillEnterFullScreen`, cleared on `windowDidExitFullScreen` — `window.frame`
     /// itself is the screen-filling fullscreen frame for the whole time in between, so anything
     /// reading a persistable window geometry (`frameToPersist`) needs this instead. Without it, a
@@ -1340,6 +1344,11 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// flash an error page for what isn't really a failure.
     private func handleNavigationFailure(_ error: Error) {
         guard (error as NSError).code != NSURLErrorCancelled else { return }
+        // #68: a navigation our policy turned into a download ends its provisional load with
+        // "frame load interrupted" (`WebKitErrorDomain` 102, which `WKError.Code` has no name for)
+        // — the download is the outcome, not a failure to show.
+        let nsError = error as NSError
+        guard !(nsError.domain == "WebKitErrorDomain" && nsError.code == 102) else { return }
         navigationFailedHandler?(error.localizedDescription)
     }
 
@@ -1503,7 +1512,8 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         decisionHandler: @escaping (WKNavigationActionPolicy, WKWebpagePreferences) -> Void
     ) {
         preferences.preferredHTTPSNavigationPolicy = isHTTPWarningEnabled ? .userMediatedFallbackToHTTP : .keepAsRequested
-        decisionHandler(.allow, preferences)
+        // #68: a `download`-attribute link is saved, not loaded (see `WebDownloadDelegate.swift`).
+        decisionHandler(navigationAction.shouldPerformDownload ? .download : .allow, preferences)
     }
 
     /// A tracking area on the whole content view is what lets Ghost Mode detect the mouse moving
@@ -2057,6 +2067,10 @@ public final class AppKitPlatformOps: PlatformOps {
 
     public func onFileUploadRequested(_ window: WidgetWindowHandle, perform handler: @escaping (FileUploadRequest) -> FileUploadDecision) {
         handle(for: window)?.fileUploadRequestedHandler = handler
+    }
+
+    public func onDownloadRequested(_ window: WidgetWindowHandle, perform handler: @escaping (DownloadRequest) -> DownloadDestinationDecision) {
+        handle(for: window)?.downloadRequestedHandler = handler
     }
 
     public func setWindowTitle(_ title: String, in window: WidgetWindowHandle) {

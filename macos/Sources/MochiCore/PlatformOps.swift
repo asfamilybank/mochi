@@ -326,6 +326,12 @@ public protocol PlatformOps: AnyObject {
 
     /// Registers the handler that decides how a page's file-upload request is settled.
     func onFileUploadRequested(_ window: WidgetWindowHandle, perform handler: @escaping (FileUploadRequest) -> FileUploadDecision)
+
+    /// Registers the handler that decides where a page's download lands (#68). The platform turns
+    /// unshowable responses and `download`-attribute links into downloads, asks this handler for
+    /// the destination, executes it (a Save panel sheet only on `.askWithSavePanel`), and bounces
+    /// the Dock's Downloads stack when the file is complete.
+    func onDownloadRequested(_ window: WidgetWindowHandle, perform handler: @escaping (DownloadRequest) -> DownloadDestinationDecision)
 }
 
 // #70

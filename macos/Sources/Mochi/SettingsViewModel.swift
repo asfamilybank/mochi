@@ -46,6 +46,11 @@ final class SettingsViewModel: ObservableObject {
         config = controller.config
     }
 
+    func updateDownloadLocation(_ location: DownloadLocation) {
+        controller.updateDownloadLocation(location)
+        config = controller.config
+    }
+
     func updateSnapEnabled(_ enabled: Bool) {
         controller.updateSnapEnabled(enabled)
         config = controller.config
