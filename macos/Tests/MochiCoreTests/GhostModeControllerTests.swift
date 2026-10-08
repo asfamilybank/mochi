@@ -8,17 +8,15 @@ import Testing
 /// controller was constructed.
 private final class ConfigStore {
     var config: WidgetConfig
-    init(ghostOpacity: Double, isMouseAvoidanceEnabled: Bool) {
-        config = WidgetConfig(ghostOpacity: ghostOpacity, isMouseAvoidanceEnabled: isMouseAvoidanceEnabled)
+    init(ghostOpacity: Double) {
+        config = WidgetConfig(ghostOpacity: ghostOpacity)
     }
 }
 
 @Suite struct GhostModeControllerTests {
-    private func makeSUT(
-        ghostOpacity: Double = 0.2, isMouseAvoidanceEnabled: Bool = true
-    ) -> (FakePlatformOps, ConfigStore, GhostModeController) {
+    private func makeSUT(ghostOpacity: Double = 0.2) -> (FakePlatformOps, ConfigStore, GhostModeController) {
         let fake = FakePlatformOps()
-        let store = ConfigStore(ghostOpacity: ghostOpacity, isMouseAvoidanceEnabled: isMouseAvoidanceEnabled)
+        let store = ConfigStore(ghostOpacity: ghostOpacity)
         let window = fake.createWidgetWindow(initialFrame: WindowFrame(x: 0, y: 0, width: 100, height: 100))
         let controller = GhostModeController(platformOps: fake, window: window, currentConfig: { store.config })
         return (fake, store, controller)
@@ -28,30 +26,16 @@ private final class ConfigStore {
     /// `setContentOpacity` (ADR-0012). Driven as a table because it *is* a truth table: nothing
     /// else about the controller decides how visible the window is.
     @Test(arguments: [
-        (ghost: true, hidden: false, avoidance: false, mouseInside: false, expected: 0.2),
-        (ghost: true, hidden: false, avoidance: false, mouseInside: true, expected: 0.2),
-        (ghost: true, hidden: false, avoidance: true, mouseInside: false, expected: 0.2),
-        (ghost: true, hidden: false, avoidance: true, mouseInside: true, expected: 0.0),
-        (ghost: true, hidden: true, avoidance: false, mouseInside: false, expected: 0.0),
-        (ghost: true, hidden: true, avoidance: false, mouseInside: true, expected: 0.0),
-        (ghost: true, hidden: true, avoidance: true, mouseInside: false, expected: 0.0),
-        (ghost: true, hidden: true, avoidance: true, mouseInside: true, expected: 0.0),
-        // Normal Mode has no visibility concept of its own, so none of the other three
-        // dimensions may produce a single call — `nil` here means "the platform never heard
-        // about any of this", not "it was told an unchanged value".
-        (ghost: false, hidden: false, avoidance: false, mouseInside: false, expected: nil),
-        (ghost: false, hidden: false, avoidance: false, mouseInside: true, expected: nil),
-        (ghost: false, hidden: false, avoidance: true, mouseInside: false, expected: nil),
-        (ghost: false, hidden: false, avoidance: true, mouseInside: true, expected: nil),
-        (ghost: false, hidden: true, avoidance: false, mouseInside: false, expected: nil),
-        (ghost: false, hidden: true, avoidance: false, mouseInside: true, expected: nil),
-        (ghost: false, hidden: true, avoidance: true, mouseInside: false, expected: nil),
-        (ghost: false, hidden: true, avoidance: true, mouseInside: true, expected: nil),
+        (ghost: true, hidden: false, expected: 0.2),
+        (ghost: true, hidden: true, expected: 0.0),
+        // Normal Mode has no visibility concept of its own, so the Hidden hotkey may not produce
+        // a single call — `nil` here means "the platform never heard about any of this", not "it
+        // was told an unchanged value".
+        (ghost: false, hidden: false, expected: nil),
+        (ghost: false, hidden: true, expected: nil),
     ])
-    func effectiveOpacity(
-        _ testCase: (ghost: Bool, hidden: Bool, avoidance: Bool, mouseInside: Bool, expected: Double?)
-    ) {
-        let (fake, _, controller) = makeSUT(ghostOpacity: 0.2, isMouseAvoidanceEnabled: testCase.avoidance)
+    func effectiveOpacity(_ testCase: (ghost: Bool, hidden: Bool, expected: Double?)) {
+        let (fake, _, controller) = makeSUT(ghostOpacity: 0.2)
 
         if testCase.ghost {
             controller.toggle()
@@ -59,90 +43,11 @@ private final class ConfigStore {
         if testCase.hidden {
             controller.toggleHidden()
         }
-        if testCase.mouseInside {
-            fake.simulateMouseInsideChanged(true)
-        }
 
         #expect(fake.contentOpacityChanges.last?.opacity == testCase.expected)
     }
 
-    @Test func theMouseLeavingRestoresTheTargetOpacityRightAway() {
-        // Avoidance is a courtesy, not a hiding mechanism (ADR-0012) — the widget is in the way,
-        // so it steps aside, and steps back the moment it isn't.
-        let (fake, _, controller) = makeSUT(ghostOpacity: 0.2)
-        controller.toggle()
-
-        fake.simulateMouseInsideChanged(true)
-        fake.simulateMouseInsideChanged(false)
-
-        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 0.0, 0.2])
-    }
-
-    @Test func theMouseNeverChangesOpacityWhileAvoidanceIsOff() {
-        let (fake, _, controller) = makeSUT(ghostOpacity: 0.2, isMouseAvoidanceEnabled: false)
-        controller.toggle()
-
-        fake.simulateMouseInsideChanged(true)
-        fake.simulateMouseInsideChanged(false)
-
-        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2])
-    }
-
-    @Test func theMouseNeverChangesOpacityInNormalMode() {
-        let (fake, _, _) = makeSUT()
-
-        fake.simulateMouseInsideChanged(true)
-        fake.simulateMouseInsideChanged(false)
-
-        #expect(fake.contentOpacityChanges.isEmpty)
-    }
-
-    @Test func theMouseLeavingDoesNotUndoTheHiddenHotkey() {
-        // The two are bookkept separately: a window hidden on purpose must not reappear just
-        // because the cursor wandered off it.
-        let (fake, _, controller) = makeSUT(ghostOpacity: 0.2)
-        controller.toggle()
-        controller.toggleHidden()
-
-        fake.simulateMouseInsideChanged(true)
-        fake.simulateMouseInsideChanged(false)
-
-        #expect(fake.contentOpacityChanges.last?.opacity == 0.0)
-    }
-
     // #46: config is read when needed, never captured at construction.
-
-    @Test func turningAvoidanceOffWhileTheMouseIsInsideRestoresVisibilityOnReapply() {
-        let (fake, store, controller) = makeSUT(ghostOpacity: 0.2)
-        controller.toggle()
-        fake.simulateMouseInsideChanged(true)
-
-        store.config.isMouseAvoidanceEnabled = false
-        controller.reapplyConfiguration()
-
-        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 0.0, 0.2])
-    }
-
-    @Test func turningAvoidanceOnWhileTheMouseIsInsideStepsAsideOnReapply() {
-        let (fake, store, controller) = makeSUT(ghostOpacity: 0.2, isMouseAvoidanceEnabled: false)
-        controller.toggle()
-        fake.simulateMouseInsideChanged(true)
-
-        store.config.isMouseAvoidanceEnabled = true
-        controller.reapplyConfiguration()
-
-        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 0.0])
-    }
-
-    @Test func avoidanceIsReadAtTheNextMouseCrossingWithoutAnyReapply() {
-        let (fake, store, controller) = makeSUT(ghostOpacity: 0.2)
-        controller.toggle()
-        store.config.isMouseAvoidanceEnabled = false
-
-        fake.simulateMouseInsideChanged(true)
-
-        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2])
-    }
 
     @Test func entersGhostModeAtTheOpacityConfiguredAtThatMomentNotAtConstruction() {
         // The single most important #46 assertion: this fails the moment someone captures

@@ -329,7 +329,7 @@ public final class Orchestrator {
     }
 
     /// Re-applies the settings that don't take effect by being re-read (#46): Snap has to be
-    /// pushed to the live window, and an opacity/avoidance edit made *while in Ghost Mode* has to
+    /// pushed to the live window, and an opacity edit made *while in Ghost Mode* has to
     /// be pushed down right now (see `GhostModeController.reapplyConfiguration`). Everything else
     /// in the config is read at its point of use and needs no call here. `SettingsController`
     /// invokes this after every persisted edit; a no-op while the widget is closed.

@@ -36,11 +36,6 @@ final class SettingsViewModel: ObservableObject {
         config = controller.config
     }
 
-    func updateMouseAvoidanceEnabled(_ enabled: Bool) {
-        controller.updateMouseAvoidanceEnabled(enabled)
-        config = controller.config
-    }
-
     func updateSearchEngine(_ engine: SearchEngine) {
         controller.updateSearchEngine(engine)
         config = controller.config

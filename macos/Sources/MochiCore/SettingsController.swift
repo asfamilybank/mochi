@@ -1,7 +1,7 @@
 import Foundation
 
 /// Drives every edit made in the settings panel (#13/#14/#15/#45/#46) — startup URL, Ghost Mode
-/// opacity/avoidance/Snap, the two action hotkeys, hotkey mapping CRUD, and custom/built-in script
+/// opacity/Snap, the two action hotkeys, hotkey mapping CRUD, and custom/built-in script
 /// management — exactly the way `Orchestrator` drives window/hotkey state: talking only to
 /// `PlatformOps` plus an injected read/write pair, so it's exercisable against `FakePlatformOps`
 /// without any AppKit/SwiftUI in the loop.
@@ -59,10 +59,6 @@ public final class SettingsController {
 
     public func updateGhostOpacity(_ opacity: Double) {
         persistAndNotify { $0.updatingGhostOpacity(opacity) }
-    }
-
-    public func updateMouseAvoidanceEnabled(_ enabled: Bool) {
-        persistAndNotify { $0.updatingMouseAvoidanceEnabled(enabled) }
     }
 
     public func updateSnapEnabled(_ enabled: Bool) {

@@ -29,15 +29,11 @@ Widget 的隐身状态，由全局热键整体切换开关。它是一个**不�
 - **永不获得焦点**——进入/停留在 Ghost Mode 期间窗口不成为 key window；只有退出 Ghost Mode 时才激活应用。
 
 退出方式是再次按热键，或点击系统托盘图标（托盘图标在应用运行期间常驻显示，不区分模式）。应用重启后一律先回到 Normal Mode，不自动恢复 Ghost Mode 状态。Ghost Mode 下没有刷新、没有缩放、没有工具栏——要操作就先退出隐身。网页在 Ghost Mode 期间发起的任何需要用户交互的请求，一律按不打扰的方式直接了结，既不退出隐身、也不挂起等待：权限请求拒绝、弹框按取消/确定了结、下载存到默认位置、Popup Window 不打开。
-_Avoid_: 召唤工具栏（ADR-0006 的旧设计，已被 ADR-0012 砍掉；用户要操作工具栏应先退出 Ghost Mode）
+_Avoid_: 召唤工具栏（ADR-0006 的旧设计，已被 ADR-0012 砍掉；用户要操作工具栏应先退出 Ghost Mode）；鼠标移入避让 / 鼠标移入即隐藏（ADR-0012 的可关闭偏好、ADR-0006 的恒开行为，已被 [ADR-0019](docs/adr/0019-remove-mouse-entered-avoidance.md) 整个砍掉；Ghost Mode 下鼠标不影响可见性，要看不见就用 Hidden）
 
 **Hidden（隐藏 / 老板键）**:
 Ghost Mode 内部的一个独立可见性维度，由一个仅在 Ghost Mode 生效的全局热键切换：窗口**完全看不见，但仍然存在、网页继续运行**（视频不会停）。这是它跟"关闭 Widget"的分界线——关闭是销毁并停止，Hidden 只是看不见。热键一直保持隐藏，直到再按一次热键取消，或退出 Ghost Mode。实现上必须用 `alphaValue = 0` 而非 `orderOut`，否则 WebKit 会因窗口被判定遮挡而节流渲染，破坏"页面继续跑"这条语义（见 [ADR-0012](docs/adr/0012-ghost-mode-as-pure-invisibility.md)）。
 _Avoid_: 快速隐藏（旧名，当时是 Normal Mode 专用能力，已随 Normal Mode 回归普通窗口而移除）；收起（一个被否决的中间概念，⌘W 是真关闭，不是收起）
-
-**Mouse-Entered Avoidance（鼠标移入避让）**:
-一个可关闭的偏好（默认开启），只在 Ghost Mode 生效：鼠标移入 Widget 所在区域时窗口让开（不可见），**移出即恢复**。它是"避让"而非"隐藏"——存在的理由是穿透状态下 Widget 会挡视线，而不是要把它藏起来。与 Hidden 相互独立、各自记账：可见性 = 非 Hidden 且非（避让开启且鼠标在窗口上）。它属于"这个模式怎么表现"，不属于"这个模式是什么"，因此不算 Ghost Mode 绑定状态的组成部分（见 [ADR-0012](docs/adr/0012-ghost-mode-as-pure-invisibility.md)）。
-_Avoid_: 鼠标移入即隐藏（ADR-0006 的旧表述，当时是恒开的、且移出不恢复）
 
 **Mouse Passthrough（鼠标穿透）**:
 Ghost Mode 内置的能力，不能独立于 Ghost Mode 单独开启：开启后窗口不接收鼠标事件、点击直接作用于下方应用。

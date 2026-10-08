@@ -343,9 +343,8 @@ struct GeneralSettingsTab: View {
 }
 
 /// #46: everything about how the window behaves on the desktop (the 窗口 pane since #65, formerly
-/// 窗口与外观) — Ghost Mode's target opacity,
-/// mouse-entered avoidance (ADR-0012), and Snap (#39). The two switches get their first UI here;
-/// before this they were only reachable by hand-editing the config file.
+/// 窗口与外观) — Ghost Mode's target opacity and Snap (#39). The Snap switch got its first UI here;
+/// before this it was only reachable by hand-editing the config file.
 struct WindowSettingsTab: View {
     @ObservedObject var viewModel: SettingsViewModel
     @State private var ghostOpacity: Double
@@ -371,16 +370,6 @@ struct WindowSettingsTab: View {
                         .foregroundStyle(.secondary)
                         .frame(width: 44, alignment: .trailing)
                 }
-                Toggle(
-                    "鼠标移入时避让",
-                    isOn: Binding(
-                        get: { viewModel.config.isMouseAvoidanceEnabled },
-                        set: { viewModel.updateMouseAvoidanceEnabled($0) }
-                    )
-                )
-                Text("鼠标移到窗口上时窗口暂时让开，移开即恢复。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             Section("普通模式") {

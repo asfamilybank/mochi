@@ -21,9 +21,6 @@ public struct WidgetConfig: Equatable {
     public var windowState: WindowState?
     public var customScript: String?
     public var ghostOpacity: Double
-    /// Ghost Mode's mouse-entered avoidance (ADR-0012), on by default. Edited from the settings
-    /// panel's 窗口与外观 tab (#46); read at the moment of each visibility decision, never cached.
-    public var isMouseAvoidanceEnabled: Bool
     /// Magnetic edge/corner snapping while dragging (#6), on by default. Edited from the same
     /// 窗口与外观 tab and re-applied to the live window on every change (#46).
     public var isSnapEnabled: Bool
@@ -98,7 +95,7 @@ public struct WidgetConfig: Equatable {
 
     public init(
         url: URL? = nil, windowState: WindowState? = nil, customScript: String? = nil,
-        ghostOpacity: Double = WidgetConfig.defaultGhostOpacity, isMouseAvoidanceEnabled: Bool = true,
+        ghostOpacity: Double = WidgetConfig.defaultGhostOpacity,
         isSnapEnabled: Bool = true,
         hotkeyMappings: [HotkeyMapping] = [], startupTarget: StartupTarget? = nil,
         disabledBuiltInScriptIDs: Set<String> = [],
@@ -109,7 +106,6 @@ public struct WidgetConfig: Equatable {
         self.windowState = windowState
         self.customScript = customScript
         self.ghostOpacity = ghostOpacity
-        self.isMouseAvoidanceEnabled = isMouseAvoidanceEnabled
         self.isSnapEnabled = isSnapEnabled
         self.hotkeyMappings = hotkeyMappings
         self.startupTarget = startupTarget
@@ -154,7 +150,6 @@ extension WidgetConfig {
             windowState: parseWindowState(from: table["window"]?.table),
             customScript: table["custom_script"]?.string,
             ghostOpacity: table["ghost_opacity"]?.double ?? defaultGhostOpacity,
-            isMouseAvoidanceEnabled: table["mouse_avoidance_enabled"]?.bool ?? true,
             isSnapEnabled: table["snap_enabled"]?.bool ?? true,
             hotkeyMappings: parseHotkeyMappings(from: table["hotkey_mappings"]?.array),
             startupTarget: parseStartupTarget(from: table["startup_target"]?.table),
@@ -289,7 +284,6 @@ extension WidgetConfig {
             table["url"] = url.absoluteString
         }
         table["ghost_opacity"] = ghostOpacity
-        table["mouse_avoidance_enabled"] = isMouseAvoidanceEnabled
         table["snap_enabled"] = isSnapEnabled
         table["http_warning_enabled"] = isHTTPWarningEnabled
         table["web_inspector_enabled"] = isWebInspectorEnabled
@@ -422,12 +416,6 @@ extension WidgetConfig {
     public func updatingDisabledBuiltInScriptIDs(_ disabledBuiltInScriptIDs: Set<String>) -> WidgetConfig {
         var copy = self
         copy.disabledBuiltInScriptIDs = disabledBuiltInScriptIDs
-        return copy
-    }
-
-    public func updatingMouseAvoidanceEnabled(_ enabled: Bool) -> WidgetConfig {
-        var copy = self
-        copy.isMouseAvoidanceEnabled = enabled
         return copy
     }
 

@@ -374,17 +374,6 @@ import Testing
         #expect(notified == 1)
     }
 
-    @Test func updatingMouseAvoidancePersistsAndNotifies() {
-        let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
-        var notified = 0
-        let controller = makeController(store: store, configDidChange: { notified += 1 })
-
-        controller.updateMouseAvoidanceEnabled(false)
-
-        #expect(store.config.isMouseAvoidanceEnabled == false)
-        #expect(notified == 1)
-    }
-
     @Test func updatingSearchEnginePersistsAndNotifies() {
         let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
         var notified = 0

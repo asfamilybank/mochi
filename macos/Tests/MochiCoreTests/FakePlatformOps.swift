@@ -52,7 +52,6 @@ final class FakePlatformOps: PlatformOps {
     private var ghostModeToggleRequestedHandlers: [Int: () -> Void] = [:]
     private(set) var deactivateAppCallCount = 0
     private(set) var activateAppCallCount = 0
-    private var mouseInsideChangedHandlers: [Int: (Bool) -> Void] = [:]
     private var pageTitleChangedHandlers: [Int: (String?) -> Void] = [:]
     private var emptyPageVisibilityChangedHandlers: [Int: (Bool) -> Void] = [:]
     private var loadingStateChangedHandlers: [Int: (Bool) -> Void] = [:]
@@ -208,15 +207,6 @@ final class FakePlatformOps: PlatformOps {
     func setMousePassthrough(_ enabled: Bool, in window: WidgetWindowHandle) {
         let handle = window as! FakeWidgetWindowHandle
         mousePassthroughChanges.append((enabled, handle.id))
-    }
-
-    func onMouseInsideChanged(_ window: WidgetWindowHandle, perform handler: @escaping (Bool) -> Void) {
-        let handle = window as! FakeWidgetWindowHandle
-        mouseInsideChangedHandlers[handle.id] = handler
-    }
-
-    func simulateMouseInsideChanged(_ inside: Bool, windowID: Int = 1) {
-        mouseInsideChangedHandlers[windowID]?(inside)
     }
 
     @discardableResult

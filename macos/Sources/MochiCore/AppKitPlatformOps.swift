@@ -475,9 +475,8 @@ private enum NavigationSegment {
     static let forward = 1
 }
 
-/// Reports hover enter/exit for a single view via its own `NSTrackingArea`, decoupled from the
-/// window-wide tracking area `installGhostModeMouseTracking` installs for Ghost Mode — each
-/// `NSTrackingArea` needs a distinct `owner` for AppKit to route enter/exit callbacks separately.
+/// Reports hover enter/exit for a single view via its own `NSTrackingArea`, so the callbacks land
+/// on closures instead of on the handle itself.
 private final class HoverTracker: NSObject {
     var onEnter: (() -> Void)?
     var onExit: (() -> Void)?
@@ -557,7 +556,6 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     private var ghostModeToggleRequestedHandler: (() -> Void)?
     private var navigationFinishedHandler: (() -> Void)?
     private var navigationFailedHandler: ((String) -> Void)?
-    private var mouseInsideChangedHandler: ((Bool) -> Void)?
     private var pageTitleChangedHandler: ((String?) -> Void)?
     private var emptyPageVisibilityChangedHandler: ((Bool) -> Void)?
     private var loadingStateChangedHandler: ((Bool) -> Void)?
@@ -669,7 +667,6 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         window.delegate = self
         webView.navigationDelegate = self
         webView.uiDelegate = self
-        installGhostModeMouseTracking()
         installAddressFieldHoverTracking()
         controls.addressBar.field.delegate = self
         controls.addressBar.onActivate = { [weak self] in
@@ -1485,10 +1482,6 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         window.ignoresMouseEvents = enabled
     }
 
-    func setMouseInsideChangedHandler(_ handler: @escaping (Bool) -> Void) {
-        mouseInsideChangedHandler = handler
-    }
-
     func setSnapEnabled(_ enabled: Bool) {
         (window as? MochiWidgetWindow)?.isSnapEnabled = enabled
     }
@@ -1524,29 +1517,6 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         preferences.preferredHTTPSNavigationPolicy = isHTTPWarningEnabled ? .userMediatedFallbackToHTTP : .keepAsRequested
         // #68: a `download`-attribute link is saved, not loaded (see `WebDownloadDelegate.swift`).
         decisionHandler(navigationAction.shouldPerformDownload ? .download : .allow, preferences)
-    }
-
-    /// A tracking area on the whole content view is what lets Ghost Mode detect the mouse moving
-    /// into and back out of the widget (#8) even though the window ignores mouse events at the
-    /// time — AppKit evaluates tracking-rect enter/exit from raw cursor position, independent of
-    /// `ignoresMouseEvents` (which only governs click/scroll dispatch).
-    private func installGhostModeMouseTracking() {
-        guard let contentView = window.contentView else { return }
-        let trackingArea = NSTrackingArea(
-            rect: .zero,
-            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        )
-        contentView.addTrackingArea(trackingArea)
-    }
-
-    @objc private func mouseEntered(with event: NSEvent) {
-        mouseInsideChangedHandler?(true)
-    }
-
-    @objc private func mouseExited(with event: NSEvent) {
-        mouseInsideChangedHandler?(false)
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
@@ -2130,11 +2100,6 @@ public final class AppKitPlatformOps: PlatformOps {
     public func setMousePassthrough(_ enabled: Bool, in window: WidgetWindowHandle) {
         guard let handle = handle(for: window) else { return }
         handle.setMousePassthrough(enabled)
-    }
-
-    public func onMouseInsideChanged(_ window: WidgetWindowHandle, perform handler: @escaping (Bool) -> Void) {
-        guard let handle = handle(for: window) else { return }
-        handle.setMouseInsideChangedHandler(handler)
     }
 
     @discardableResult

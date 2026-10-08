@@ -186,12 +186,9 @@ import Testing
         #expect(reparsed == original)
     }
 
-    @Test func mouseAvoidanceDefaultsToEnabledWhenAbsent() throws {
-        let config = try WidgetConfig.parse("url = \"https://example.com\"")
-        #expect(config.isMouseAvoidanceEnabled == true)
-    }
-
-    @Test func parsesMouseAvoidanceWhenPresent() throws {
+    @Test func aLeftoverMouseAvoidanceKeyIsIgnoredAndDroppedOnSave() throws {
+        // Mouse-entered avoidance was removed (ADR-0019); config files written before that still
+        // carry its key and must keep loading.
         let toml = """
         url = "https://example.com"
         mouse_avoidance_enabled = false
@@ -199,15 +196,8 @@ import Testing
 
         let config = try WidgetConfig.parse(toml)
 
-        #expect(config.isMouseAvoidanceEnabled == false)
-    }
-
-    @Test func serializingThenReparsingRoundTripsMouseAvoidance() throws {
-        let original = WidgetConfig(url: URL(string: "https://example.com")!, isMouseAvoidanceEnabled: false)
-
-        let reparsed = try WidgetConfig.parse(original.serialized())
-
-        #expect(reparsed == original)
+        #expect(config == WidgetConfig(url: URL(string: "https://example.com")!))
+        #expect(!config.serialized().contains("mouse_avoidance_enabled"))
     }
 
     @Test func snapDefaultsToEnabledWhenAbsent() throws {
@@ -568,14 +558,12 @@ import Testing
         #expect(try WidgetConfig.parse(config.serialized()) == config)
     }
 
-    @Test func updatingSnapAndMouseAvoidanceReturnCopiesWithOnlyThatFieldChanged() {
+    @Test func updatingSnapReturnsACopyWithOnlyThatFieldChanged() {
         let config = WidgetConfig(url: URL(string: "https://example.com")!)
 
         let snapOff = config.updatingSnapEnabled(false)
-        let avoidanceOff = config.updatingMouseAvoidanceEnabled(false)
 
-        #expect(snapOff.isSnapEnabled == false && snapOff.isMouseAvoidanceEnabled == true && snapOff.url == config.url)
-        #expect(avoidanceOff.isMouseAvoidanceEnabled == false && avoidanceOff.isSnapEnabled == true)
+        #expect(snapOff.isSnapEnabled == false && snapOff.url == config.url)
     }
 
     // #70: autoplay policy and minimum font size.
