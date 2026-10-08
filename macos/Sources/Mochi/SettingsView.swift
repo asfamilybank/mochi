@@ -299,9 +299,15 @@ struct GeneralSettingsTab: View {
                 // Placeholder kept generic rather than a sample domain — an example URL in a
                 // field that already means "type a URL here" only adds a site nobody asked about.
                 // Not the address bar's "搜索或输入网址": this field only takes a URL.
-                TextField("输入网址", text: $startupURLText)
-                    .onSubmit { applyStartupTarget(kind: .url) }
-                    .disabled(startupKind != .url)
+                // The label sits in `LabeledContent` so the width below sizes the box alone — on a
+                // labelled `TextField` in a `.columns` form, `.frame` would include the label column.
+                LabeledContent("输入网址") {
+                    TextField("输入网址", text: $startupURLText, prompt: Text("输入网址"))
+                        .labelsHidden()
+                        .onSubmit { applyStartupTarget(kind: .url) }
+                        .disabled(startupKind != .url)
+                        .frame(width: 166)
+                }
             }
 
             Section("搜索") {
