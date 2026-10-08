@@ -8,6 +8,8 @@
 
 批量建互相引用的 issue（body 里既要插值 issue 号又要保留 markdown 反引号）时，`--body` 的 heredoc 必须用 `<<'EOF'`（quoted）+ 占位符（如 `__T1__`）+ 创建后 `${body//__T1__/#$t1}` 替换——不加引号的 `<<EOF` 会把反引号当命令替换执行。
 
+`gh issue create` 原生支持 `--parent <n>` / `--blocked-by <n,n>`（`gh issue edit` 对应 `--parent` / `--add-blocked-by`），建子票不必再走 `gh api`。坑：`--blocked-by` 解析失败（比如传了空串）时 issue **照样建出来**，但 `--parent` 也一起丢了——批量建完用 `gh api graphql` 查 `subIssues`/`blockedBy` 核对一遍。
+
 同一个坑在 `gh issue comment --body "..."` 上也成立：双引号里的 markdown 反引号仍是命令替换，症状是 `accepts 1 arg(s), received 2`（替换结果带空格被拆成两个参数）——长 body 一律先写文件再 `--body-file`。
 
 `gh api graphql`/`gh api repos/<owner>/<repo>/...` 这类裸 API 调用不会像 `gh issue view` 那样自动从当前 clone 推断仓库——先 `gh repo view --json owner,name -q '.owner.login + "/" + .name'` 拿准确的 owner/repo，不要凭记忆/猜测拼。
@@ -41,6 +43,8 @@ Issue 的 comments 里可能留有前序 session 的"本地实现进度"/"有意
 GitHub 原生 `blocked_by` 依赖（`issue-tracker.md` 写在"Wayfinding operations"节下）不止 `/wayfinder` 能用，`/to-tickets` 这类有依赖关系的拆票也该建。
 
 用 `Agent` 的 `isolation: "worktree"` 并行实现多张票时，要注意三点：① worktree 可能从一个过时的 commit 拉出来，而不是 `main` 的 HEAD，prompt 里第一步就要让 agent 跑 `git merge --ff-only main`；② agent 最终报告里写的分支名可能是错的（这次两次写成了别的 agent 的分支），合并前先用 `git worktree list` 或 `git branch --contains <hash>` 核对；③ 共享文件（`Orchestrator`、`PlatformOps`、`FakePlatformOps`、`OrchestratorTests`、`MainMenuBuilder`、`Hotkey.swift`）上必然会冲突，在 prompt 里要求 agent 把新增内容写成紧挨相关代码、自成一块的片段，不要重排已有行。合并时在对应的 worktree 里 `git rebase main`：绝大多数冲突两边都保留即可，要留意合并后漏掉的右花括号；像 `canPerform` 这种判断逻辑才需要手工合并。
+
+后台 worktree agent 偶发 `Agent stalled: no progress for 600s` 中断：worktree 里未提交的改动都还在，用 `SendMessage` 给原 agent 发"`git status`/`git diff` 重新定位后继续"即可续上（上下文保留），别新开 agent 重做。
 
 多 session 并发时 `CLAUDE.md` 自身也可能被别的 session 同时改动（比如学习记录更新）——commit 前 `git status` 看到 `CLAUDE.md` 有非本次任务的改动，按文件名精确 `git add`，不要用 `-A`/`.` 把它一起带上。`git reset`/`git commit --amend` 之类改写历史的操作（哪怕只是改 commit message）也可能顺带清空其他文件上尚未提交的改动——修改已推送的 commit 前先确认工作区没有别的 session 留下的草稿。这类操作前还要先 `git fetch` 核对 `@{upstream}`：用户会在轮次之间自己 push，不能因为"push 由用户手动执行"就假定 HEAD 还没推送（本仓库真实踩过：amend 了一个已在 origin/main 上的 commit）。需要撤销这类改写时用 `git reset --soft origin/main`，别用 `--hard`。
 
@@ -103,6 +107,7 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 - 起探针实例前用 `if pgrep -x Mochi; then echo ABORT; else ... fi` 包住整段，**检测到就不跑**，不能只打印一下接着跑。结束时也别 `kill $(pgrep -x Mochi)`，那会连用户开着的实例一起杀掉。
 - 量别的 app 的窗口尺寸（如 Safari 最小宽高，实测 574×220）用 `CGWindowListCopyWindowInfo` 读 `kCGWindowBounds`，按 owner 名过滤（Safari 的 owner 名是本地化的「Safari浏览器」，用 contains），不需要截图权限。
 - Mochi 启动时 `config.toml` 解析失败会走 `presentAlert` 的模态 `NSAlert` 卡住主线程，表现为"进程活着但 AX 查不到窗口、`screencapture -l` 也失败"——别误判成权限没生效。另外 app 退出时会整份重写 `config.toml`（手工 `>>` 追加 TOML 段容易造出重复 section 触发上面这个坑），探针类实验前先备份、跑完还原；用户手上开着 Mochi 时不要再起第二个实例，两者共享同一份配置文件。
+- 备份 config 和覆盖 config 必须用 `&&` 串起来（`cp config.toml $S/backup.toml && printf … > config.toml`）：scratchpad 目录可能在两轮之间被清空重建，`cp` 失败后若用 `;` 或分两条命令，会在没有备份的情况下覆盖用户的真实配置。
 - 「辅助功能」和「自动化」（Automation）是两个独立的 TCC 权限类别——只开「辅助功能」，`osascript` 操作 System Events 依然会报"不允许辅助访问"，还要在「自动化」里单独把 Claude 对 System Events 的授权打开；改动任一权限后都要完全退出重启一次 Claude.app（`⌘Q`）才生效，不会热更新。
 - 验证 Mochi 窗口只能用 `screencapture -l<windowID>` 按窗口 ID 截图（窗口 ID 用 `CGWindowListCopyWindowInfo` 查，System Events 的 `id of window` 属性不支持）——**禁止用全屏 `-x` 或区域 `-R`**，这两种会把屏幕上恰好可见的其他窗口一起拍进去，曾真实发生过误拍到用户私人聊天内容的事故。这条不分用途：连"只是探测一下有没有权限"也不准用 `-x`（拿任意窗口 ID 试 `-l` 即可）。
 - 菜单栏的 `NSStatusItem` 不作为 `CGWindowListCopyWindowInfo` 查得到的窗口暴露（按 owner 过滤只能拿到普通窗口），所以托盘图标截不了图——只能验证到"图像尺寸装得进 22pt 菜单栏"这层几何，清晰度要请用户看一眼。
@@ -167,6 +172,12 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 - `Orchestrator.start()` 只做一次 app-global 的事（托盘、全局热键注册、Dock 重开钩子），窗口相关全部在可重复调用的 `openWidget()` 里；关闭（⌘W 与红色按钮）唯一的拆除点是 `onWindowWillClose` 的 handler。`OrchestratorTests` 里有测试钉住"重开后托盘只建 1 次、热键注册次数不增长"，别把 app-global 的东西挪进 `openWidget()`。
 - 同一窗口内容区要在 `WKWebView` 和原生 SwiftUI 内容（`NSHostingView`）之间切换显示时，把两者都放进一个共享的 `NSView` 容器、各自用 Auto Layout 四边 pin 满容器、用 `isHidden` 切换可见性——容器本身的 sizing 行为和裸 `webView` 一致，外层 `NSStackView` 布局不用跟着改。
 - 实现一个 ticket 前先搜一下 spec 里提到的新字段名/新类型（如 `grep -rn <name>`）——早前 session 实现相邻 ticket 时可能已经顺手把这个 ticket 的部分数据层/设置面板 UI 打好了（例如 #13 的 commit 里已经带了 #16 的 `startupTarget` 字段和设置面板三态选择器），不能假设从零开始。
+- 网页发起的交互请求（弹框/上传/新窗口/下载/摄像头麦克风）统一走 #66 的接缝：`WebInteractionRequests.swift` 里加一组请求+决定类型 → `PlatformOps` 加一个 hook → 在 `Orchestrator.registerWebInteractionRequestHandlers` 注册（决定在 MochiCore 做、现读 Ghost Mode）。`WKUIDelegate` 一致性**只能**写在 `WebInteractionUIDelegate.swift` 那一个 extension 里，重复声明直接编译失败。
+- 新增"作用于 web view 的设置"（如最小字号、`isInspectable`、HTTP 警告、弹出式窗口）时，Popup Window 的 web view 也要接上——它是独立的 `WKWebView`（`PopupWindow.swift`），不会自动继承 Widget 的配置。目前下载处理还**只**接在 Widget 上。
+- 设置窗口是 `NSTabViewController`（`.toolbar`）+ 每面板一个 `NSHostingController`：`sizingOptions = []` 会让 `fittingSize` 读回 0（窗口塌成 0×0），要用 `[.preferredContentSize]` 再读 `preferredContentSize`。
+- `.formStyle(.columns)` 的 Form 里，对带标题的 `TextField` 加 `.frame(width:)` 会把左侧标签列一起算进宽度——要只控输入框宽度，用 `LabeledContent("标签") { TextField(…, prompt:).labelsHidden().frame(width:) }`。
+- 无障碍树里 SwiftUI 单选按钮的 `AXTitle` 是 nil，文字在 `AXDescription`；按标题匹配会静默落空（`AXPress` 本身可用）。另外 Popup Window 和 sheet 窗口用 `screencapture -l` 会报 "could not create image from window"，改读无障碍树验证（`AXSheet` 是否挂在对的窗口下）。
+- 界面验证要触发页面行为又不想动用户鼠标：测试 config 里写 `custom_script`（每次导航注入，可调 `alert`/`window.open`/`w.opener`）配合 `data:` 启动页；在设置面板里点控件会真实写入 config，所以一律先换测试 config。
 
 ### 关闭 issue
 
