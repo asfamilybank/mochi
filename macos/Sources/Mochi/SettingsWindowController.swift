@@ -31,11 +31,15 @@ final class SettingsWindowController: NSWindowController {
 /// window at whatever size the first pane had, so selecting a pane resizes the window to that
 /// pane's natural height itself — keeping the top edge where it is, the way Safari's settings
 /// window grows and shrinks downward.
+///
+/// Switching follows Safari too: the old pane vanishes at once (no crossfade — that reads as a
+/// slow dissolve for what is a discrete tab switch), the window resizes empty, and the new pane
+/// appears only once the window has reached its size.
 private final class SettingsTabViewController: NSTabViewController {
     init(viewModel: SettingsViewModel) {
         super.init(nibName: nil, bundle: nil)
         tabStyle = .toolbar
-        transitionOptions = [.crossfade, .allowUserInteraction]
+        transitionOptions = [.allowUserInteraction]
         for pane in SettingsPane.allCases {
             let hostingController = NSHostingController(rootView: pane.content(viewModel: viewModel))
             // Only report the pane's natural size, no min/max constraints: constraints would pin
@@ -68,8 +72,23 @@ private final class SettingsTabViewController: NSTabViewController {
         guard contentSize.width > 0, contentSize.height > 0 else { return }
         let newFrame = window.frameRect(forContentRect: NSRect(origin: .zero, size: contentSize))
         let frame = window.frame
-        window.setFrame(
-            NSRect(x: frame.minX, y: frame.maxY - newFrame.height, width: newFrame.width, height: newFrame.height),
-            display: true, animate: animated)
+        let target = NSRect(
+            x: frame.minX, y: frame.maxY - newFrame.height, width: newFrame.width, height: newFrame.height)
+        guard animated, target != frame else {
+            pane.view.isHidden = false
+            window.setFrame(target, display: true)
+            return
+        }
+        pane.view.isHidden = true
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = window.animationResizeTime(target)
+            window.animator().setFrame(target, display: true)
+        } completionHandler: { [weak self, weak pane] in
+            // A quicker click may have moved on to another pane; that one reveals itself.
+            guard let self, let pane,
+                self.tabViewItems[self.selectedTabViewItemIndex].viewController === pane
+            else { return }
+            pane.view.isHidden = false
+        }
     }
 }
