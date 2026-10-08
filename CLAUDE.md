@@ -72,6 +72,8 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 
 新决定推翻已有 ADR 时不重写旧文件：旧 ADR 顶部加一行"已被 ADR-NNNN 取代"的引用说明保留作历史记录，新决定另开一个顺序编号的新 ADR。
 
+砍掉已上线功能时，文档要改这几处：新开一个 ADR；被推翻的旧 ADR 顶部加一行引用；`CONTEXT.md` 删掉这个术语，改记在相关术语的 `_Avoid_` 里并链到新 ADR；`docs/design-language.md` 里描述这个行为的句子也要改。先 `git grep` 中文名和英文名各搜一遍。
+
 ### macOS app (`macos/`)
 
 - **两套构建系统并存**（[ADR-0014](docs/adr/0014-packaging-and-distribution.md)）：`Package.swift` 仍是开发与测试的主入口（`swift build`/`swift test`/`swift run Mochi` 一切照旧，`open macos/Package.swift` 也仍能在 Xcode 里当项目打开）；`macos/Mochi.xcodeproj` 只负责产出可分发的 `.app`——它的 App target 通过 local package reference（`relativePath = .`）依赖 `MochiCore`，源文件走 Xcode 16+ 的 file system synchronized group 整目录挂载，所以**新增源文件不需要改 `project.pbxproj`**。仍然没有 xcodegen/tuist，pbxproj 手写维护。
@@ -178,6 +180,7 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 - `.formStyle(.columns)` 的 Form 里，对带标题的 `TextField` 加 `.frame(width:)` 会把左侧标签列一起算进宽度——要只控输入框宽度，用 `LabeledContent("标签") { TextField(…, prompt:).labelsHidden().frame(width:) }`。
 - 无障碍树里 SwiftUI 单选按钮的 `AXTitle` 是 nil，文字在 `AXDescription`；按标题匹配会静默落空（`AXPress` 本身可用）。另外 Popup Window 和 sheet 窗口用 `screencapture -l` 会报 "could not create image from window"，改读无障碍树验证（`AXSheet` 是否挂在对的窗口下）。
 - 界面验证要触发页面行为又不想动用户鼠标：测试 config 里写 `custom_script`（每次导航注入，可调 `alert`/`window.open`/`w.opener`）配合 `data:` 启动页；在设置面板里点控件会真实写入 config，所以一律先换测试 config。
+- 删 `WidgetConfig` 字段不需要写迁移：`parse` 遇到不认识的 TOML 键会直接忽略，app 退出时又会整份重写 `config.toml`，旧键自然消失。但要补一条测试钉住「带旧键的配置仍能解析、`serialized()` 里不再出现这个键」，免得以后有人把解析改成严格模式。
 
 ### 关闭 issue
 
