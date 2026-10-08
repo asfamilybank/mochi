@@ -159,3 +159,52 @@ extension WidgetConfig.MediaCapturePermission {
         }
     }
 }
+
+// MARK: New windows (#67)
+
+/// What made the page ask for a new window.
+public enum NewWindowTrigger: Equatable, Sendable {
+    /// The user clicked a link (`target=_blank`, or any link while holding ⌘) —
+    /// `WKNavigationType.linkActivated`. `commandPressed` is whether ⌘ was held.
+    case linkClick(commandPressed: Bool)
+    /// Anything else that reaches WebKit's new-window delegate — in practice a `window.open` run
+    /// from a click handler (an OAuth login window). A popup with no user gesture never gets this
+    /// far while 弹出式窗口 is 阻止: WebKit drops it itself (ADR-0017).
+    case script
+}
+
+/// Which window a new-window request came from.
+public enum NewWindowOpener: Equatable, Sendable {
+    case widget
+    /// One of the widget's Popup Windows (CONTEXT.md).
+    case popupWindow
+}
+
+/// A page's request to open a new window (#67).
+public struct NewWindowRequest: Equatable, Sendable {
+    public var trigger: NewWindowTrigger
+    public var opener: NewWindowOpener
+    /// The page the new window would show — `nil` when WebKit gives none (a script opening
+    /// `about:blank` to write into).
+    public var url: URL?
+
+    public init(trigger: NewWindowTrigger, opener: NewWindowOpener, url: URL?) {
+        self.trigger = trigger
+        self.opener = opener
+        self.url = url
+    }
+}
+
+/// How a new-window request is settled. Handing a ⌘-clicked link to the default browser is not
+/// something the platform executes from a decision: MochiCore does it itself through
+/// `PlatformOps.openInDefaultBrowser` and answers `.cancel`, so the page opens nothing.
+public enum NewWindowDecision: Equatable, Sendable {
+    /// Load the request in the window that made it — the widget, or the requesting Popup Window
+    /// (so popups never multiply).
+    case loadInOpener
+    /// Open a Popup Window built from the configuration WebKit passes in (shared website data and
+    /// `window.opener`).
+    case openPopupWindow
+    /// Open nothing.
+    case cancel
+}

@@ -735,4 +735,32 @@ import Testing
 
         #expect(fake.webInspectableChanges.map(\.enabled) == [false, true])
     }
+
+    // MARK: - #67: 弹出式窗口
+
+    @Test func updatingPopupWindowPolicyPersistsAndNotifies() {
+        let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
+        var notified = 0
+        let controller = makeController(store: store, configDidChange: { notified += 1 })
+
+        controller.updatePopupWindowPolicy(.allow)
+
+        #expect(store.config.popupWindowPolicy == .allow)
+        #expect(store.config.url == URL(string: "https://example.com"))
+        #expect(notified == 1)
+    }
+
+    /// 改动即时生效: the edit reaches the open widget's web view without a reopen.
+    @Test func aPopupWindowPolicyEditReachesTheLiveWindowWhenWiredToTheOrchestrator() {
+        let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { store.config })
+        orchestrator.start()
+        let controller = makeController(store: store, platformOps: fake, configDidChange: orchestrator.reapplyConfiguration)
+
+        controller.updatePopupWindowPolicy(.allow)
+        controller.updatePopupWindowPolicy(.block)
+
+        #expect(fake.popupWindowsAllowedChanges.map(\.allowed) == [false, true, false])
+    }
 }

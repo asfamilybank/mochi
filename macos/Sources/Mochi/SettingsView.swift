@@ -123,6 +123,25 @@ struct WebContentSettingsTab: View {
                 .pickerStyle(.menu)
                 .fixedSize()
             }
+
+            // #67: applies to the open widget immediately.
+            Section {
+                Picker(
+                    "弹出式窗口：",
+                    selection: Binding(
+                        get: { viewModel.config.popupWindowPolicy },
+                        set: { viewModel.updatePopupWindowPolicy($0) }
+                    )
+                ) {
+                    Text("允许").tag(WidgetConfig.PopupWindowPolicy.allow)
+                    Text("阻止").tag(WidgetConfig.PopupWindowPolicy.block)
+                }
+                .pickerStyle(.menu)
+                .fixedSize()
+                Text("阻止网页未经点击自行打开的窗口。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.columns)
     }

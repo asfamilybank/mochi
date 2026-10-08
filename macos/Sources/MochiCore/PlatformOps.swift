@@ -337,6 +337,26 @@ public protocol PlatformOps: AnyObject {
     /// hands `.prompt` to WebKit's own permission prompt and answers `.grant`/`.deny` directly.
     func onMediaCaptureRequested(
         _ window: WidgetWindowHandle, perform handler: @escaping (MediaCaptureRequest) -> MediaCaptureDecision)
+
+    // #67: new windows and Popup Windows
+
+    /// Registers the handler that decides a page's new-window request — from the widget's page or
+    /// from any of its Popup Windows (`NewWindowRequest.opener` says which). The platform asks for
+    /// every `target=_blank` link, every ⌘-clicked link and every `window.open` that reaches
+    /// WebKit's new-window delegate, then executes the answer; with no handler it opens nothing.
+    func onNewWindowRequested(_ window: WidgetWindowHandle, perform handler: @escaping (NewWindowRequest) -> NewWindowDecision)
+
+    /// Hands `url` to the user's default browser (⌘-click on a link). App-global.
+    func openInDefaultBrowser(_ url: URL)
+
+    /// Closes every Popup Window the widget opened — called from the widget's single teardown
+    /// point, so no popup outlives its widget. A no-op when there are none.
+    func closePopupWindows(of window: WidgetWindowHandle)
+
+    /// 弹出式窗口 (#67): `WKPreferences.javaScriptCanOpenWindowsAutomatically` on the widget's web
+    /// view — `false` (阻止) lets WebKit itself drop a `window.open` with no user gesture. Pushed on
+    /// open and on every `reapplyConfiguration()`; WebKit honours the change on the live page.
+    func setPopupWindowsAllowed(_ allowed: Bool, in window: WidgetWindowHandle)
 }
 
 // #70

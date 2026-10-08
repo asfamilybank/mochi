@@ -77,6 +77,17 @@ public struct WidgetConfig: Equatable {
     /// Both default to `.ask`, handing the request to WebKit's own prompt.
     public var cameraPermission: MediaCapturePermission = .ask
     public var microphonePermission: MediaCapturePermission = .ask
+    /// 网页内容 → 弹出式窗口 (#67), Safari's wording. Maps to WebKit's
+    /// `javaScriptCanOpenWindowsAutomatically`: 阻止 lets WebKit drop a `window.open` that no user
+    /// click started, 允许 lets it through to the new-window decision (ADR-0017).
+    public enum PopupWindowPolicy: String, CaseIterable, Equatable, Sendable {
+        case allow
+        case block
+    }
+
+    /// Defaults to `.block`, like Safari. Pushed to the live web view by
+    /// `Orchestrator.reapplyConfiguration`.
+    public var popupWindowPolicy: PopupWindowPolicy = .block
 
     /// Where the Smart Address Field sends non-address input (#71), Google by default. Edited
     /// from the 通用 pane and read at the moment of each submit, never cached.
@@ -157,6 +168,8 @@ extension WidgetConfig {
         config.minimumFontSize = table["minimum_font_size"]?.int.flatMap {
             offeredMinimumFontSizes.contains($0) ? $0 : nil
         }
+        // #67
+        config.popupWindowPolicy = table["popup_windows"]?.string.flatMap(PopupWindowPolicy.init(rawValue:)) ?? .block
         // #72
         config.isHTTPWarningEnabled = table["http_warning_enabled"]?.bool ?? false
         config.isWebInspectorEnabled = table["web_inspector_enabled"]?.bool ?? false
@@ -349,6 +362,10 @@ extension WidgetConfig {
         // #69
         table["camera_permission"] = cameraPermission.rawValue
         table["microphone_permission"] = microphonePermission.rawValue
+        // #67 — only a departure from the default is written.
+        if popupWindowPolicy != .block {
+            table["popup_windows"] = popupWindowPolicy.rawValue
+        }
         return table.convert()
     }
 
@@ -429,6 +446,12 @@ extension WidgetConfig {
     public func updatingMinimumFontSize(_ size: Int?) -> WidgetConfig {
         var copy = self
         copy.minimumFontSize = size
+        return copy
+    }
+
+    public func updatingPopupWindowPolicy(_ policy: PopupWindowPolicy) -> WidgetConfig {
+        var copy = self
+        copy.popupWindowPolicy = policy
         return copy
     }
 

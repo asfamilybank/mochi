@@ -571,6 +571,10 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     var downloadRequestedHandler: ((DownloadRequest) -> DownloadDestinationDecision)?
     var downloadDestinations: [ObjectIdentifier: URL] = [:]
     var mediaCaptureRequestedHandler: ((MediaCaptureRequest) -> MediaCaptureDecision)?  // #69
+    /// #67: MochiCore's new-window decider, and the Popup Windows this widget opened (owned here,
+    /// closed with the widget — see `WebInteractionUIDelegate.swift`).
+    var newWindowRequestedHandler: ((NewWindowRequest) -> NewWindowDecision)?
+    var popupWindows: [PopupWindowController] = []
     /// Set on `windowWillEnterFullScreen`, cleared on `windowDidExitFullScreen` — `window.frame`
     /// itself is the screen-filling fullscreen frame for the whole time in between, so anything
     /// reading a persistable window geometry (`frameToPersist`) needs this instead. Without it, a
@@ -1490,10 +1494,11 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     }
 
     // #72: 高级 pane
-    private var isHTTPWarningEnabled = false
+    private(set) var isHTTPWarningEnabled = false
 
     func setWebInspectable(_ enabled: Bool) {
         webView.isInspectable = enabled
+        applySettingsToPopupWindows()
     }
 
     func setHTTPWarningEnabled(_ enabled: Bool) {
@@ -1512,6 +1517,10 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         preferences: WKWebpagePreferences,
         decisionHandler: @escaping (WKNavigationActionPolicy, WKWebpagePreferences) -> Void
     ) {
+        // #67: a ⌘-clicked link goes to the default browser (MochiCore's call), not into the page.
+        if let decision = commandClickDecision(for: navigationAction, in: webView), decision != .loadInOpener {
+            return decisionHandler(.cancel, preferences)
+        }
         preferences.preferredHTTPSNavigationPolicy = isHTTPWarningEnabled ? .userMediatedFallbackToHTTP : .keepAsRequested
         // #68: a `download`-attribute link is saved, not loaded (see `WebDownloadDelegate.swift`).
         decisionHandler(navigationAction.shouldPerformDownload ? .download : .allow, preferences)
@@ -2081,6 +2090,28 @@ public final class AppKitPlatformOps: PlatformOps {
         handle(for: window)?.mediaCaptureRequestedHandler = handler
     }
 
+    // #67: new windows and Popup Windows
+
+    public func onNewWindowRequested(_ window: WidgetWindowHandle, perform handler: @escaping (NewWindowRequest) -> NewWindowDecision) {
+        handle(for: window)?.newWindowRequestedHandler = handler
+    }
+
+    public func openInDefaultBrowser(_ url: URL) {
+        NSWorkspace.shared.open(url)
+    }
+
+    public func closePopupWindows(of window: WidgetWindowHandle) {
+        handle(for: window)?.closePopupWindows()
+    }
+
+    /// `WKPreferences` is shared by reference with the live web view and WebKit pushes preference
+    /// changes to the running page, so this applies without a reopen — like `setMinimumFontSize`.
+    public func setPopupWindowsAllowed(_ allowed: Bool, in window: WidgetWindowHandle) {
+        guard let handle = handle(for: window) else { return }
+        handle.webView.configuration.preferences.javaScriptCanOpenWindowsAutomatically = allowed
+        handle.applySettingsToPopupWindows()
+    }
+
     public func setWindowTitle(_ title: String, in window: WidgetWindowHandle) {
         guard let handle = handle(for: window) else { return }
         handle.setWindowTitle(title)
@@ -2128,6 +2159,7 @@ public final class AppKitPlatformOps: PlatformOps {
     public func setMinimumFontSize(_ size: Int?, in window: WidgetWindowHandle) {
         guard let handle = handle(for: window) else { return }
         handle.webView.configuration.preferences.minimumFontSize = CGFloat(size ?? 0)
+        handle.applySettingsToPopupWindows()
     }
 
     public func setSnapEnabled(_ enabled: Bool, in window: WidgetWindowHandle) {

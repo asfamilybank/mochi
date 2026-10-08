@@ -79,6 +79,11 @@ public final class SettingsController {
         persistAndNotify { $0.updatingMinimumFontSize(size) }
     }
 
+    /// #67 — pushed live through `configDidChange`.
+    public func updatePopupWindowPolicy(_ policy: WidgetConfig.PopupWindowPolicy) {
+        persistAndNotify { $0.updatingPopupWindowPolicy(policy) }
+    }
+
     // #72: 高级 pane
     public func updateHTTPWarningEnabled(_ enabled: Bool) {
         persistAndNotify { $0.updatingHTTPWarningEnabled(enabled) }

@@ -437,4 +437,32 @@ final class FakePlatformOps: PlatformOps {
     func simulateMediaCaptureRequested(_ request: MediaCaptureRequest, windowID: Int = 1) -> MediaCaptureDecision? {
         mediaCaptureRequestedHandlers[windowID]?(request)
     }
+
+    // MARK: #67: new windows and Popup Windows
+
+    private var newWindowRequestedHandlers: [Int: (NewWindowRequest) -> NewWindowDecision] = [:]
+    private(set) var urlsOpenedInDefaultBrowser: [URL] = []
+    private(set) var popupWindowsClosedForWindowIDs: [Int] = []
+    private(set) var popupWindowsAllowedChanges: [(allowed: Bool, windowID: Int)] = []
+
+    func onNewWindowRequested(_ window: WidgetWindowHandle, perform handler: @escaping (NewWindowRequest) -> NewWindowDecision) {
+        let handle = window as! FakeWidgetWindowHandle
+        newWindowRequestedHandlers[handle.id] = handler
+    }
+
+    func simulateNewWindowRequested(_ request: NewWindowRequest, windowID: Int = 1) -> NewWindowDecision? {
+        newWindowRequestedHandlers[windowID]?(request)
+    }
+
+    func openInDefaultBrowser(_ url: URL) {
+        urlsOpenedInDefaultBrowser.append(url)
+    }
+
+    func closePopupWindows(of window: WidgetWindowHandle) {
+        popupWindowsClosedForWindowIDs.append((window as! FakeWidgetWindowHandle).id)
+    }
+
+    func setPopupWindowsAllowed(_ allowed: Bool, in window: WidgetWindowHandle) {
+        popupWindowsAllowedChanges.append((allowed, (window as! FakeWidgetWindowHandle).id))
+    }
 }

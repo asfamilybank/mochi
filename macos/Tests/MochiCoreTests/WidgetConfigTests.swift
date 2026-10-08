@@ -781,6 +781,41 @@ import Testing
         let config = WidgetConfig(url: URL(string: "https://example.com")!, isSnapEnabled: false)
         let updated = config.updatingDownloadLocation(.askEachTime)
         #expect(updated.downloadLocation == .askEachTime)
+    }
+}
+
+/// 网页内容 → 弹出式窗口 (#67).
+@Suite struct WidgetConfigPopupWindowPolicyTests {
+    @Test func defaultsToBlockWhenAbsent() throws {
+        #expect(try WidgetConfig.parse("").popupWindowPolicy == .block)
+        #expect(WidgetConfig().popupWindowPolicy == .block)
+    }
+
+    @Test(arguments: [
+        (raw: "'allow'", expected: WidgetConfig.PopupWindowPolicy.allow),
+        (raw: "'block'", expected: .block),
+        (raw: "'sometimes'", expected: .block),
+        (raw: "true", expected: .block),
+    ])
+    func parsesPolicyFallingBackToBlock(_ row: (raw: String, expected: WidgetConfig.PopupWindowPolicy)) throws {
+        #expect(try WidgetConfig.parse("popup_windows = \(row.raw)").popupWindowPolicy == row.expected)
+    }
+
+    @Test(arguments: WidgetConfig.PopupWindowPolicy.allCases)
+    func roundTripsEveryPolicy(_ policy: WidgetConfig.PopupWindowPolicy) throws {
+        let config = WidgetConfig(url: URL(string: "https://example.com")!).updatingPopupWindowPolicy(policy)
+        #expect(try WidgetConfig.parse(config.serialized()) == config)
+    }
+
+    @Test func onlyADepartureFromTheDefaultIsWritten() {
+        #expect(!WidgetConfig().serialized().contains("popup_windows"))
+        #expect(WidgetConfig().updatingPopupWindowPolicy(.allow).serialized().contains("popup_windows"))
+    }
+
+    @Test func updatingPolicyChangesOnlyThatField() {
+        let config = WidgetConfig(url: URL(string: "https://example.com")!, isSnapEnabled: false)
+        let updated = config.updatingPopupWindowPolicy(.allow)
+        #expect(updated.popupWindowPolicy == .allow)
         #expect(updated.url == config.url && updated.isSnapEnabled == false)
     }
 }

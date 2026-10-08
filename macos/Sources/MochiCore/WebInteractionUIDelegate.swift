@@ -17,7 +17,7 @@ extension AppKitWidgetWindowHandle: WKUIDelegate {
         let request = JavaScriptDialogRequest(kind: .alert, message: message, host: Self.host(of: frame))
         guard decide(request) == .presentSheet else { return completionHandler() }
         let alert = makeDialogAlert(for: request, buttons: ["好"])
-        alert.beginSheetModal(for: window) { _ in completionHandler() }
+        alert.beginSheetModal(for: sheetWindow(for: webView)) { _ in completionHandler() }
     }
 
     func webView(
@@ -27,7 +27,7 @@ extension AppKitWidgetWindowHandle: WKUIDelegate {
         let request = JavaScriptDialogRequest(kind: .confirm, message: message, host: Self.host(of: frame))
         guard decide(request) == .presentSheet else { return completionHandler(false) }
         let alert = makeDialogAlert(for: request, buttons: ["好", "取消"])
-        alert.beginSheetModal(for: window) { response in
+        alert.beginSheetModal(for: sheetWindow(for: webView)) { response in
             completionHandler(response == .alertFirstButtonReturn)
         }
     }
@@ -44,7 +44,7 @@ extension AppKitWidgetWindowHandle: WKUIDelegate {
         input.frame = NSRect(x: 0, y: 0, width: 260, height: 24)
         alert.accessoryView = input
         alert.window.initialFirstResponder = input
-        alert.beginSheetModal(for: window) { response in
+        alert.beginSheetModal(for: sheetWindow(for: webView)) { response in
             completionHandler(response == .alertFirstButtonReturn ? input.stringValue : nil)
         }
     }
@@ -64,7 +64,7 @@ extension AppKitWidgetWindowHandle: WKUIDelegate {
         panel.canChooseFiles = true
         panel.canChooseDirectories = request.allowsDirectories
         panel.allowsMultipleSelection = request.allowsMultipleSelection
-        panel.beginSheetModal(for: window) { response in
+        panel.beginSheetModal(for: sheetWindow(for: webView)) { response in
             completionHandler(response == .OK ? panel.urls : nil)
         }
     }
@@ -92,7 +92,75 @@ extension AppKitWidgetWindowHandle: WKUIDelegate {
         }
     }
 
+    // MARK: New windows (#67)
+
+    /// `target=_blank` links and `window.open` from the widget's page *or* any of its Popup
+    /// Windows (this handle is the popup web views' `uiDelegate` too). Returning a web view is
+    /// what opens a Popup Window: WebKit loads the request into it and wires up `window.opener`.
+    func webView(
+        _ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+        for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures
+    ) -> WKWebView? {
+        let trigger: NewWindowTrigger =
+            navigationAction.navigationType == .linkActivated
+            ? .linkClick(commandPressed: navigationAction.modifierFlags.contains(.command)) : .script
+        let request = NewWindowRequest(
+            trigger: trigger, opener: newWindowOpener(of: webView), url: navigationAction.request.url)
+        switch newWindowRequestedHandler?(request) ?? .cancel {
+        case .cancel:
+            return nil
+        case .loadInOpener:
+            if navigationAction.request.url != nil { webView.load(navigationAction.request) }
+            return nil
+        case .openPopupWindow:
+            let popup = PopupWindowController(configuration: configuration, windowFeatures: windowFeatures, owner: self)
+            popupWindows.append(popup)
+            popup.show()
+            return popup.webView
+        }
+    }
+
+    /// The page called `window.close()`. Only a script-opened window may close itself, so this is
+    /// a Popup Window's; the widget's own web view is never closed this way.
+    func webViewDidClose(_ webView: WKWebView) {
+        popupWindows.first { $0.webView === webView }?.close()
+    }
+
+    /// A ⌘-clicked link in any of this widget's web views (#67): asked from the navigation policy
+    /// decision, before WebKit would load it or ask for a new window. `nil` when the navigation is
+    /// not a ⌘-click; otherwise MochiCore's answer (it hands the link to the default browser).
+    func commandClickDecision(for action: WKNavigationAction, in webView: WKWebView) -> NewWindowDecision? {
+        guard action.navigationType == .linkActivated, action.modifierFlags.contains(.command) else { return nil }
+        let request = NewWindowRequest(
+            trigger: .linkClick(commandPressed: true), opener: newWindowOpener(of: webView), url: action.request.url)
+        return newWindowRequestedHandler?(request) ?? .cancel
+    }
+
+    func closePopupWindows() {
+        for popup in popupWindows { popup.close() }
+        popupWindows.removeAll()
+    }
+
+    func popupWindowDidClose(_ popup: PopupWindowController) {
+        popupWindows.removeAll { $0 === popup }
+    }
+
+    /// Re-pushes the widget's live per-web-view settings to every open Popup Window.
+    func applySettingsToPopupWindows() {
+        for popup in popupWindows { popup.applySettings(from: self) }
+    }
+
+    private func newWindowOpener(of webView: WKWebView) -> NewWindowOpener {
+        webView === self.webView ? .widget : .popupWindow
+    }
+
     // MARK: Helpers
+
+    /// The window a dialog/Open panel for `webView` is attached to — the Popup Window's own when
+    /// the request came from one (#67), else the widget's.
+    private func sheetWindow(for webView: WKWebView) -> NSWindow {
+        webView === self.webView ? window : (webView.window ?? window)
+    }
 
     /// Ends every sheet still attached to the widget window — called on teardown, so a window
     /// closed with a dialog or Open panel up still answers WebKit (as a cancel).

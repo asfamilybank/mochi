@@ -185,6 +185,7 @@ public final class Orchestrator {
         platformOps.setMinimumFontSize(config.minimumFontSize, in: window)
         platformOps.setWebInspectable(config.isWebInspectorEnabled, in: window)
         platformOps.setHTTPWarningEnabled(config.isHTTPWarningEnabled, in: window)
+        platformOps.setPopupWindowsAllowed(config.popupWindowPolicy == .allow, in: window)
         platformOps.onWindowWillClose(window) { [weak self] in
             self?.handleWindowWillClose()
         }
@@ -233,6 +234,8 @@ public final class Orchestrator {
     /// the next `openWidget()` starts clean.
     private func handleWindowWillClose() {
         persistCurrentWindowState()
+        // #67: no Popup Window outlives its widget.
+        if let window { platformOps.closePopupWindows(of: window) }
         window = nil
         ghostModeController = nil
         addressBarController = nil
@@ -336,6 +339,7 @@ public final class Orchestrator {
         platformOps.setMinimumFontSize(currentConfig().minimumFontSize, in: window)
         platformOps.setWebInspectable(currentConfig().isWebInspectorEnabled, in: window)
         platformOps.setHTTPWarningEnabled(currentConfig().isHTTPWarningEnabled, in: window)
+        platformOps.setPopupWindowsAllowed(currentConfig().popupWindowPolicy == .allow, in: window)
         ghostModeController?.reapplyConfiguration()
     }
 
@@ -482,6 +486,35 @@ public final class Orchestrator {
             return .deciding(
                 request, camera: config.cameraPermission, microphone: config.microphonePermission,
                 isGhostModeActive: isGhostModeActive)
+        }
+
+        platformOps.onNewWindowRequested(window) { [weak self] request in
+            self?.decideNewWindow(request) ?? .cancel
+        }
+    }
+
+    /// ADR-0017's routing (#67). A plain link click loads where it was clicked; a ⌘-click goes to
+    /// the default browser; a script's `window.open` from the widget gets a Popup Window, and one
+    /// from a Popup Window loads in place so popups never multiply.
+    ///
+    /// Ghost Mode opens nothing (CONTEXT.md): no Popup Window, no browser, and the click-through
+    /// widget's page doesn't change underneath the user either. A Popup Window is an ordinary
+    /// window Ghost Mode leaves alone — the user may be mid-login in it — so its own requests
+    /// still load in place, which opens nothing new.
+    private func decideNewWindow(_ request: NewWindowRequest) -> NewWindowDecision {
+        if case .linkClick(commandPressed: true) = request.trigger {
+            if !isGhostModeActive, let url = request.url {
+                platformOps.openInDefaultBrowser(url)
+            }
+            return .cancel
+        }
+        switch request.opener {
+        case .popupWindow:
+            return .loadInOpener
+        case .widget:
+            if isGhostModeActive { return .cancel }
+            if case .script = request.trigger { return .openPopupWindow }
+            return .loadInOpener
         }
     }
 

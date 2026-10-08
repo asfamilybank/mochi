@@ -93,6 +93,12 @@ final class SettingsViewModel: ObservableObject {
         config = controller.config
     }
 
+    // #67
+    func updatePopupWindowPolicy(_ policy: WidgetConfig.PopupWindowPolicy) {
+        controller.updatePopupWindowPolicy(policy)
+        config = controller.config
+    }
+
     func reopenWidgetNow() {
         reopenWidget()
     }
