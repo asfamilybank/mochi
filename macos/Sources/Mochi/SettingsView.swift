@@ -94,6 +94,35 @@ struct WebContentSettingsTab: View {
                         .controlSize(.small)
                 }
             }
+            // #69 — live: read at each request. Ghost Mode denies regardless.
+            Section {
+                Picker(
+                    "摄像头：",
+                    selection: Binding(
+                        get: { viewModel.config.cameraPermission },
+                        set: { viewModel.updateCameraPermission($0) }
+                    )
+                ) {
+                    ForEach(WidgetConfig.MediaCapturePermission.allCases, id: \.self) { permission in
+                        Text(permission.displayName).tag(permission)
+                    }
+                }
+                .pickerStyle(.menu)
+                .fixedSize()
+                Picker(
+                    "麦克风：",
+                    selection: Binding(
+                        get: { viewModel.config.microphonePermission },
+                        set: { viewModel.updateMicrophonePermission($0) }
+                    )
+                ) {
+                    ForEach(WidgetConfig.MediaCapturePermission.allCases, id: \.self) { permission in
+                        Text(permission.displayName).tag(permission)
+                    }
+                }
+                .pickerStyle(.menu)
+                .fixedSize()
+            }
         }
         .formStyle(.columns)
     }
@@ -188,6 +217,17 @@ extension WidgetConfig.AutoplayPolicy {
         case .allowAll: "允许全部自动播放"
         case .stopMediaWithSound: "停止有声媒体"
         case .never: "永不自动播放"
+        }
+    }
+}
+
+// #69 — Safari's wording.
+extension WidgetConfig.MediaCapturePermission {
+    fileprivate var displayName: String {
+        switch self {
+        case .ask: "询问"
+        case .deny: "拒绝"
+        case .allow: "允许"
         }
     }
 }

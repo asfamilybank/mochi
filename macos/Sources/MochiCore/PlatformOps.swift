@@ -332,6 +332,11 @@ public protocol PlatformOps: AnyObject {
     /// the destination, executes it (a Save panel sheet only on `.askWithSavePanel`), and bounces
     /// the Dock's Downloads stack when the file is complete.
     func onDownloadRequested(_ window: WidgetWindowHandle, perform handler: @escaping (DownloadRequest) -> DownloadDestinationDecision)
+
+    /// Registers the handler that decides a page's camera/microphone request (#69). The platform
+    /// hands `.prompt` to WebKit's own permission prompt and answers `.grant`/`.deny` directly.
+    func onMediaCaptureRequested(
+        _ window: WidgetWindowHandle, perform handler: @escaping (MediaCaptureRequest) -> MediaCaptureDecision)
 }
 
 // #70

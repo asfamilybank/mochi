@@ -570,6 +570,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// in-flight download's destination — kept so completion can bounce the Dock with the path.
     var downloadRequestedHandler: ((DownloadRequest) -> DownloadDestinationDecision)?
     var downloadDestinations: [ObjectIdentifier: URL] = [:]
+    var mediaCaptureRequestedHandler: ((MediaCaptureRequest) -> MediaCaptureDecision)?  // #69
     /// Set on `windowWillEnterFullScreen`, cleared on `windowDidExitFullScreen` — `window.frame`
     /// itself is the screen-filling fullscreen frame for the whole time in between, so anything
     /// reading a persistable window geometry (`frameToPersist`) needs this instead. Without it, a
@@ -2071,6 +2072,13 @@ public final class AppKitPlatformOps: PlatformOps {
 
     public func onDownloadRequested(_ window: WidgetWindowHandle, perform handler: @escaping (DownloadRequest) -> DownloadDestinationDecision) {
         handle(for: window)?.downloadRequestedHandler = handler
+    }
+
+    // #69
+    public func onMediaCaptureRequested(
+        _ window: WidgetWindowHandle, perform handler: @escaping (MediaCaptureRequest) -> MediaCaptureDecision
+    ) {
+        handle(for: window)?.mediaCaptureRequestedHandler = handler
     }
 
     public func setWindowTitle(_ title: String, in window: WidgetWindowHandle) {

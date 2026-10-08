@@ -96,3 +96,66 @@ public enum DownloadDestinationDecision: Equatable, Sendable {
     /// `suggestedFilename` pre-filled. Cancelling the panel cancels the download.
     case askWithSavePanel(directory: URL, suggestedFilename: String)
 }
+
+// MARK: - 摄像头与麦克风 (#69)
+
+/// Which capture devices a page's `getUserMedia` asks for.
+public enum MediaCaptureDevice: Equatable, Sendable {
+    case camera
+    case microphone
+    case cameraAndMicrophone
+}
+
+/// A page's camera/microphone request (#69).
+public struct MediaCaptureRequest: Equatable, Sendable {
+    public var device: MediaCaptureDevice
+    /// The requesting origin's host — `nil` when it has none.
+    public var host: String?
+
+    public init(device: MediaCaptureDevice, host: String?) {
+        self.device = device
+        self.host = host
+    }
+}
+
+/// How a camera/microphone request is settled — one-to-one with WebKit's `WKPermissionDecision`,
+/// so the AppKit layer only translates.
+public enum MediaCaptureDecision: Equatable, Sendable {
+    /// Hand it to WebKit's own permission prompt. Mochi does not remember the user's answer there:
+    /// remembering would introduce per-site state, and Settings are global (CONTEXT.md「Settings」).
+    case prompt
+    case grant
+    case deny
+
+    /// The decision for `request` given the two 网页内容 settings and the live mode. Ghost Mode
+    /// always denies, without a prompt ("不打扰"); a camera+microphone request takes the stricter
+    /// of the two settings (拒绝 > 询问 > 允许), so each setting still holds for its own device.
+    public static func deciding(
+        _ request: MediaCaptureRequest, camera: WidgetConfig.MediaCapturePermission,
+        microphone: WidgetConfig.MediaCapturePermission, isGhostModeActive: Bool
+    ) -> MediaCaptureDecision {
+        guard !isGhostModeActive else { return .deny }
+        let permission: WidgetConfig.MediaCapturePermission
+        switch request.device {
+        case .camera: permission = camera
+        case .microphone: permission = microphone
+        case .cameraAndMicrophone: permission = camera.strictness >= microphone.strictness ? camera : microphone
+        }
+        switch permission {
+        case .ask: return .prompt
+        case .allow: return .grant
+        case .deny: return .deny
+        }
+    }
+}
+
+extension WidgetConfig.MediaCapturePermission {
+    /// Higher is stricter: 拒绝 > 询问 > 允许.
+    fileprivate var strictness: Int {
+        switch self {
+        case .allow: 0
+        case .ask: 1
+        case .deny: 2
+        }
+    }
+}

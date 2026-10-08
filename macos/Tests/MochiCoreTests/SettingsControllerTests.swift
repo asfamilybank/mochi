@@ -672,6 +672,21 @@ import Testing
         #expect(notified == 2)
     }
 
+    // MARK: - #69: 摄像头 / 麦克风
+
+    @Test func updatingMediaCapturePermissionsPersistsEachIndependentlyAndNotifies() {
+        let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
+        var notified = 0
+        let controller = makeController(store: store, configDidChange: { notified += 1 })
+
+        controller.updateCameraPermission(.allow)
+        #expect(store.config.cameraPermission == .allow && store.config.microphonePermission == .ask)
+        controller.updateMicrophonePermission(.deny)
+        #expect(store.config.cameraPermission == .allow && store.config.microphonePermission == .deny)
+        #expect(store.config.url == URL(string: "https://example.com")!)
+        #expect(notified == 2)
+    }
+
     // MARK: - #72: 高级 pane
 
     @Test func updatingHTTPWarningPersistsAndNotifies() {

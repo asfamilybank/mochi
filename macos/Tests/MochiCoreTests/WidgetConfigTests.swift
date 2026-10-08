@@ -620,6 +620,40 @@ import Testing
         #expect(!WidgetConfig().serialized().contains("minimum_font_size"))
     }
 
+    // MARK: - #69: 摄像头 / 麦克风
+
+    @Test func mediaCapturePermissionsDefaultToAskWhenAbsent() throws {
+        let config = try WidgetConfig.parse("url = \"https://example.com\"")
+        #expect(config.cameraPermission == .ask)
+        #expect(config.microphonePermission == .ask)
+        #expect(WidgetConfig().cameraPermission == .ask && WidgetConfig().microphonePermission == .ask)
+    }
+
+    @Test(arguments: [
+        (raw: "\"ask\"", expected: WidgetConfig.MediaCapturePermission.ask),
+        (raw: "\"deny\"", expected: .deny),
+        (raw: "\"allow\"", expected: .allow),
+        (raw: "\"bogus\"", expected: .ask),
+        (raw: "\"Allow\"", expected: .ask),
+        (raw: "true", expected: .ask),
+        (raw: "1", expected: .ask),
+    ])
+    func parsesMediaCapturePermissionsFallingBackToAsk(_ row: (raw: String, expected: WidgetConfig.MediaCapturePermission)) throws {
+        let camera = try WidgetConfig.parse("camera_permission = \(row.raw)")
+        let microphone = try WidgetConfig.parse("microphone_permission = \(row.raw)")
+        #expect(camera.cameraPermission == row.expected && camera.microphonePermission == .ask)
+        #expect(microphone.microphonePermission == row.expected && microphone.cameraPermission == .ask)
+    }
+
+    @Test func serializingThenReparsingRoundTripsMediaCapturePermissions() throws {
+        let original = WidgetConfig(url: URL(string: "https://example.com")!)
+            .updatingCameraPermission(.deny)
+            .updatingMicrophonePermission(.allow)
+
+        #expect(original.cameraPermission == .deny && original.microphonePermission == .allow)
+        #expect(try WidgetConfig.parse(original.serialized()) == original)
+    }
+
     // MARK: - #72: 高级 pane switches
 
     @Test func advancedSwitchesDefaultToOffWhenAbsent() throws {

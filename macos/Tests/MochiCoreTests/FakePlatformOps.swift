@@ -423,4 +423,18 @@ final class FakePlatformOps: PlatformOps {
     func simulateDownloadRequested(_ request: DownloadRequest, windowID: Int = 1) -> DownloadDestinationDecision? {
         downloadRequestedHandlers[windowID]?(request)
     }
+
+    // #69
+    private var mediaCaptureRequestedHandlers: [Int: (MediaCaptureRequest) -> MediaCaptureDecision] = [:]
+
+    func onMediaCaptureRequested(
+        _ window: WidgetWindowHandle, perform handler: @escaping (MediaCaptureRequest) -> MediaCaptureDecision
+    ) {
+        let handle = window as! FakeWidgetWindowHandle
+        mediaCaptureRequestedHandlers[handle.id] = handler
+    }
+
+    func simulateMediaCaptureRequested(_ request: MediaCaptureRequest, windowID: Int = 1) -> MediaCaptureDecision? {
+        mediaCaptureRequestedHandlers[windowID]?(request)
+    }
 }

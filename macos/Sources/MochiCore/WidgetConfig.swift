@@ -66,6 +66,18 @@ public struct WidgetConfig: Equatable {
     /// 高级 → 显示网页开发者功能 (#72), off by default — `WKWebView.isInspectable`.
     public var isWebInspectorEnabled: Bool = false
 
+    /// 网页内容 → 摄像头 / 麦克风 (#69), Safari's three options. Read at each request, so an edit
+    /// applies from the next request on; the decision itself is `MediaCaptureDecision.deciding`.
+    public enum MediaCapturePermission: String, CaseIterable, Equatable, Sendable {
+        case ask
+        case deny
+        case allow
+    }
+
+    /// Both default to `.ask`, handing the request to WebKit's own prompt.
+    public var cameraPermission: MediaCapturePermission = .ask
+    public var microphonePermission: MediaCapturePermission = .ask
+
     /// Where the Smart Address Field sends non-address input (#71), Google by default. Edited
     /// from the 通用 pane and read at the moment of each submit, never cached.
     public var searchEngine: SearchEngine
@@ -149,6 +161,10 @@ extension WidgetConfig {
         config.isHTTPWarningEnabled = table["http_warning_enabled"]?.bool ?? false
         config.isWebInspectorEnabled = table["web_inspector_enabled"]?.bool ?? false
         config.downloadLocation = parseDownloadLocation(from: table)
+        // #69 — anything but the three exact values falls back to 询问.
+        config.cameraPermission = table["camera_permission"]?.string.flatMap(MediaCapturePermission.init(rawValue:)) ?? .ask
+        config.microphonePermission =
+            table["microphone_permission"]?.string.flatMap(MediaCapturePermission.init(rawValue:)) ?? .ask
         return config
     }
 
@@ -330,6 +346,9 @@ extension WidgetConfig {
             table["download_location"] = "folder"
             table["download_folder"] = folder.path
         }
+        // #69
+        table["camera_permission"] = cameraPermission.rawValue
+        table["microphone_permission"] = microphonePermission.rawValue
         return table.convert()
     }
 
@@ -422,6 +441,19 @@ extension WidgetConfig {
     public func updatingWebInspectorEnabled(_ enabled: Bool) -> WidgetConfig {
         var copy = self
         copy.isWebInspectorEnabled = enabled
+        return copy
+    }
+
+    // #69
+    public func updatingCameraPermission(_ permission: MediaCapturePermission) -> WidgetConfig {
+        var copy = self
+        copy.cameraPermission = permission
+        return copy
+    }
+
+    public func updatingMicrophonePermission(_ permission: MediaCapturePermission) -> WidgetConfig {
+        var copy = self
+        copy.microphonePermission = permission
         return copy
     }
 

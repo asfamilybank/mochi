@@ -69,6 +69,29 @@ extension AppKitWidgetWindowHandle: WKUIDelegate {
         }
     }
 
+    // MARK: Camera & microphone (#69)
+
+    func webView(
+        _ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+        initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType,
+        decisionHandler: @escaping (WKPermissionDecision) -> Void
+    ) {
+        let device: MediaCaptureDevice
+        switch type {
+        case .camera: device = .camera
+        case .microphone: device = .microphone
+        case .cameraAndMicrophone: device = .cameraAndMicrophone
+        @unknown default: return decisionHandler(.deny)
+        }
+        let request = MediaCaptureRequest(device: device, host: origin.host.isEmpty ? nil : origin.host)
+        // No decider registered means nobody decided: deny rather than grant or prompt.
+        switch mediaCaptureRequestedHandler?(request) ?? .deny {
+        case .prompt: decisionHandler(.prompt)
+        case .grant: decisionHandler(.grant)
+        case .deny: decisionHandler(.deny)
+        }
+    }
+
     // MARK: Helpers
 
     /// Ends every sheet still attached to the widget window — called on teardown, so a window

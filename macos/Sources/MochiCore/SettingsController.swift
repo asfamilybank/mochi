@@ -88,6 +88,15 @@ public final class SettingsController {
         persistAndNotify { $0.updatingWebInspectorEnabled(enabled) }
     }
 
+    // #69: 网页内容 → 摄像头 / 麦克风 — read at each request, so persisting is applying.
+    public func updateCameraPermission(_ permission: WidgetConfig.MediaCapturePermission) {
+        persistAndNotify { $0.updatingCameraPermission(permission) }
+    }
+
+    public func updateMicrophonePermission(_ permission: WidgetConfig.MediaCapturePermission) {
+        persistAndNotify { $0.updatingMicrophonePermission(permission) }
+    }
+
     /// Not a config edit: nothing is persisted and `configDidChange` doesn't fire. The UI asks for
     /// confirmation before calling this.
     public func removeAllWebsiteData() {

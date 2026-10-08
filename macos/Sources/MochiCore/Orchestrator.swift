@@ -474,6 +474,15 @@ public final class Orchestrator {
                 isGhostModeActive: self?.isGhostModeActive ?? false,
                 fileSystem: self?.downloadFileSystem ?? .live)
         }
+
+        // #69 — both the settings and the mode are read at request time.
+        platformOps.onMediaCaptureRequested(window) { [weak self] request in
+            guard let self else { return .deny }
+            let config = currentConfig()
+            return .deciding(
+                request, camera: config.cameraPermission, microphone: config.microphonePermission,
+                isGhostModeActive: isGhostModeActive)
+        }
     }
 
     /// #68: the disk facts download destinations are decided against. Tests swap in a fake so

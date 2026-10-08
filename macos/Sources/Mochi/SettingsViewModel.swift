@@ -82,6 +82,17 @@ final class SettingsViewModel: ObservableObject {
         config = controller.config
     }
 
+    // #69
+    func updateCameraPermission(_ permission: WidgetConfig.MediaCapturePermission) {
+        controller.updateCameraPermission(permission)
+        config = controller.config
+    }
+
+    func updateMicrophonePermission(_ permission: WidgetConfig.MediaCapturePermission) {
+        controller.updateMicrophonePermission(permission)
+        config = controller.config
+    }
+
     func reopenWidgetNow() {
         reopenWidget()
     }
