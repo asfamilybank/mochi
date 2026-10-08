@@ -1649,6 +1649,10 @@ public final class AppKitPlatformOps: PlatformOps {
         // disabling it.
         let webViewConfiguration = WKWebViewConfiguration()
         webViewConfiguration.preferences.isElementFullscreenEnabled = true
+        // Report as Safari, or version-gated sites (bilibili.com) turn the page away — see
+        // `WebUserAgent`. Popup Windows inherit it: WebKit derives their configuration from this one.
+        webViewConfiguration.applicationNameForUserAgent = WebUserAgent.applicationName(
+            fromSafariInfoDictionary: NSDictionary(contentsOf: WebUserAgent.safariInfoPlistURL) as? [String: Any])
         // 自动播放 (#70): Safari's three options, as the public creation-time switch.
         switch autoplayPolicy {
         case .allowAll: webViewConfiguration.mediaTypesRequiringUserActionForPlayback = []
