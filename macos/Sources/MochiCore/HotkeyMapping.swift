@@ -7,7 +7,7 @@ import Foundation
 /// than introducing a near-identical second type — `AppKitPlatformOps` is responsible for
 /// re-interpreting `pageKeystroke`'s flags as `CGEventFlags` instead of Carbon's bit values when
 /// actually injecting it.
-public struct HotkeyMapping: Equatable {
+public struct HotkeyMapping: Equatable, Sendable {
     public var trigger: Hotkey
     public var pageKeystroke: Hotkey
 

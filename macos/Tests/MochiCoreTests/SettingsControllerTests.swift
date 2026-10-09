@@ -141,15 +141,15 @@ import Testing
         let trigger = Hotkey(keyCode: 1, modifierFlags: 0)
         let pageKeystroke = Hotkey(keyCode: 2, modifierFlags: 0)
 
-        let succeeded = controller.addHotkeyMapping(trigger: trigger, pageKeystroke: pageKeystroke)
+        let rejection = controller.addHotkeyMapping(trigger: trigger, pageKeystroke: pageKeystroke)
 
-        #expect(succeeded)
+        #expect(rejection == nil)
         #expect(store.config.hotkeyMappings == [HotkeyMapping(trigger: trigger, pageKeystroke: pageKeystroke)])
         #expect(fake.registeredHotkeys == [trigger])
         #expect(fake.presentedAlerts.isEmpty)
     }
 
-    @Test func addingAMappingWhoseTriggerAlreadyRegisteredWithTheOSFailsAndAlerts() {
+    @Test func addingAMappingWhoseTriggerAlreadyRegisteredWithTheOSIsRefusedAsHeldByAnotherApp() {
         // Simulates the trigger already being claimed — by another app, or by one of Mochi's own
         // default hotkeys/existing mappings — all of which are already registered with the OS by
         // the time the settings panel can be open.
@@ -158,12 +158,12 @@ import Testing
         fake.stubbedHotkeyRegistrationSucceeds = false
         let controller = makeController(store: store, platformOps: fake)
 
-        let succeeded = controller.addHotkeyMapping(
+        let rejection = controller.addHotkeyMapping(
             trigger: Hotkey(keyCode: 1, modifierFlags: 0), pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
 
-        #expect(!succeeded)
+        #expect(rejection == .heldByAnotherApp)
         #expect(store.config.hotkeyMappings.isEmpty)
-        #expect(fake.presentedAlerts.count == 1)
+        #expect(fake.presentedAlerts.isEmpty)
     }
 
     @Test func addingAMappingWhoseTriggerCollidesWithAnActionHotkeyFailsWithoutTouchingTheOS() {
@@ -175,12 +175,12 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let succeeded = controller.addHotkeyMapping(trigger: DefaultHotkeys.hideWidget, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
+        let rejection = controller.addHotkeyMapping(trigger: DefaultHotkeys.hideWidget, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
 
-        #expect(!succeeded)
+        #expect(rejection == .conflictsWithAction(.hideWidget))
         #expect(store.config.hotkeyMappings.isEmpty)
         #expect(fake.registeredHotkeys.isEmpty)
-        #expect(fake.presentedAlerts.count == 1)
+        #expect(fake.presentedAlerts.isEmpty)
     }
 
     @Test func addingAMappingWhoseTriggerCollidesWithAFixedLocalMenuShortcutFailsWithoutTouchingTheOS() {
@@ -191,13 +191,13 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let succeeded = controller.addHotkeyMapping(
+        let rejection = controller.addHotkeyMapping(
             trigger: DefaultHotkeys.reservedLocalMenuShortcuts[0], pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
 
-        #expect(!succeeded)
+        #expect(rejection == .reservedMenuShortcut)
         #expect(store.config.hotkeyMappings.isEmpty)
         #expect(fake.registeredHotkeys.isEmpty)
-        #expect(fake.presentedAlerts.count == 1)
+        #expect(fake.presentedAlerts.isEmpty)
     }
 
     /// #62: the App menu's 隐藏 Mochi (⌘H) and 隐藏其他 (⌥⌘H) are local menu shortcuts too, so a
@@ -208,9 +208,9 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let succeeded = controller.addHotkeyMapping(trigger: trigger, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
+        let rejection = controller.addHotkeyMapping(trigger: trigger, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
 
-        #expect(!succeeded)
+        #expect(rejection == .reservedMenuShortcut)
         #expect(store.config.hotkeyMappings.isEmpty)
         #expect(fake.registeredHotkeys.isEmpty)
     }
@@ -221,12 +221,12 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let succeeded = controller.addHotkeyMapping(trigger: existing.trigger, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
+        let rejection = controller.addHotkeyMapping(trigger: existing.trigger, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
 
-        #expect(!succeeded)
+        #expect(rejection == .conflictsWithMapping(existing))
         #expect(store.config.hotkeyMappings == [existing])
         #expect(fake.registeredHotkeys.isEmpty)
-        #expect(fake.presentedAlerts.count == 1)
+        #expect(fake.presentedAlerts.isEmpty)
     }
 
     @Test func updatingAMappingsPageKeystrokeOnlyDoesNotReRegisterTheTrigger() {
@@ -235,9 +235,9 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let succeeded = controller.updateHotkeyMapping(at: 0, trigger: existing.trigger, pageKeystroke: Hotkey(keyCode: 20, modifierFlags: 0))
+        let rejection = controller.updateHotkeyMapping(at: 0, trigger: existing.trigger, pageKeystroke: Hotkey(keyCode: 20, modifierFlags: 0))
 
-        #expect(succeeded)
+        #expect(rejection == nil)
         #expect(store.config.hotkeyMappings == [HotkeyMapping(trigger: existing.trigger, pageKeystroke: Hotkey(keyCode: 20, modifierFlags: 0))])
         #expect(fake.registeredHotkeys.isEmpty)
     }
@@ -248,9 +248,9 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let succeeded = controller.updateHotkeyMapping(at: 0, trigger: DefaultHotkeys.toggleGhostMode, pageKeystroke: existing.pageKeystroke)
+        let rejection = controller.updateHotkeyMapping(at: 0, trigger: DefaultHotkeys.toggleGhostMode, pageKeystroke: existing.pageKeystroke)
 
-        #expect(!succeeded)
+        #expect(rejection == .conflictsWithAction(.toggleGhostMode))
         #expect(store.config.hotkeyMappings == [existing])
         #expect(fake.registeredHotkeys.isEmpty)
     }
@@ -262,11 +262,11 @@ import Testing
         fake.stubbedHotkeyRegistrationSucceeds = false
         let controller = makeController(store: store, platformOps: fake)
 
-        let succeeded = controller.updateHotkeyMapping(at: 0, trigger: Hotkey(keyCode: 5, modifierFlags: 0), pageKeystroke: existing.pageKeystroke)
+        let rejection = controller.updateHotkeyMapping(at: 0, trigger: Hotkey(keyCode: 5, modifierFlags: 0), pageKeystroke: existing.pageKeystroke)
 
-        #expect(!succeeded)
+        #expect(rejection == .heldByAnotherApp)
         #expect(store.config.hotkeyMappings == [existing])
-        #expect(fake.presentedAlerts.count == 1)
+        #expect(fake.presentedAlerts.isEmpty)
     }
 
     @Test func removingAMappingDeletesItFromThePersistedConfig() {
@@ -323,9 +323,9 @@ import Testing
         let controller = makeController(store: store, platformOps: fake)
         let newTrigger = Hotkey(keyCode: 5, modifierFlags: 0)
 
-        let succeeded = controller.updateHotkeyMapping(at: 0, trigger: newTrigger, pageKeystroke: existing.pageKeystroke)
+        let rejection = controller.updateHotkeyMapping(at: 0, trigger: newTrigger, pageKeystroke: existing.pageKeystroke)
 
-        #expect(succeeded)
+        #expect(rejection == nil)
         #expect(fake.unregisteredHotkeys == [existing.trigger])
         #expect(fake.registeredHotkeys == [newTrigger])
         #expect(fake.hotkeyCallOrder == [.unregister(existing.trigger), .register(newTrigger)])
@@ -340,12 +340,12 @@ import Testing
         fake.hotkeysThatFailToRegister = [newTrigger]
         let controller = makeController(store: store, platformOps: fake)
 
-        let succeeded = controller.updateHotkeyMapping(at: 0, trigger: newTrigger, pageKeystroke: existing.pageKeystroke)
+        let rejection = controller.updateHotkeyMapping(at: 0, trigger: newTrigger, pageKeystroke: existing.pageKeystroke)
 
-        #expect(!succeeded)
+        #expect(rejection == .heldByAnotherApp)
         #expect(fake.hotkeyCallOrder == [.unregister(existing.trigger), .register(newTrigger), .register(existing.trigger)])
         #expect(store.config.hotkeyMappings == [existing])
-        #expect(fake.presentedAlerts.count == 1)
+        #expect(fake.presentedAlerts.isEmpty)
     }
 
     @Test func addingAMappingWhoseTriggerCannotBeRegisteredLeavesExistingMappingsUntouched() {
@@ -452,9 +452,9 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let succeeded = controller.updateActionHotkey(.toggleGhostMode, to: customToggle)
+        let rejection = controller.updateActionHotkey(.toggleGhostMode, to: customToggle)
 
-        #expect(succeeded)
+        #expect(rejection == nil)
         #expect(fake.hotkeyCallOrder == [.unregister(DefaultHotkeys.toggleGhostMode), .register(customToggle)])
         #expect(store.config.hotkey(for: .toggleGhostMode) == customToggle)
         #expect(store.config.hotkeyOverrides == [.toggleGhostMode: customToggle])
@@ -481,16 +481,16 @@ import Testing
         fake.hotkeysThatFailToRegister = [customToggle]
         let controller = makeController(store: store, platformOps: fake)
 
-        let succeeded = controller.updateActionHotkey(.toggleGhostMode, to: customToggle)
+        let rejection = controller.updateActionHotkey(.toggleGhostMode, to: customToggle)
 
-        #expect(!succeeded)
+        #expect(rejection == .heldByAnotherApp)
         #expect(
             fake.hotkeyCallOrder == [
                 .unregister(DefaultHotkeys.toggleGhostMode), .register(customToggle), .register(DefaultHotkeys.toggleGhostMode),
             ])
         #expect(store.config.hotkeyOverrides.isEmpty)
         #expect(store.writeCount == 0)
-        #expect(fake.presentedAlerts.count == 1)
+        #expect(fake.presentedAlerts.isEmpty)
     }
 
     @Test func rebindingToTheComboAlreadyInEffectIsANoOp() {
@@ -498,9 +498,9 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let succeeded = controller.updateActionHotkey(.toggleGhostMode, to: DefaultHotkeys.toggleGhostMode)
+        let rejection = controller.updateActionHotkey(.toggleGhostMode, to: DefaultHotkeys.toggleGhostMode)
 
-        #expect(succeeded)
+        #expect(rejection == nil)
         #expect(fake.hotkeyCallOrder.isEmpty)
         #expect(store.writeCount == 0)
     }
@@ -510,11 +510,11 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let succeeded = controller.updateActionHotkey(.toggleGhostMode, to: DefaultHotkeys.hideWidget)
+        let rejection = controller.updateActionHotkey(.toggleGhostMode, to: DefaultHotkeys.hideWidget)
 
-        #expect(!succeeded)
+        #expect(rejection == .conflictsWithAction(.hideWidget))
         #expect(fake.hotkeyCallOrder.isEmpty)
-        #expect(fake.presentedAlerts.count == 1)
+        #expect(fake.presentedAlerts.isEmpty)
     }
 
     @Test func rebindingAnActionToAUserRebindingOfTheOtherActionIsRejected() {
@@ -524,9 +524,9 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let succeeded = controller.updateActionHotkey(.toggleGhostMode, to: customToggle)
+        let rejection = controller.updateActionHotkey(.toggleGhostMode, to: customToggle)
 
-        #expect(!succeeded)
+        #expect(rejection == .conflictsWithAction(.hideWidget))
         #expect(fake.hotkeyCallOrder.isEmpty)
     }
 
@@ -536,9 +536,9 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let succeeded = controller.updateActionHotkey(.toggleGhostMode, to: mapping.trigger)
+        let rejection = controller.updateActionHotkey(.toggleGhostMode, to: mapping.trigger)
 
-        #expect(!succeeded)
+        #expect(rejection == .conflictsWithMapping(mapping))
         #expect(fake.hotkeyCallOrder.isEmpty)
     }
 
@@ -547,9 +547,9 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let succeeded = controller.updateActionHotkey(.hideWidget, to: DefaultHotkeys.reservedLocalMenuShortcuts[0])
+        let rejection = controller.updateActionHotkey(.hideWidget, to: DefaultHotkeys.reservedLocalMenuShortcuts[0])
 
-        #expect(!succeeded)
+        #expect(rejection == .reservedMenuShortcut)
         #expect(fake.hotkeyCallOrder.isEmpty)
     }
 
@@ -561,10 +561,10 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let succeeded = controller.addHotkeyMapping(
+        let rejection = controller.addHotkeyMapping(
             trigger: DefaultHotkeys.toggleGhostMode, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
 
-        #expect(succeeded)
+        #expect(rejection == nil)
         #expect(fake.registeredHotkeys == [DefaultHotkeys.toggleGhostMode])
     }
 
@@ -574,9 +574,9 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let succeeded = controller.addHotkeyMapping(trigger: customToggle, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
+        let rejection = controller.addHotkeyMapping(trigger: customToggle, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
 
-        #expect(!succeeded)
+        #expect(rejection == .conflictsWithAction(.toggleGhostMode))
         #expect(fake.registeredHotkeys.isEmpty)
     }
 
@@ -636,6 +636,20 @@ import Testing
         #expect(fake.presentedAlerts.count == 1)
     }
 
+    // MARK: - #86: a refusal says why, in words the settings row can show
+
+    @Test(arguments: [
+        (reason: HotkeyRejection.conflictsWithAction(.hideWidget), message: "与「隐藏窗口」冲突"),
+        (reason: .conflictsWithVideoControl(.seekBackward), message: "与视频控制「后退」冲突"),
+        (reason: .conflictsWithMapping(HotkeyMapping(trigger: Hotkey(keyCode: 0x31, modifierFlags: 0x1800), pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0))),
+         message: "与映射「⌃⌥Space → Space」冲突"),
+        (reason: .reservedMenuShortcut, message: "这是 Mochi 菜单里的快捷键"),
+        (reason: .heldByAnotherApp, message: "已被其他应用占用"),
+    ])
+    func eachRefusalReadsAsItsOwnReason(_ c: (reason: HotkeyRejection, message: String)) {
+        #expect(c.reason.message == c.message)
+    }
+
     // MARK: - #85: clearing an action hotkey
 
     @Test func clearingAnActionReleasesItsComboAndPersistsItAsUnbound() {
@@ -643,9 +657,9 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let succeeded = controller.updateActionHotkey(.hideWidget, to: nil)
+        let rejection = controller.updateActionHotkey(.hideWidget, to: nil)
 
-        #expect(succeeded)
+        #expect(rejection == nil)
         #expect(fake.hotkeyCallOrder == [.unregister(DefaultHotkeys.hideWidget)])
         #expect(store.config.hotkey(for: .hideWidget) == nil)
         #expect(store.config.hotkey(for: .toggleGhostMode) == DefaultHotkeys.toggleGhostMode)
@@ -658,10 +672,10 @@ import Testing
         let pressLog = PressLog()
         let controller = makeController(store: store, platformOps: fake, pressLog: pressLog)
 
-        let succeeded = controller.updateActionHotkey(.toggleGhostMode, to: customToggle)
+        let rejection = controller.updateActionHotkey(.toggleGhostMode, to: customToggle)
         fake.simulateHotkeyPressed(customToggle)
 
-        #expect(succeeded)
+        #expect(rejection == nil)
         #expect(fake.hotkeyCallOrder == [.register(customToggle)])
         #expect(store.config.hotkey(for: .toggleGhostMode) == customToggle)
         #expect(pressLog.pressed == [customToggle])
@@ -675,9 +689,9 @@ import Testing
         fake.hotkeysThatFailToRegister = [customToggle]
         let controller = makeController(store: store, platformOps: fake)
 
-        let succeeded = controller.updateActionHotkey(.toggleGhostMode, to: customToggle)
+        let rejection = controller.updateActionHotkey(.toggleGhostMode, to: customToggle)
 
-        #expect(!succeeded)
+        #expect(rejection == .heldByAnotherApp)
         #expect(fake.hotkeyCallOrder == [.register(customToggle)])
         #expect(store.config.hotkey(for: .toggleGhostMode) == nil)
         #expect(store.writeCount == 0)
@@ -689,7 +703,7 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        #expect(controller.updateActionHotkey(.hideWidget, to: nil))
+        #expect(controller.updateActionHotkey(.hideWidget, to: nil) == nil)
         #expect(fake.hotkeyCallOrder.isEmpty)
         #expect(store.writeCount == 0)
     }
@@ -726,9 +740,9 @@ import Testing
             WidgetConfig(url: URL(string: "https://example.com")!, hotkeyOverrides: [.hideWidget: nil]))
         let controller = makeController(store: store)
 
-        #expect(controller.addHotkeyMapping(trigger: DefaultHotkeys.hideWidget, pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0)))
-        #expect(controller.updateActionHotkey(.toggleGhostMode, to: Hotkey(keyCode: 0x26, modifierFlags: 0x0800)))
-        #expect(controller.updateVideoControlTrigger(.keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x1000)), for: .seekForward))
+        #expect(controller.addHotkeyMapping(trigger: DefaultHotkeys.hideWidget, pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0)) == nil)
+        #expect(controller.updateActionHotkey(.toggleGhostMode, to: Hotkey(keyCode: 0x26, modifierFlags: 0x0800)) == nil)
+        #expect(controller.updateVideoControlTrigger(.keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x1000)), for: .seekForward) == nil)
     }
 
     // #70
@@ -856,9 +870,9 @@ import Testing
         var notified = 0
         let controller = makeController(store: store, configDidChange: { notified += 1 })
 
-        let accepted = controller.updateVideoControlTrigger(.keystroke(Self.backtick), for: .togglePlayback)
+        let rejection = controller.updateVideoControlTrigger(.keystroke(Self.backtick), for: .togglePlayback)
 
-        #expect(accepted)
+        #expect(rejection == nil)
         #expect(store.config.videoControlTrigger(for: .togglePlayback) == .keystroke(Self.backtick))
         #expect(notified == 1)
     }
@@ -906,16 +920,19 @@ import Testing
         #expect(store.config.videoSeekStep == WidgetConfig.defaultVideoSeekStep)
     }
 
-    /// Every way a video key can collide with something already in use, refused with the same
-    /// alert as any other hotkey conflict and leaving the config untouched.
+    /// Every way a video key can collide with something already in use, refused with the reason
+    /// naming what holds it (#86) and leaving the config untouched.
     @Test(arguments: [
-        (name: "an action hotkey", trigger: VideoControlTrigger.keystroke(DefaultHotkeys.toggleGhostMode)),
-        (name: "a local menu shortcut", trigger: .keystroke(DefaultHotkeys.openSettings)),
-        (name: "a mapping trigger", trigger: .keystroke(Hotkey(keyCode: 0x12, modifierFlags: 0x0800))),
-        (name: "another video action's tap", trigger: .modifierTap(.rightCommand)),
-        (name: "another video action's keystroke", trigger: .keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0))),
+        (name: "an action hotkey", trigger: VideoControlTrigger.keystroke(DefaultHotkeys.toggleGhostMode),
+         reason: HotkeyRejection.conflictsWithAction(.toggleGhostMode)),
+        (name: "a local menu shortcut", trigger: .keystroke(DefaultHotkeys.openSettings), reason: .reservedMenuShortcut),
+        (name: "a mapping trigger", trigger: .keystroke(Hotkey(keyCode: 0x12, modifierFlags: 0x0800)),
+         reason: .conflictsWithMapping(HotkeyMapping(trigger: Hotkey(keyCode: 0x12, modifierFlags: 0x0800), pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0)))),
+        (name: "another video action's tap", trigger: .modifierTap(.rightCommand), reason: .conflictsWithVideoControl(.seekBackward)),
+        (name: "another video action's keystroke", trigger: .keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0)),
+         reason: .conflictsWithVideoControl(.seekForward)),
     ])
-    func refusesAVideoKeyThatIsAlreadyInUse(_ scenario: (name: String, trigger: VideoControlTrigger)) {
+    func refusesAVideoKeyThatIsAlreadyInUse(_ scenario: (name: String, trigger: VideoControlTrigger, reason: HotkeyRejection)) {
         let original = WidgetConfig(
             hotkeyMappings: [HotkeyMapping(trigger: Hotkey(keyCode: 0x12, modifierFlags: 0x0800), pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0))]
         ).updatingVideoControlTrigger(.keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0)), for: .seekForward)
@@ -923,11 +940,11 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let accepted = controller.updateVideoControlTrigger(scenario.trigger, for: .togglePlayback)
+        let rejection = controller.updateVideoControlTrigger(scenario.trigger, for: .togglePlayback)
 
-        #expect(!accepted, "\(scenario.name)")
+        #expect(rejection == scenario.reason, "\(scenario.name)")
         #expect(store.config == original, "\(scenario.name)")
-        #expect(fake.presentedAlerts.map(\.title) == ["热键已被占用"], "\(scenario.name)")
+        #expect(fake.presentedAlerts.isEmpty, "\(scenario.name)")
     }
 
     @Test func rebindingAVideoActionToItsOwnCurrentKeyIsNotAConflict() {
@@ -935,7 +952,7 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        #expect(controller.updateVideoControlTrigger(.modifierTap(.rightOption), for: .togglePlayback))
+        #expect(controller.updateVideoControlTrigger(.modifierTap(.rightOption), for: .togglePlayback) == nil)
         #expect(fake.presentedAlerts.isEmpty)
     }
 
@@ -944,9 +961,9 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let accepted = controller.updateActionHotkey(.hideWidget, to: Self.backtick)
+        let rejection = controller.updateActionHotkey(.hideWidget, to: Self.backtick)
 
-        #expect(!accepted)
+        #expect(rejection == .conflictsWithVideoControl(.togglePlayback))
         #expect(store.config.hotkey(for: .hideWidget) == DefaultHotkeys.hideWidget)
         #expect(fake.registeredHotkeys.isEmpty)
     }
@@ -956,9 +973,9 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let accepted = controller.addHotkeyMapping(trigger: Self.backtick, pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0))
+        let rejection = controller.addHotkeyMapping(trigger: Self.backtick, pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0))
 
-        #expect(!accepted)
+        #expect(rejection == .conflictsWithVideoControl(.seekForward))
         #expect(store.config.hotkeyMappings.isEmpty)
     }
 

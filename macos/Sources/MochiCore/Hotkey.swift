@@ -77,7 +77,7 @@ public enum DefaultHotkeys {
 /// Each case's `rawValue` is the stable string identifier the config file stores an override
 /// under (`[hotkeys]` table) — an explicit constant per case, never the case's declaration order
 /// or an integer index, so reordering or adding cases can't silently rebind a user's saved combo.
-public enum HotkeyAction: String, CaseIterable, Hashable {
+public enum HotkeyAction: String, CaseIterable, Hashable, Sendable {
     case toggleGhostMode = "toggle_ghost_mode"
     case hideWidget = "hide_widget"
 

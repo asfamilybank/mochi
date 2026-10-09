@@ -14,6 +14,7 @@ struct HotkeyRecorderView: NSViewRepresentable {
     var accessibilityName: String
     var isRecordable = true
     var width = HotkeyRecorderField.defaultWidth
+    var onRecordingStarted: () -> Void = {}
     var onCapture: (Hotkey) -> Void = { _ in }
     var onClear: (() -> Void)?
 
@@ -26,6 +27,7 @@ struct HotkeyRecorderView: NSViewRepresentable {
         field.face = HotkeyRecorderModel.face(of: hotkey)
         field.isBound = hotkey != nil
         field.isRecordable = isRecordable
+        field.onRecordingStarted = onRecordingStarted
         field.onCapture = { if case .keystroke(let captured) = $0 { onCapture(captured) } }
         field.onClear = onClear
     }
@@ -41,6 +43,7 @@ struct HotkeyRecorderView: NSViewRepresentable {
 struct VideoControlRecorderView: NSViewRepresentable {
     var trigger: VideoControlTrigger?
     var accessibilityName: String
+    var onRecordingStarted: () -> Void = {}
     var onCapture: (VideoControlTrigger) -> Void
     var onClear: () -> Void
 
@@ -52,6 +55,7 @@ struct VideoControlRecorderView: NSViewRepresentable {
         field.accessibilityName = accessibilityName
         field.face = HotkeyRecorderModel.face(of: trigger)
         field.isBound = trigger != nil
+        field.onRecordingStarted = onRecordingStarted
         field.onCapture = onCapture
         field.onClear = onClear
     }
@@ -76,6 +80,7 @@ final class HotkeyRecorderField: NSView, KeyCapturingResponder {
     var face: RecorderFace = .slots(lit: [], key: nil) { didSet { if face != oldValue { needsDisplay = true } } }
     var isBound = false { didSet { refreshClearButton() } }
     var accessibilityName = "" { didSet { refreshAccessibility() } }
+    var onRecordingStarted: (() -> Void)?
     var onCapture: ((VideoControlTrigger) -> Void)?
     var onClear: (() -> Void)? { didSet { refreshClearButton() } }
     /// `false` for the read-only form: no recording, no ⓧ.
@@ -135,6 +140,7 @@ final class HotkeyRecorderField: NSView, KeyCapturingResponder {
         guard isRecordable, !isCapturingKeys else { return }
         isCapturingKeys = true
         tapRecognizer = ModifierTapRecognizer()
+        onRecordingStarted?()
         window?.makeFirstResponder(self)
         refreshClearButton()
         needsDisplay = true

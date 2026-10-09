@@ -397,13 +397,17 @@ struct HotkeysTab: View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader(title: "全局热键", caption: "在任何应用里按下都会生效，并会占用这个组合。")
             ForEach(HotkeyAction.allCases, id: \.self) { action in
-                HotkeyRow(title: action.displayName, description: action.settingsDescription) {
+                HotkeyRow(
+                    title: action.displayName, description: action.settingsDescription,
+                    rejection: viewModel.rejectionMessage(for: .action(action))
+                ) {
                     // The field shows the combo currently in effect, read straight from the config, so
                     // a rejected recording (conflict, or held by another app) snaps the control
                     // back to the unchanged binding instead of displaying a combo that isn't live.
                     HotkeyRecorderView(
                         hotkey: viewModel.config.hotkey(for: action),
                         accessibilityName: action.displayName,
+                        onRecordingStarted: viewModel.clearRowRejection,
                         onCapture: { viewModel.updateActionHotkey(action, to: $0) },
                         onClear: { viewModel.updateActionHotkey(action, to: nil) }
                     )
@@ -454,17 +458,23 @@ private struct SectionHeader: View {
 }
 
 /// One hotkey: its name with a one-line description underneath on the left, the recorder on the
-/// right (#84).
+/// right (#84). A refused recording's reason takes the description's place, in red (#86).
 private struct HotkeyRow<Control: View>: View {
     var title: String
     var description: String?
+    var rejection: String?
     @ViewBuilder var control: Control
 
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                if let description {
+                if let rejection {
+                    Text(rejection)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if let description {
                     Text(description)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -504,12 +514,16 @@ private struct VideoControlSection: View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader(title: "视频控制", caption: "幽灵模式下生效。按键照常传给当前应用，不会被占用。")
             ForEach(VideoControlAction.allCases, id: \.self) { action in
-                HotkeyRow(title: action.displayName, description: action.settingsDescription) {
+                HotkeyRow(
+                    title: action.displayName, description: action.settingsDescription,
+                    rejection: viewModel.rejectionMessage(for: .videoControl(action))
+                ) {
                     // Shows the binding in effect straight from the config, like the action
                     // hotkeys above, so a refused recording snaps back to what is live.
                     VideoControlRecorderView(
                         trigger: viewModel.config.videoControlTrigger(for: action),
                         accessibilityName: action.displayName,
+                        onRecordingStarted: viewModel.clearRowRejection,
                         onCapture: { viewModel.updateVideoControlTrigger($0, for: action) },
                         onClear: { viewModel.updateVideoControlTrigger(nil, for: action) }
                     )
@@ -585,10 +599,12 @@ private struct HotkeyForwardingSection: View {
             HStack {
                 HotkeyRecorderView(
                     hotkey: newTrigger, accessibilityName: "触发热键", width: HotkeyRecorderField.mappingWidth,
+                    onRecordingStarted: viewModel.clearRowRejection,
                     onCapture: { newTrigger = $0 }, onClear: { newTrigger = nil })
                 Image(systemName: "arrow.right")
                 HotkeyRecorderView(
                     hotkey: newPageKeystroke, accessibilityName: "页面按键", width: HotkeyRecorderField.mappingWidth,
+                    onRecordingStarted: viewModel.clearRowRejection,
                     onCapture: { newPageKeystroke = $0 }, onClear: { newPageKeystroke = nil })
                 Spacer()
                 Button("添加映射") {
@@ -599,6 +615,11 @@ private struct HotkeyForwardingSection: View {
                     }
                 }
                 .disabled(newTrigger == nil || newPageKeystroke == nil)
+            }
+            if let rejection = viewModel.rejectionMessage(for: .newMapping) {
+                Text(rejection)
+                    .font(.caption)
+                    .foregroundStyle(.red)
             }
         }
     }

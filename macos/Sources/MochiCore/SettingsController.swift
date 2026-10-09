@@ -137,24 +137,22 @@ public final class SettingsController {
     /// fails (another app holds it), the old combo is re-registered and the config left
     /// untouched, so a failed attempt can never take away the hotkey the action had. A cleared
     /// action has nothing to release first, and nothing to fall back to: it stays cleared.
+    ///
+    /// Returns why it was refused (#86), or `nil` once the change is live.
     @discardableResult
-    public func updateActionHotkey(_ action: HotkeyAction, to hotkey: Hotkey?) -> Bool {
+    public func updateActionHotkey(_ action: HotkeyAction, to hotkey: Hotkey?) -> HotkeyRejection? {
         let current = currentConfig().hotkey(for: action)
-        guard hotkey != current else { return true }
+        guard hotkey != current else { return nil }
         if let hotkey {
-            guard !isReservedInProcess(hotkey, ignoringAction: action, ignoringMappingAt: nil) else {
-                presentConflictAlert()
-                return false
+            if let conflict = inProcessConflict(with: hotkey, ignoringAction: action, ignoringMappingAt: nil) {
+                return conflict
             }
-            guard rebind(from: current, to: hotkey) else {
-                presentConflictAlert()
-                return false
-            }
+            guard rebind(from: current, to: hotkey) else { return .heldByAnotherApp }
         } else if let current {
             platformOps.unregisterGlobalHotkey(current)
         }
         persistAndNotify { $0.updatingHotkeyOverride(action, to: hotkey) }
-        return true
+        return nil
     }
 
     /// Puts every overridden action back on its built-in combo, cleared ones included (#85) — the
@@ -216,18 +214,16 @@ public final class SettingsController {
     ///    real one: it dispatches through `onGlobalHotkeyPressed`, which resolves the trigger to
     ///    its page keystroke against the config at press time, so the mapping forwards from the
     ///    moment it's persisted.
+    ///
+    /// Returns why it was refused (#86), or `nil` once the mapping is live.
     @discardableResult
-    public func addHotkeyMapping(trigger: Hotkey, pageKeystroke: Hotkey) -> Bool {
-        guard !isReservedInProcess(trigger, ignoringAction: nil, ignoringMappingAt: nil) else {
-            presentConflictAlert()
-            return false
+    public func addHotkeyMapping(trigger: Hotkey, pageKeystroke: Hotkey) -> HotkeyRejection? {
+        if let conflict = inProcessConflict(with: trigger, ignoringAction: nil, ignoringMappingAt: nil) {
+            return conflict
         }
-        guard registerDispatching(trigger) else {
-            presentConflictAlert()
-            return false
-        }
+        guard registerDispatching(trigger) else { return .heldByAnotherApp }
         persistAndNotify { $0.updatingHotkeyMappings($0.hotkeyMappings + [HotkeyMapping(trigger: trigger, pageKeystroke: pageKeystroke)]) }
-        return true
+        return nil
     }
 
     /// Re-runs the same two-tiered conflict check as `addHotkeyMapping` only when `trigger`
@@ -235,27 +231,26 @@ public final class SettingsController {
     /// transaction with rollback (#46). Editing just the page-keystroke half never touches the OS
     /// hotkey table: the registered handler looks the page keystroke up at press time, so the
     /// persisted change is already live.
+    ///
+    /// Returns why it was refused (#86), or `nil` once the change is live — an index out of range
+    /// is a no-op, not a refusal.
     @discardableResult
-    public func updateHotkeyMapping(at index: Int, trigger: Hotkey, pageKeystroke: Hotkey) -> Bool {
+    public func updateHotkeyMapping(at index: Int, trigger: Hotkey, pageKeystroke: Hotkey) -> HotkeyRejection? {
         let mappings = currentConfig().hotkeyMappings
-        guard mappings.indices.contains(index) else { return false }
+        guard mappings.indices.contains(index) else { return nil }
         let oldTrigger = mappings[index].trigger
         if trigger != oldTrigger {
-            guard !isReservedInProcess(trigger, ignoringAction: nil, ignoringMappingAt: index) else {
-                presentConflictAlert()
-                return false
+            if let conflict = inProcessConflict(with: trigger, ignoringAction: nil, ignoringMappingAt: index) {
+                return conflict
             }
-            guard rebind(from: oldTrigger, to: trigger) else {
-                presentConflictAlert()
-                return false
-            }
+            guard rebind(from: oldTrigger, to: trigger) else { return .heldByAnotherApp }
         }
         persistAndNotify { config in
             var mappings = config.hotkeyMappings
             mappings[index] = HotkeyMapping(trigger: trigger, pageKeystroke: pageKeystroke)
             return config.updatingHotkeyMappings(mappings)
         }
-        return true
+        return nil
     }
 
     /// Deleting a mapping hands its trigger back to the system immediately (#46) — the combo is
@@ -283,21 +278,28 @@ public final class SettingsController {
     ///   - ignoringMappingAt: the mapping index being edited, excluded for the same reason — `nil`
     ///     when adding a brand new mapping, where every existing entry counts.
     ///   - ignoringVideoAction: the 视频控制 action being rebound (#79), excluded the same way.
-    private func isReservedInProcess(
-        _ candidate: Hotkey, ignoringAction editedAction: HotkeyAction?, ignoringMappingAt editedIndex: Int?,
+    ///
+    /// Returns what already holds `candidate` (#86), or `nil` when nothing in-process does.
+    private func inProcessConflict(
+        with candidate: Hotkey, ignoringAction editedAction: HotkeyAction?, ignoringMappingAt editedIndex: Int?,
         ignoringVideoAction editedVideoAction: VideoControlAction? = nil
-    ) -> Bool {
+    ) -> HotkeyRejection? {
         let config = currentConfig()
-        if HotkeyAction.allCases.contains(where: { $0 != editedAction && config.hotkey(for: $0) == candidate }) { return true }
-        if DefaultHotkeys.reservedLocalMenuShortcuts.contains(candidate) { return true }
+        if let action = HotkeyAction.allCases.first(where: { $0 != editedAction && config.hotkey(for: $0) == candidate }) {
+            return .conflictsWithAction(action)
+        }
+        if DefaultHotkeys.reservedLocalMenuShortcuts.contains(candidate) { return .reservedMenuShortcut }
         // A video key is never registered with the OS — it only listens — so an in-process check
         // is the only thing standing between it and a hotkey firing on the same press.
-        if VideoControlAction.allCases.contains(where: {
+        if let action = VideoControlAction.allCases.first(where: {
             $0 != editedVideoAction && config.videoControlTrigger(for: $0) == .keystroke(candidate)
-        }) { return true }
-        return config.hotkeyMappings.enumerated().contains { offset, mapping in
+        }) {
+            return .conflictsWithVideoControl(action)
+        }
+        let mapping = config.hotkeyMappings.enumerated().first { offset, mapping in
             offset != editedIndex && mapping.trigger == candidate
         }
+        return mapping.map { .conflictsWithMapping($0.element) }
     }
 
     // MARK: - #79: 视频控制
@@ -307,26 +309,22 @@ public final class SettingsController {
     /// action hotkeys, the local menu shortcuts, the mapping triggers, and the other video keys.
     /// Listening starts or stops through `configDidChange` when this binds the first key or
     /// clears the last.
+    ///
+    /// Returns why it was refused (#86), or `nil` once the change is live.
     @discardableResult
-    public func updateVideoControlTrigger(_ trigger: VideoControlTrigger?, for action: VideoControlAction) -> Bool {
+    public func updateVideoControlTrigger(_ trigger: VideoControlTrigger?, for action: VideoControlAction) -> HotkeyRejection? {
         let config = currentConfig()
         if let trigger, trigger != config.videoControlTrigger(for: action) {
-            let takenByAnotherVideoAction = VideoControlAction.allCases.contains {
-                $0 != action && config.videoControlTrigger(for: $0) == trigger
+            if let other = VideoControlAction.allCases.first(where: { $0 != action && config.videoControlTrigger(for: $0) == trigger }) {
+                return .conflictsWithVideoControl(other)
             }
-            let takenByAHotkey: Bool
-            if case .keystroke(let hotkey) = trigger {
-                takenByAHotkey = isReservedInProcess(hotkey, ignoringAction: nil, ignoringMappingAt: nil, ignoringVideoAction: action)
-            } else {
-                takenByAHotkey = false
-            }
-            guard !takenByAnotherVideoAction, !takenByAHotkey else {
-                presentConflictAlert()
-                return false
+            if case .keystroke(let hotkey) = trigger,
+               let conflict = inProcessConflict(with: hotkey, ignoringAction: nil, ignoringMappingAt: nil, ignoringVideoAction: action) {
+                return conflict
             }
         }
         persistAndNotify { $0.updatingVideoControlTrigger(trigger, for: action) }
-        return true
+        return nil
     }
 
     public func updateVideoSeekStep(_ seconds: Int) {
@@ -347,12 +345,5 @@ public final class SettingsController {
 
     public func openAccessibilitySettings() {
         platformOps.openAccessibilitySettings()
-    }
-
-    private func presentConflictAlert() {
-        platformOps.presentAlert(
-            title: "热键已被占用",
-            message: "该热键已经在使用中（可能是另一个映射、Mochi 的另一个功能热键，或另一个应用），请选择其他组合。"
-        )
     }
 }

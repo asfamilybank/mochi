@@ -17,6 +17,19 @@ final class SettingsViewModel: ObservableObject {
     var reopenWidget: () -> Void = {}
     @Published private(set) var config: WidgetConfig
 
+    /// A row of the 热键 pane a refusal can be shown on (#86).
+    enum HotkeyRow: Hashable {
+        case action(HotkeyAction)
+        case videoControl(VideoControlAction)
+        case newMapping
+    }
+
+    /// The last refused recording and the row it happened on (#86): that row shows the reason in
+    /// red in place of its description, until the next recording starts or a few seconds pass.
+    @Published private(set) var rowRejection: (row: HotkeyRow, message: String)?
+    private var rejectionExpiry: DispatchWorkItem?
+    private static let rejectionDisplayDuration: TimeInterval = 4
+
     /// - Parameter reloadPage: the scripts tab's 刷新页面 button (#46) — the one click that makes a
     ///   script edit apply, since already-executed JavaScript can't be undone. Wired to
     ///   `Orchestrator.reloadPage`, the same operation the Display menu's ⌘R calls.
@@ -117,11 +130,29 @@ final class SettingsViewModel: ObservableObject {
         reloadPage()
     }
 
-    @discardableResult
-    func updateActionHotkey(_ action: HotkeyAction, to hotkey: Hotkey?) -> Bool {
-        let succeeded = controller.updateActionHotkey(action, to: hotkey)
+    func updateActionHotkey(_ action: HotkeyAction, to hotkey: Hotkey?) {
+        let rejection = controller.updateActionHotkey(action, to: hotkey)
         config = controller.config
-        return succeeded
+        show(rejection, on: .action(action))
+    }
+
+    func rejectionMessage(for row: HotkeyRow) -> String? {
+        rowRejection?.row == row ? rowRejection?.message : nil
+    }
+
+    func clearRowRejection() {
+        rejectionExpiry?.cancel()
+        rejectionExpiry = nil
+        rowRejection = nil
+    }
+
+    private func show(_ rejection: HotkeyRejection?, on row: HotkeyRow) {
+        clearRowRejection()
+        guard let rejection else { return }
+        rowRejection = (row, rejection.message)
+        let expiry = DispatchWorkItem { [weak self] in self?.clearRowRejection() }
+        rejectionExpiry = expiry
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.rejectionDisplayDuration, execute: expiry)
     }
 
     /// The panel's one 恢复默认 button covers both the action hotkeys and 视频控制 (#79).
@@ -137,11 +168,10 @@ final class SettingsViewModel: ObservableObject {
     /// hotkeys pane appears and whenever the app comes back to the front.
     @Published private(set) var isAccessibilityTrusted = true
 
-    @discardableResult
-    func updateVideoControlTrigger(_ trigger: VideoControlTrigger?, for action: VideoControlAction) -> Bool {
-        let succeeded = controller.updateVideoControlTrigger(trigger, for: action)
+    func updateVideoControlTrigger(_ trigger: VideoControlTrigger?, for action: VideoControlAction) {
+        let rejection = controller.updateVideoControlTrigger(trigger, for: action)
         config = controller.config
-        return succeeded
+        show(rejection, on: .videoControl(action))
     }
 
     func updateVideoSeekStep(_ seconds: Int) {
@@ -157,11 +187,12 @@ final class SettingsViewModel: ObservableObject {
         controller.openAccessibilitySettings()
     }
 
-    @discardableResult
+    /// `true` once the mapping is live; a refusal is shown on the add row instead.
     func addHotkeyMapping(trigger: Hotkey, pageKeystroke: Hotkey) -> Bool {
-        let succeeded = controller.addHotkeyMapping(trigger: trigger, pageKeystroke: pageKeystroke)
+        let rejection = controller.addHotkeyMapping(trigger: trigger, pageKeystroke: pageKeystroke)
         config = controller.config
-        return succeeded
+        show(rejection, on: .newMapping)
+        return rejection == nil
     }
 
     func removeHotkeyMapping(at index: Int) {
