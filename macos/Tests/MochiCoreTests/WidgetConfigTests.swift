@@ -863,6 +863,34 @@ import Testing
         #expect(config.videoSeekStep == 5)
     }
 
+    /// #89 only stops the settings from recording a combo with no ⌃/⌥/⌘; one saved before that
+    /// rule keeps loading — and keeps being written back — unchanged.
+    @Test func aBareKeyBindingSavedBeforeTheModifierRuleStillLoadsAndRoundTrips() throws {
+        let toml = """
+        [hotkeys.hide_widget]
+        key_code = 38
+        modifiers = 0
+
+        [video_control.seek_forward]
+        kind = "keystroke"
+        key_code = 37
+        modifiers = 512
+
+        [[hotkey_mappings]]
+        trigger_key_code = 40
+        trigger_modifiers = 0
+        page_key_code = 49
+        page_modifiers = 0
+        """
+
+        let config = try WidgetConfig.parse(toml)
+
+        #expect(config.hotkey(for: .hideWidget) == Hotkey(keyCode: 38, modifierFlags: 0))
+        #expect(config.videoControlTrigger(for: .seekForward) == .keystroke(Hotkey(keyCode: 37, modifierFlags: 512)))
+        #expect(config.hotkeyMappings.map(\.trigger) == [Hotkey(keyCode: 40, modifierFlags: 0)])
+        #expect(try WidgetConfig.parse(config.serialized()) == config)
+    }
+
     @Test func parsesEveryKindOfVideoControlBinding() throws {
         let toml = """
         [video_control]

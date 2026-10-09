@@ -13,6 +13,29 @@ public struct Hotkey: Hashable, Sendable {
     }
 }
 
+extension Hotkey {
+    /// Whether this combo, held as a trigger, would take a character away from every other app
+    /// (#89, ADR-0022): it has no ⌃, ⌥ or ⌘, so it is either a bare key or ⇧ plus a key — and ⇧
+    /// plus a letter is that letter's capital, ⇧ plus an arrow is text selection. Only the
+    /// F-keys, which type nothing and mean nothing with ⇧ held, may go with ⇧ alone. The
+    /// settings refuse to record such a combo; one already in the config keeps working.
+    public var keepsItsCharacter: Bool {
+        if modifierFlags & (Self.control | Self.option | Self.command) != 0 { return false }
+        return !(modifierFlags & Self.shift != 0 && Self.functionKeyCodes.contains(keyCode))
+    }
+
+    private static let control: UInt32 = 0x1000
+    private static let option: UInt32 = 0x0800
+    private static let shift: UInt32 = 0x0200
+    private static let command: UInt32 = 0x0100
+
+    /// `kVK_F1` … `kVK_F20`.
+    private static let functionKeyCodes: Set<UInt32> = [
+        0x7A, 0x78, 0x63, 0x76, 0x60, 0x61, 0x62, 0x64, 0x65, 0x6D,
+        0x67, 0x6F, 0x69, 0x6B, 0x71, 0x6A, 0x40, 0x4F, 0x50, 0x5A,
+    ]
+}
+
 public enum DefaultHotkeys {
     /// Carbon's `optionKey` alone, shared by both default action combos below. Hardcoded rather
     /// than importing Carbon here so this file stays platform-import-free like the rest of the

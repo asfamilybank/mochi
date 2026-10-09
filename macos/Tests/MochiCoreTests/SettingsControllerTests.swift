@@ -138,8 +138,8 @@ import Testing
         let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
-        let trigger = Hotkey(keyCode: 1, modifierFlags: 0)
-        let pageKeystroke = Hotkey(keyCode: 2, modifierFlags: 0)
+        let trigger = Hotkey(keyCode: 1, modifierFlags: 0x1000)
+        let pageKeystroke = Hotkey(keyCode: 2, modifierFlags: 0x1000)
 
         let rejection = controller.addHotkeyMapping(trigger: trigger, pageKeystroke: pageKeystroke)
 
@@ -159,7 +159,7 @@ import Testing
         let controller = makeController(store: store, platformOps: fake)
 
         let rejection = controller.addHotkeyMapping(
-            trigger: Hotkey(keyCode: 1, modifierFlags: 0), pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
+            trigger: Hotkey(keyCode: 1, modifierFlags: 0x1000), pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0x1000))
 
         #expect(rejection == .heldByAnotherApp)
         #expect(store.config.hotkeyMappings.isEmpty)
@@ -175,7 +175,7 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let rejection = controller.addHotkeyMapping(trigger: DefaultHotkeys.hideWidget, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
+        let rejection = controller.addHotkeyMapping(trigger: DefaultHotkeys.hideWidget, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0x1000))
 
         #expect(rejection == .conflictsWithAction(.hideWidget))
         #expect(store.config.hotkeyMappings.isEmpty)
@@ -192,7 +192,7 @@ import Testing
         let controller = makeController(store: store, platformOps: fake)
 
         let rejection = controller.addHotkeyMapping(
-            trigger: DefaultHotkeys.reservedLocalMenuShortcuts[0], pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
+            trigger: DefaultHotkeys.reservedLocalMenuShortcuts[0], pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0x1000))
 
         #expect(rejection == .reservedMenuShortcut)
         #expect(store.config.hotkeyMappings.isEmpty)
@@ -208,7 +208,7 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let rejection = controller.addHotkeyMapping(trigger: trigger, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
+        let rejection = controller.addHotkeyMapping(trigger: trigger, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0x1000))
 
         #expect(rejection == .reservedMenuShortcut)
         #expect(store.config.hotkeyMappings.isEmpty)
@@ -216,12 +216,12 @@ import Testing
     }
 
     @Test func addingAMappingWhoseTriggerAlreadyExistsInTheMappingTableFailsWithoutTouchingTheOS() {
-        let existing = HotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0), pageKeystroke: Hotkey(keyCode: 9, modifierFlags: 0))
+        let existing = HotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0x1000), pageKeystroke: Hotkey(keyCode: 9, modifierFlags: 0x1000))
         let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!, hotkeyMappings: [existing]))
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let rejection = controller.addHotkeyMapping(trigger: existing.trigger, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
+        let rejection = controller.addHotkeyMapping(trigger: existing.trigger, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0x1000))
 
         #expect(rejection == .conflictsWithMapping(existing))
         #expect(store.config.hotkeyMappings == [existing])
@@ -230,20 +230,20 @@ import Testing
     }
 
     @Test func updatingAMappingsPageKeystrokeOnlyDoesNotReRegisterTheTrigger() {
-        let existing = HotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0), pageKeystroke: Hotkey(keyCode: 9, modifierFlags: 0))
+        let existing = HotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0x1000), pageKeystroke: Hotkey(keyCode: 9, modifierFlags: 0x1000))
         let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!, hotkeyMappings: [existing]))
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let rejection = controller.updateHotkeyMapping(at: 0, trigger: existing.trigger, pageKeystroke: Hotkey(keyCode: 20, modifierFlags: 0))
+        let rejection = controller.updateHotkeyMapping(at: 0, trigger: existing.trigger, pageKeystroke: Hotkey(keyCode: 20, modifierFlags: 0x1000))
 
         #expect(rejection == nil)
-        #expect(store.config.hotkeyMappings == [HotkeyMapping(trigger: existing.trigger, pageKeystroke: Hotkey(keyCode: 20, modifierFlags: 0))])
+        #expect(store.config.hotkeyMappings == [HotkeyMapping(trigger: existing.trigger, pageKeystroke: Hotkey(keyCode: 20, modifierFlags: 0x1000))])
         #expect(fake.registeredHotkeys.isEmpty)
     }
 
     @Test func updatingAMappingsTriggerToAnActionHotkeyFailsWithoutTouchingTheOS() {
-        let existing = HotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0), pageKeystroke: Hotkey(keyCode: 9, modifierFlags: 0))
+        let existing = HotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0x1000), pageKeystroke: Hotkey(keyCode: 9, modifierFlags: 0x1000))
         let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!, hotkeyMappings: [existing]))
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
@@ -256,13 +256,13 @@ import Testing
     }
 
     @Test func updatingAMappingsTriggerRunsTheConflictCheck() {
-        let existing = HotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0), pageKeystroke: Hotkey(keyCode: 9, modifierFlags: 0))
+        let existing = HotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0x1000), pageKeystroke: Hotkey(keyCode: 9, modifierFlags: 0x1000))
         let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!, hotkeyMappings: [existing]))
         let fake = FakePlatformOps()
         fake.stubbedHotkeyRegistrationSucceeds = false
         let controller = makeController(store: store, platformOps: fake)
 
-        let rejection = controller.updateHotkeyMapping(at: 0, trigger: Hotkey(keyCode: 5, modifierFlags: 0), pageKeystroke: existing.pageKeystroke)
+        let rejection = controller.updateHotkeyMapping(at: 0, trigger: Hotkey(keyCode: 5, modifierFlags: 0x1000), pageKeystroke: existing.pageKeystroke)
 
         #expect(rejection == .heldByAnotherApp)
         #expect(store.config.hotkeyMappings == [existing])
@@ -270,7 +270,7 @@ import Testing
     }
 
     @Test func removingAMappingDeletesItFromThePersistedConfig() {
-        let mapping = HotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0), pageKeystroke: Hotkey(keyCode: 9, modifierFlags: 0))
+        let mapping = HotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0x1000), pageKeystroke: Hotkey(keyCode: 9, modifierFlags: 0x1000))
         let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!, hotkeyMappings: [mapping]))
         let controller = makeController(store: store)
 
@@ -282,7 +282,7 @@ import Testing
     // MARK: - #46: mapping edits take effect live
 
     @Test func removingAMappingReleasesItsTriggerImmediately() {
-        let mapping = HotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0), pageKeystroke: Hotkey(keyCode: 9, modifierFlags: 0))
+        let mapping = HotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0x1000), pageKeystroke: Hotkey(keyCode: 9, modifierFlags: 0x1000))
         let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!, hotkeyMappings: [mapping]))
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
@@ -308,8 +308,8 @@ import Testing
         let fake = FakePlatformOps()
         let pressLog = PressLog()
         let controller = makeController(store: store, platformOps: fake, pressLog: pressLog)
-        let trigger = Hotkey(keyCode: 1, modifierFlags: 0)
-        controller.addHotkeyMapping(trigger: trigger, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
+        let trigger = Hotkey(keyCode: 1, modifierFlags: 0x1000)
+        controller.addHotkeyMapping(trigger: trigger, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0x1000))
 
         fake.simulateHotkeyPressed(trigger)
 
@@ -317,11 +317,11 @@ import Testing
     }
 
     @Test func updatingAMappingsTriggerUnregistersTheOldOneBeforeRegisteringTheNewOne() {
-        let existing = HotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0), pageKeystroke: Hotkey(keyCode: 9, modifierFlags: 0))
+        let existing = HotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0x1000), pageKeystroke: Hotkey(keyCode: 9, modifierFlags: 0x1000))
         let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!, hotkeyMappings: [existing]))
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
-        let newTrigger = Hotkey(keyCode: 5, modifierFlags: 0)
+        let newTrigger = Hotkey(keyCode: 5, modifierFlags: 0x1000)
 
         let rejection = controller.updateHotkeyMapping(at: 0, trigger: newTrigger, pageKeystroke: existing.pageKeystroke)
 
@@ -333,10 +333,10 @@ import Testing
     }
 
     @Test func updatingAMappingsTriggerRollsBackWhenTheNewTriggerCannotBeRegistered() {
-        let existing = HotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0), pageKeystroke: Hotkey(keyCode: 9, modifierFlags: 0))
+        let existing = HotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0x1000), pageKeystroke: Hotkey(keyCode: 9, modifierFlags: 0x1000))
         let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!, hotkeyMappings: [existing]))
         let fake = FakePlatformOps()
-        let newTrigger = Hotkey(keyCode: 5, modifierFlags: 0)
+        let newTrigger = Hotkey(keyCode: 5, modifierFlags: 0x1000)
         fake.hotkeysThatFailToRegister = [newTrigger]
         let controller = makeController(store: store, platformOps: fake)
 
@@ -349,13 +349,13 @@ import Testing
     }
 
     @Test func addingAMappingWhoseTriggerCannotBeRegisteredLeavesExistingMappingsUntouched() {
-        let existing = HotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0), pageKeystroke: Hotkey(keyCode: 9, modifierFlags: 0))
+        let existing = HotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0x1000), pageKeystroke: Hotkey(keyCode: 9, modifierFlags: 0x1000))
         let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!, hotkeyMappings: [existing]))
         let fake = FakePlatformOps()
         fake.stubbedHotkeyRegistrationSucceeds = false
         let controller = makeController(store: store, platformOps: fake)
 
-        controller.addHotkeyMapping(trigger: Hotkey(keyCode: 5, modifierFlags: 0), pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
+        controller.addHotkeyMapping(trigger: Hotkey(keyCode: 5, modifierFlags: 0x1000), pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0x1000))
 
         #expect(store.config.hotkeyMappings == [existing])
         #expect(fake.unregisteredHotkeys.isEmpty)
@@ -410,7 +410,7 @@ import Testing
         controller.updateStartupTarget(.emptyPage)
         controller.updateCustomScript("x")
         controller.setBuiltInScript("generic-video-focus", enabled: false)
-        controller.addHotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0), pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
+        controller.addHotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0x1000), pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0x1000))
         controller.removeHotkeyMapping(at: 0)
 
         #expect(notified == store.writeCount)
@@ -424,7 +424,7 @@ import Testing
         var notified = 0
         let controller = makeController(store: store, platformOps: fake, configDidChange: { notified += 1 })
 
-        controller.addHotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0), pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
+        controller.addHotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0x1000), pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0x1000))
 
         #expect(notified == 0)
     }
@@ -531,7 +531,7 @@ import Testing
     }
 
     @Test func rebindingAnActionToAMappingsTriggerIsRejected() {
-        let mapping = HotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0), pageKeystroke: Hotkey(keyCode: 9, modifierFlags: 0))
+        let mapping = HotkeyMapping(trigger: Hotkey(keyCode: 1, modifierFlags: 0x1000), pageKeystroke: Hotkey(keyCode: 9, modifierFlags: 0x1000))
         let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!, hotkeyMappings: [mapping]))
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
@@ -562,7 +562,7 @@ import Testing
         let controller = makeController(store: store, platformOps: fake)
 
         let rejection = controller.addHotkeyMapping(
-            trigger: DefaultHotkeys.toggleGhostMode, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
+            trigger: DefaultHotkeys.toggleGhostMode, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0x1000))
 
         #expect(rejection == nil)
         #expect(fake.registeredHotkeys == [DefaultHotkeys.toggleGhostMode])
@@ -574,7 +574,7 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let rejection = controller.addHotkeyMapping(trigger: customToggle, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0))
+        let rejection = controller.addHotkeyMapping(trigger: customToggle, pageKeystroke: Hotkey(keyCode: 2, modifierFlags: 0x1000))
 
         #expect(rejection == .conflictsWithAction(.toggleGhostMode))
         #expect(fake.registeredHotkeys.isEmpty)
@@ -744,7 +744,7 @@ import Testing
             config = config.updatingVideoControlTrigger(.keystroke(DefaultHotkeys.toggleGhostMode), for: .seekForward)
         } else {
             config = config.updatingHotkeyMappings([
-                HotkeyMapping(trigger: DefaultHotkeys.toggleGhostMode, pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0)),
+                HotkeyMapping(trigger: DefaultHotkeys.toggleGhostMode, pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0x1000)),
             ])
         }
         let store = PersistedStore(config)
@@ -790,7 +790,7 @@ import Testing
             WidgetConfig(url: URL(string: "https://example.com")!, hotkeyOverrides: [.hideWidget: nil]))
         let controller = makeController(store: store)
 
-        #expect(controller.addHotkeyMapping(trigger: DefaultHotkeys.hideWidget, pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0)) == nil)
+        #expect(controller.addHotkeyMapping(trigger: DefaultHotkeys.hideWidget, pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0x1000)) == nil)
         #expect(controller.updateActionHotkey(.toggleGhostMode, to: Hotkey(keyCode: 0x26, modifierFlags: 0x0800)) == nil)
         #expect(controller.updateVideoControlTrigger(.keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x1000)), for: .seekForward) == nil)
     }
@@ -913,7 +913,7 @@ import Testing
     }
     // MARK: 视频控制 (#79)
 
-    private static let backtick = Hotkey(keyCode: 0x32, modifierFlags: 0)
+    private static let backtick = Hotkey(keyCode: 0x32, modifierFlags: 0x1000)
 
     @Test func rebindingAVideoActionPersistsItAndNotifies() {
         let store = PersistedStore(WidgetConfig())
@@ -977,15 +977,15 @@ import Testing
          reason: HotkeyRejection.conflictsWithAction(.toggleGhostMode)),
         (name: "a local menu shortcut", trigger: .keystroke(DefaultHotkeys.openSettings), reason: .reservedMenuShortcut),
         (name: "a mapping trigger", trigger: .keystroke(Hotkey(keyCode: 0x12, modifierFlags: 0x0800)),
-         reason: .conflictsWithMapping(HotkeyMapping(trigger: Hotkey(keyCode: 0x12, modifierFlags: 0x0800), pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0)))),
+         reason: .conflictsWithMapping(HotkeyMapping(trigger: Hotkey(keyCode: 0x12, modifierFlags: 0x0800), pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0x1000)))),
         (name: "another video action's tap", trigger: .modifierTap(.rightCommand), reason: .conflictsWithVideoControl(.seekBackward)),
-        (name: "another video action's keystroke", trigger: .keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0)),
+        (name: "another video action's keystroke", trigger: .keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x1000)),
          reason: .conflictsWithVideoControl(.seekForward)),
     ])
     func refusesAVideoKeyThatIsAlreadyInUse(_ scenario: (name: String, trigger: VideoControlTrigger, reason: HotkeyRejection)) {
         let original = WidgetConfig(
-            hotkeyMappings: [HotkeyMapping(trigger: Hotkey(keyCode: 0x12, modifierFlags: 0x0800), pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0))]
-        ).updatingVideoControlTrigger(.keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0)), for: .seekForward)
+            hotkeyMappings: [HotkeyMapping(trigger: Hotkey(keyCode: 0x12, modifierFlags: 0x0800), pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0x1000))]
+        ).updatingVideoControlTrigger(.keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x1000)), for: .seekForward)
         let store = PersistedStore(original)
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
@@ -1023,10 +1023,112 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let rejection = controller.addHotkeyMapping(trigger: Self.backtick, pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0))
+        let rejection = controller.addHotkeyMapping(trigger: Self.backtick, pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0x1000))
 
         #expect(rejection == .conflictsWithVideoControl(.seekForward))
         #expect(store.config.hotkeyMappings.isEmpty)
+    }
+
+    // MARK: #89 组合键必须带修饰键
+
+    /// J, ⇧J, ⇧1 and ⇧↑: each would take a character, or text selection, away from every app
+    /// while Mochi runs.
+    private static let combosThatKeepACharacter = [
+        Hotkey(keyCode: 0x26, modifierFlags: 0), Hotkey(keyCode: 0x26, modifierFlags: 0x0200),
+        Hotkey(keyCode: 0x12, modifierFlags: 0x0200), Hotkey(keyCode: 0x7E, modifierFlags: 0x0200),
+    ]
+
+    /// ⌥J, ⌃⇧K and ⇧F5 — the last because an F-key types nothing, with or without ⇧.
+    private static let combosWithAModifier = [
+        Hotkey(keyCode: 0x26, modifierFlags: 0x0800), Hotkey(keyCode: 0x28, modifierFlags: 0x1200),
+        Hotkey(keyCode: 0x60, modifierFlags: 0x0200),
+    ]
+
+    @Test(arguments: combosWithAModifier)
+    func anActionHotkeyWithAModifierIsAccepted(_ combo: Hotkey) {
+        let store = PersistedStore(WidgetConfig())
+        let fake = FakePlatformOps()
+        let controller = makeController(store: store, platformOps: fake)
+
+        #expect(controller.updateActionHotkey(.hideWidget, to: combo) == nil)
+        #expect(store.config.hotkey(for: .hideWidget) == combo)
+        #expect(fake.registeredHotkeys == [combo])
+    }
+
+    @Test(arguments: combosThatKeepACharacter)
+    func anActionHotkeyMustCarryAModifierOtherThanShift(_ combo: Hotkey) {
+        let store = PersistedStore(WidgetConfig())
+        let fake = FakePlatformOps()
+        let controller = makeController(store: store, platformOps: fake)
+
+        let rejection = controller.updateActionHotkey(.hideWidget, to: combo)
+
+        #expect(rejection == .missingModifier)
+        #expect(store.config.hotkey(for: .hideWidget) == DefaultHotkeys.hideWidget)
+        #expect(fake.registeredHotkeys.isEmpty)
+        #expect(fake.unregisteredHotkeys.isEmpty)
+    }
+
+    @Test(arguments: combosThatKeepACharacter)
+    func aNewMappingsTriggerMustCarryAModifierOtherThanShift(_ combo: Hotkey) {
+        let store = PersistedStore(WidgetConfig())
+        let fake = FakePlatformOps()
+        let controller = makeController(store: store, platformOps: fake)
+
+        let rejection = controller.addHotkeyMapping(trigger: combo, pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0))
+
+        #expect(rejection == .missingModifier)
+        #expect(store.config.hotkeyMappings.isEmpty)
+        #expect(fake.registeredHotkeys.isEmpty)
+    }
+
+    @Test(arguments: combosThatKeepACharacter)
+    func anEditedMappingsTriggerMustCarryAModifierOtherThanShift(_ combo: Hotkey) {
+        let existing = HotkeyMapping(trigger: Hotkey(keyCode: 0x01, modifierFlags: 0x1000), pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0))
+        let store = PersistedStore(WidgetConfig(hotkeyMappings: [existing]))
+        let fake = FakePlatformOps()
+        let controller = makeController(store: store, platformOps: fake)
+
+        let rejection = controller.updateHotkeyMapping(at: 0, trigger: combo, pageKeystroke: existing.pageKeystroke)
+
+        #expect(rejection == .missingModifier)
+        #expect(store.config.hotkeyMappings == [existing])
+        #expect(fake.registeredHotkeys.isEmpty)
+        #expect(fake.unregisteredHotkeys.isEmpty)
+    }
+
+    @Test(arguments: combosThatKeepACharacter)
+    func aVideoKeystrokeMustCarryAModifierOtherThanShift(_ combo: Hotkey) {
+        let store = PersistedStore(WidgetConfig())
+        let controller = makeController(store: store)
+
+        let rejection = controller.updateVideoControlTrigger(.keystroke(combo), for: .seekForward)
+
+        #expect(rejection == .missingModifier)
+        #expect(store.config.videoControlTrigger(for: .seekForward) == nil)
+    }
+
+    /// The page side is a keystroke to send, not a key to listen for: a bare key is exactly what
+    /// most players want.
+    @Test func aMappingsPageKeystrokeMayBeABareKey() {
+        let store = PersistedStore(WidgetConfig())
+        let controller = makeController(store: store)
+
+        #expect(controller.addHotkeyMapping(trigger: Hotkey(keyCode: 0x26, modifierFlags: 0x0800), pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0)) == nil)
+        #expect(store.config.hotkeyMappings.count == 1)
+    }
+
+    /// The rule judges what is being recorded, not what is already there: a bare trigger saved
+    /// before #89 doesn't block editing the rest of its mapping.
+    @Test func aMappingWithABareTriggerSavedBeforeTheRuleCanStillHaveItsPageKeyEdited() {
+        let legacy = HotkeyMapping(trigger: Hotkey(keyCode: 0x28, modifierFlags: 0), pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0))
+        let store = PersistedStore(WidgetConfig(hotkeyMappings: [legacy]))
+        let controller = makeController(store: store)
+
+        let rejection = controller.updateHotkeyMapping(at: 0, trigger: legacy.trigger, pageKeystroke: Hotkey(keyCode: 0x24, modifierFlags: 0))
+
+        #expect(rejection == nil)
+        #expect(store.config.hotkeyMappings.map(\.pageKeystroke) == [Hotkey(keyCode: 0x24, modifierFlags: 0)])
     }
 
     @Test func reportsAccessibilityAndOpensItsSettingsPane() {

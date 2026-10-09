@@ -144,6 +144,7 @@ public final class SettingsController {
         let current = currentConfig().hotkey(for: action)
         guard hotkey != current else { return nil }
         if let hotkey {
+            if hotkey.keepsItsCharacter { return .missingModifier }
             if let conflict = inProcessConflict(with: hotkey, ignoringAction: action, ignoringMappingAt: nil) {
                 return conflict
             }
@@ -224,6 +225,7 @@ public final class SettingsController {
     /// Returns why it was refused (#86), or `nil` once the mapping is live.
     @discardableResult
     public func addHotkeyMapping(trigger: Hotkey, pageKeystroke: Hotkey) -> HotkeyRejection? {
+        if trigger.keepsItsCharacter { return .missingModifier }
         if let conflict = inProcessConflict(with: trigger, ignoringAction: nil, ignoringMappingAt: nil) {
             return conflict
         }
@@ -246,6 +248,7 @@ public final class SettingsController {
         guard mappings.indices.contains(index) else { return nil }
         let oldTrigger = mappings[index].trigger
         if trigger != oldTrigger {
+            if trigger.keepsItsCharacter { return .missingModifier }
             if let conflict = inProcessConflict(with: trigger, ignoringAction: nil, ignoringMappingAt: index) {
                 return conflict
             }
@@ -324,6 +327,7 @@ public final class SettingsController {
             if let other = VideoControlAction.allCases.first(where: { $0 != action && config.videoControlTrigger(for: $0) == trigger }) {
                 return .conflictsWithVideoControl(other)
             }
+            if case .keystroke(let hotkey) = trigger, hotkey.keepsItsCharacter { return .missingModifier }
             if case .keystroke(let hotkey) = trigger,
                let conflict = inProcessConflict(with: hotkey, ignoringAction: nil, ignoringMappingAt: nil, ignoringVideoAction: action) {
                 return conflict
