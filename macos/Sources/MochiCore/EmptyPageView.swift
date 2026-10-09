@@ -3,7 +3,7 @@ import SwiftUI
 /// The Empty Page (#16): a native SwiftUI view — not a webpage — shown in place of the WKWebView
 /// whenever `StartupResolution.resolveStartupContent` resolves to `.emptyPage`. An abstract
 /// Liquid Glass composition (two overlapping, slightly rotated glass panels) plus a
-/// de-emphasized default-hotkey quick reference, matching `design/mochi/EmptyPage.dc.html`.
+/// de-emphasized quick reference of the hotkeys in effect (#83), matching `design/mochi/EmptyPage.dc.html`.
 struct EmptyPageView: View {
     @Environment(\.colorScheme) private var colorScheme
     /// The toolbar strip's height. The page runs full-bleed underneath the toolbar, which floats
@@ -11,6 +11,8 @@ struct EmptyPageView: View {
     /// read from the safe area: the safe area follows the window's chrome, and Ghost Mode removing
     /// the titlebar would drop it to 0 and send the composition jumping up.
     var topInset: CGFloat = 0
+    /// The hotkeys in effect (#83), pushed by MochiCore — this view only draws them.
+    var quickReference: [HotkeyQuickReferenceEntry] = []
 
     /// The quick reference's own height, measured rather than guessed from its font sizes, so
     /// the composition knows how much of the page is left for it.
@@ -90,30 +92,19 @@ struct EmptyPageView: View {
             )
     }
 
-    /// The default hotkeys' actual combos (`HotkeyDisplay.keys`), not hardcoded label text —
-    /// so this stays correct if `DefaultHotkeys` or a 视频控制 default ever changes. Laid out like a menu's shortcut
+    /// The hotkeys in effect (`HotkeyQuickReference`), not the built-in defaults — a rebound
+    /// hotkey shows its new combo and a cleared one isn't there. Laid out like a menu's shortcut
     /// column: the action on the left, its keys on the right, one keycap per key.
     private var hotkeyQuickReference: some View {
         VStack(spacing: 10) {
-            Text("默认热键")
+            Text("热键")
                 .font(.system(size: 11))
                 .tracking(0.4)
                 .foregroundStyle(color(palette.textSecondary))
             Grid(horizontalSpacing: 28, verticalSpacing: 8) {
-                hotkeyRow(HotkeyDisplay.keys(of: DefaultHotkeys.toggleGhostMode), label: "切换幽灵模式")
-                // The Empty Page is Normal Mode content, and Hidden is a deliberate no-op outside
-                // Ghost Mode (ADR-0012) — the label says so, or pressing it here would read as broken.
-                hotkeyRow(HotkeyDisplay.keys(of: DefaultHotkeys.hideWidget), label: "隐藏窗口（幽灵模式下）")
-                // 视频控制 (#74) only listens in Ghost Mode, so the same applies.
-                if let trigger = VideoControlAction.togglePlayback.defaultTrigger {
-                    hotkeyRow(HotkeyDisplay.keys(of: trigger), label: "播放/暂停（幽灵模式下）")
+                ForEach(Array(quickReference.enumerated()), id: \.offset) { _, entry in
+                    hotkeyRow(entry.keys, label: entry.label)
                 }
-                if let trigger = VideoControlAction.seekBackward.defaultTrigger {
-                    hotkeyRow(
-                        HotkeyDisplay.keys(of: trigger),
-                        label: "后退 \(WidgetConfig.defaultVideoSeekStep) 秒（幽灵模式下）")
-                }
-                hotkeyRow(HotkeyDisplay.keys(of: DefaultHotkeys.openSettings), label: "打开设置")
             }
         }
         .opacity(0.55)

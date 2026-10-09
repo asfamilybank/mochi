@@ -894,7 +894,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         contentTopInset.constant = height
         webView.obscuredContentInsets = NSEdgeInsets(top: height, left: 0, bottom: 0, right: 0)
         nativePageTopConstraints.forEach { $0.constant = height }
-        emptyPageHostingView.rootView = EmptyPageView(topInset: height)
+        emptyPageHostingView.rootView.topInset = height
     }
 
     /// Which of the toolbar's two backgrounds is showing.
@@ -1744,6 +1744,10 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         (window as? MochiWidgetWindow)?.isSnapEnabled = enabled
     }
 
+    func setHotkeyQuickReference(_ entries: [HotkeyQuickReferenceEntry]) {
+        emptyPageHostingView.rootView.quickReference = entries
+    }
+
     // #72: 高级 pane
     private(set) var isHTTPWarningEnabled = false
 
@@ -2392,6 +2396,10 @@ public final class AppKitPlatformOps: PlatformOps {
     public func setSnapEnabled(_ enabled: Bool, in window: WidgetWindowHandle) {
         guard let handle = handle(for: window) else { return }
         handle.setSnapEnabled(enabled)
+    }
+
+    public func setHotkeyQuickReference(_ entries: [HotkeyQuickReferenceEntry], in window: WidgetWindowHandle) {
+        handle(for: window)?.setHotkeyQuickReference(entries)
     }
 
     // #72: 高级 pane

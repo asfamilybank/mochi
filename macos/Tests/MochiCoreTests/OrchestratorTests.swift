@@ -1404,6 +1404,47 @@ enum TrayScenario: Sendable {
         }
         return (fake, orchestrator)
     }
+
+    // #83: the Empty Page's quick reference shows what is in effect, not the built-in defaults.
+
+    @Test func openingTheWidgetPushesAQuickReferenceOfTheHotkeysInEffect() {
+        let fake = FakePlatformOps()
+        let config = WidgetConfig(url: nil, hotkeyOverrides: [.toggleGhostMode: Hotkey(keyCode: 0x26, modifierFlags: 0x0100)])
+            .updatingVideoSeekStep(10)
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+
+        orchestrator.start()
+
+        #expect(fake.hotkeyQuickReferences.map(\.windowID) == [1])
+        #expect(fake.hotkeyQuickReferences.last?.entries == [
+            HotkeyQuickReferenceEntry(label: "切换幽灵模式", keys: ["⌘", "J"]),
+            HotkeyQuickReferenceEntry(label: "隐藏窗口（幽灵模式下）", keys: ["⌥", "H"]),
+            HotkeyQuickReferenceEntry(label: "播放/暂停（幽灵模式下）", keys: ["右 ⌥"]),
+            HotkeyQuickReferenceEntry(label: "后退 10 秒（幽灵模式下）", keys: ["右 ⌘"]),
+            HotkeyQuickReferenceEntry(label: "打开设置", keys: ["⌘", ","]),
+        ])
+    }
+
+    @Test func aConfigChangePushesTheQuickReferenceAgainWithClearedVideoKeysLeftOut() {
+        let fake = FakePlatformOps()
+        var config = WidgetConfig(url: nil)
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+        orchestrator.start()
+
+        config = config
+            .updatingVideoControlTrigger(nil, for: .togglePlayback)
+            .updatingVideoControlTrigger(.keystroke(Hotkey(keyCode: 0x7C, modifierFlags: 0x0100)), for: .seekForward)
+        orchestrator.reapplyConfiguration()
+
+        #expect(fake.hotkeyQuickReferences.count == 2)
+        #expect(fake.hotkeyQuickReferences.last?.entries == [
+            HotkeyQuickReferenceEntry(label: "切换幽灵模式", keys: ["⌥", "G"]),
+            HotkeyQuickReferenceEntry(label: "隐藏窗口（幽灵模式下）", keys: ["⌥", "H"]),
+            HotkeyQuickReferenceEntry(label: "后退 5 秒（幽灵模式下）", keys: ["右 ⌘"]),
+            HotkeyQuickReferenceEntry(label: "前进 5 秒（幽灵模式下）", keys: ["⌘", "→"]),
+            HotkeyQuickReferenceEntry(label: "打开设置", keys: ["⌘", ","]),
+        ])
+    }
 }
 
 enum WidgetStateUnderTest: Sendable {

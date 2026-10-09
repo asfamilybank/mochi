@@ -193,6 +193,7 @@ public final class Orchestrator {
         platformOps.setWebInspectable(config.isWebInspectorEnabled, in: window)
         platformOps.setHTTPWarningEnabled(config.isHTTPWarningEnabled, in: window)
         platformOps.setPopupWindowsAllowed(config.popupWindowPolicy == .allow, in: window)
+        platformOps.setHotkeyQuickReference(HotkeyQuickReference.entries(for: config), in: window)
         platformOps.onWindowWillClose(window) { [weak self] in
             self?.handleWindowWillClose()
         }
@@ -342,7 +343,8 @@ public final class Orchestrator {
     /// Re-applies the settings that don't take effect by being re-read (#46): Snap has to be
     /// pushed to the live window, an opacity edit made *while in Ghost Mode* has to be pushed
     /// down right now (see `GhostModeController.reapplyConfiguration`), and 视频控制 has to start
-    /// or stop listening when an edit binds its first key or clears its last one (#78).
+    /// or stop listening when an edit binds its first key or clears its last one (#78), and the Empty
+    /// Page's quick reference has to be redrawn with the hotkeys now in effect (#83).
     /// Everything else in the config is read at its point of use and needs no call here. `SettingsController`
     /// invokes this after every persisted edit; a no-op while the widget is closed.
     public func reapplyConfiguration() {
@@ -352,6 +354,7 @@ public final class Orchestrator {
         platformOps.setWebInspectable(currentConfig().isWebInspectorEnabled, in: window)
         platformOps.setHTTPWarningEnabled(currentConfig().isHTTPWarningEnabled, in: window)
         platformOps.setPopupWindowsAllowed(currentConfig().popupWindowPolicy == .allow, in: window)
+        platformOps.setHotkeyQuickReference(HotkeyQuickReference.entries(for: currentConfig()), in: window)
         ghostModeController?.reapplyConfiguration()
         videoControl?.refreshObservation()
     }

@@ -243,6 +243,10 @@ public protocol PlatformOps: AnyObject {
 
     func setSnapEnabled(_ enabled: Bool, in window: WidgetWindowHandle)
 
+    /// The Empty Page's hotkey quick reference (#83), as computed from the config in effect.
+    /// Pushed on open and on every `reapplyConfiguration()`; the Empty Page only draws it.
+    func setHotkeyQuickReference(_ entries: [HotkeyQuickReferenceEntry], in window: WidgetWindowHandle)
+
     /// 显示网页开发者功能 (#72): whether the page offers 检查元素 in its context menu
     /// (`WKWebView.isInspectable`). Pushed on open and on every `reapplyConfiguration()`.
     func setWebInspectable(_ enabled: Bool, in window: WidgetWindowHandle)

@@ -252,6 +252,14 @@ final class FakePlatformOps: PlatformOps {
         snapEnabledChanges.append((enabled, handle.id))
     }
 
+    // #83
+    private(set) var hotkeyQuickReferences: [(entries: [HotkeyQuickReferenceEntry], windowID: Int)] = []
+
+    func setHotkeyQuickReference(_ entries: [HotkeyQuickReferenceEntry], in window: WidgetWindowHandle) {
+        let handle = window as! FakeWidgetWindowHandle
+        hotkeyQuickReferences.append((entries, handle.id))
+    }
+
     // #72: 高级 pane
     private(set) var webInspectableChanges: [(enabled: Bool, windowID: Int)] = []
     private(set) var httpWarningChanges: [(enabled: Bool, windowID: Int)] = []
