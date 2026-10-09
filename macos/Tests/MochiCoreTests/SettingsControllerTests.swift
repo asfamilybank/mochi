@@ -734,6 +734,56 @@ import Testing
         #expect(fake.presentedAlerts.count == 1)
     }
 
+    /// Once a cleared action's default has been taken by something that never reaches the OS —
+    /// a mapping registered in-process, or a video key that only listens — restoring it would
+    /// double-book the combo. It stays as it is and is listed as not restored.
+    @Test(arguments: [false, true])
+    func restoringDefaultsLeavesAnActionWhoseDefaultSomethingElseNowHolds(heldByVideoKey: Bool) {
+        var config = WidgetConfig(url: URL(string: "https://example.com")!, hotkeyOverrides: [.toggleGhostMode: nil])
+        if heldByVideoKey {
+            config = config.updatingVideoControlTrigger(.keystroke(DefaultHotkeys.toggleGhostMode), for: .seekForward)
+        } else {
+            config = config.updatingHotkeyMappings([
+                HotkeyMapping(trigger: DefaultHotkeys.toggleGhostMode, pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0)),
+            ])
+        }
+        let store = PersistedStore(config)
+        let fake = FakePlatformOps()
+        let controller = makeController(store: store, platformOps: fake)
+
+        controller.resetActionHotkeysToDefaults()
+
+        #expect(fake.hotkeyCallOrder.isEmpty)
+        #expect(store.config.hotkey(for: .toggleGhostMode) == nil)
+        #expect(fake.presentedAlerts.count == 1)
+    }
+
+    /// Swapping the two actions' combos and then restoring must put both back — each one's
+    /// default is held only by the other action, which is itself on its way back.
+    @Test func restoringDefaultsUndoesASwapOfTheTwoActions() {
+        let store = PersistedStore(
+            WidgetConfig(
+                url: URL(string: "https://example.com")!,
+                hotkeyOverrides: [.toggleGhostMode: DefaultHotkeys.hideWidget, .hideWidget: DefaultHotkeys.toggleGhostMode]))
+        let controller = makeController(store: store)
+
+        controller.resetActionHotkeysToDefaults()
+
+        #expect(store.config.hotkeyOverrides.isEmpty)
+    }
+
+    // #86: a refusal persists nothing and announces no change.
+    @Test func aRefusedActionOrVideoKeyEditFiresNoChangeNotification() {
+        let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
+        var notifications = 0
+        let controller = makeController(store: store, configDidChange: { notifications += 1 })
+
+        #expect(controller.updateActionHotkey(.toggleGhostMode, to: DefaultHotkeys.hideWidget) == .conflictsWithAction(.hideWidget))
+        #expect(controller.updateVideoControlTrigger(.modifierTap(.rightCommand), for: .seekForward) == .conflictsWithVideoControl(.seekBackward))
+        #expect(notifications == 0)
+        #expect(store.writeCount == 0)
+    }
+
     /// A cleared action holds no combo, so its default is free for anything else to take.
     @Test func aClearedActionsDefaultComboIsFreeForAMappingOrAVideoKey() {
         let store = PersistedStore(

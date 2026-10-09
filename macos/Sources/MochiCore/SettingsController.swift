@@ -157,15 +157,21 @@ public final class SettingsController {
 
     /// Puts every overridden action back on its built-in combo, cleared ones included (#85) — the
     /// escape hatch for a user who bound both hotkeys to something odd and forgot what (#45). Each action is its own
-    /// transaction with the same rollback rule as `updateActionHotkey`; one default being held by
-    /// another app doesn't stop the other from being restored.
+    /// transaction with the same rollback rule as `updateActionHotkey`; one default being held —
+    /// by another app, or in-process by a mapping or a video key — doesn't stop the other from
+    /// being restored.
     public func resetActionHotkeysToDefaults() {
         var restored: [HotkeyAction] = []
         var failedNames: [String] = []
         for action in HotkeyAction.allCases {
             let current = currentConfig().hotkey(for: action)
             guard current != action.defaultHotkey else { continue }
-            if rebind(from: current, to: action.defaultHotkey) {
+            // Every action is on its way back to its own default and the defaults never collide,
+            // so only something that isn't an action can be in the way.
+            let conflict = inProcessConflict(with: action.defaultHotkey, ignoringAction: action, ignoringMappingAt: nil)
+            if let conflict, !conflict.isActionConflict {
+                failedNames.append(action.displayName)
+            } else if rebind(from: current, to: action.defaultHotkey) {
                 restored.append(action)
             } else {
                 failedNames.append(action.displayName)
@@ -179,7 +185,7 @@ public final class SettingsController {
         if !failedNames.isEmpty {
             platformOps.presentAlert(
                 title: "部分默认热键无法恢复",
-                message: "以下功能的默认热键已被其他应用占用，已保留当前设置：\(failedNames.joined(separator: "、"))"
+                message: "以下功能的默认热键已被其他应用或 Mochi 的其他按键占用，已保留当前设置：\(failedNames.joined(separator: "、"))"
             )
         }
     }

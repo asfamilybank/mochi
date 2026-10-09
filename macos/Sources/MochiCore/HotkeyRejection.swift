@@ -11,6 +11,11 @@ public enum HotkeyRejection: Equatable, Sendable {
     /// The OS refused to register it: another app holds the combo.
     case heldByAnotherApp
 
+    var isActionConflict: Bool {
+        if case .conflictsWithAction = self { return true }
+        return false
+    }
+
     /// What the row shows in place of its description.
     public var message: String {
         switch self {

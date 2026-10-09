@@ -18,7 +18,7 @@ final class SettingsViewModel: ObservableObject {
     @Published private(set) var config: WidgetConfig
 
     /// A row of the 热键 pane a refusal can be shown on (#86).
-    enum HotkeyRow: Hashable {
+    enum HotkeyRowID: Hashable {
         case action(HotkeyAction)
         case videoControl(VideoControlAction)
         case newMapping
@@ -26,7 +26,7 @@ final class SettingsViewModel: ObservableObject {
 
     /// The last refused recording and the row it happened on (#86): that row shows the reason in
     /// red in place of its description, until the next recording starts or a few seconds pass.
-    @Published private(set) var rowRejection: (row: HotkeyRow, message: String)?
+    @Published private(set) var rowRejection: (row: HotkeyRowID, message: String)?
     private var rejectionExpiry: DispatchWorkItem?
     private static let rejectionDisplayDuration: TimeInterval = 4
 
@@ -136,7 +136,7 @@ final class SettingsViewModel: ObservableObject {
         show(rejection, on: .action(action))
     }
 
-    func rejectionMessage(for row: HotkeyRow) -> String? {
+    func rejectionMessage(for row: HotkeyRowID) -> String? {
         rowRejection?.row == row ? rowRejection?.message : nil
     }
 
@@ -146,7 +146,7 @@ final class SettingsViewModel: ObservableObject {
         rowRejection = nil
     }
 
-    private func show(_ rejection: HotkeyRejection?, on row: HotkeyRow) {
+    private func show(_ rejection: HotkeyRejection?, on row: HotkeyRowID) {
         clearRowRejection()
         guard let rejection else { return }
         rowRejection = (row, rejection.message)
@@ -155,10 +155,12 @@ final class SettingsViewModel: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.rejectionDisplayDuration, execute: expiry)
     }
 
-    /// The panel's one 恢复默认 button covers both the action hotkeys and 视频控制 (#79).
+    /// The panel's one 恢复默认 button covers both the action hotkeys and 视频控制 (#79). Video
+    /// keys go first: one parked on an action's default would otherwise keep that action from
+    /// being restored, though it is about to move off it itself.
     func resetHotkeysToDefaults() {
-        controller.resetActionHotkeysToDefaults()
         controller.resetVideoControlToDefaults()
+        controller.resetActionHotkeysToDefaults()
         config = controller.config
     }
 

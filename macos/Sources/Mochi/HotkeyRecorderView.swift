@@ -91,6 +91,9 @@ final class HotkeyRecorderField: NSView, KeyCapturingResponder {
     private let width: CGFloat
     private var tapRecognizer = ModifierTapRecognizer()
     private let clearButton = NSButton()
+    /// While recording: a click anywhere else in the app ends it, even on something that doesn't
+    /// take first responder (a blank stretch of the pane).
+    private var clickElsewhereMonitor: Any?
 
     private var prompt: String { recordsModifierTaps ? "按下按键，或单独轻按修饰键…" : "按下组合键…" }
 
@@ -142,6 +145,12 @@ final class HotkeyRecorderField: NSView, KeyCapturingResponder {
         tapRecognizer = ModifierTapRecognizer()
         onRecordingStarted?()
         window?.makeFirstResponder(self)
+        clickElsewhereMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            if let self, event.window !== self.window || !self.bounds.contains(self.convert(event.locationInWindow, from: nil)) {
+                self.stopRecording()
+            }
+            return event
+        }
         refreshClearButton()
         needsDisplay = true
     }
@@ -149,6 +158,8 @@ final class HotkeyRecorderField: NSView, KeyCapturingResponder {
     private func stopRecording() {
         guard isCapturingKeys else { return }
         isCapturingKeys = false
+        if let clickElsewhereMonitor { NSEvent.removeMonitor(clickElsewhereMonitor) }
+        clickElsewhereMonitor = nil
         refreshClearButton()
         needsDisplay = true
     }
@@ -195,6 +206,20 @@ final class HotkeyRecorderField: NSView, KeyCapturingResponder {
     override func resignFirstResponder() -> Bool {
         stopRecording()
         return super.resignFirstResponder()
+    }
+
+    /// Switching to another app or window doesn't resign first responder — the field would still
+    /// be recording when the user came back — so leaving the window ends it too.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: nil)
+        guard let window else { return }
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowDidResignKey), name: NSWindow.didResignKeyNotification, object: window)
+    }
+
+    @objc private func windowDidResignKey() {
+        stopRecording()
     }
 
     @objc private func clearClicked() {
