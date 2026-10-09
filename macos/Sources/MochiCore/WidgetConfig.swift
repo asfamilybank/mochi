@@ -201,7 +201,8 @@ extension WidgetConfig {
     }
 
     /// `[video_control.<action>]` (#78), one sub-table per action that differs from its default:
-    /// `kind = "modifier_tap"` with a `modifier` (`ModifierKey.rawValue`), `kind = "keystroke"`
+    /// `kind = "modifier_tap"` or (#91) `"modifier_double_tap"` with a `modifier`
+    /// (`ModifierKey.rawValue`), `kind = "keystroke"`
     /// with `key_code`/`modifiers` like `[hotkeys]`, or `kind = "unbound"`. Anything malformed —
     /// an unknown kind, modifier or action, a bad key code — falls back to that action's default,
     /// with the same leniency as the rest of this hand-editable file.
@@ -215,6 +216,9 @@ extension WidgetConfig {
             case "modifier_tap":
                 guard let key = entry["modifier"]?.string.flatMap(ModifierKey.init(rawValue:)) else { continue }
                 overrides[action] = .modifierTap(key)
+            case "modifier_double_tap":
+                guard let key = entry["modifier"]?.string.flatMap(ModifierKey.init(rawValue:)) else { continue }
+                overrides[action] = .modifierDoubleTap(key)
             case "keystroke":
                 guard let hotkey = parseKeystroke(keyCodeKey: "key_code", modifiersKey: "modifiers", in: entry) else { continue }
                 overrides[action] = .keystroke(hotkey)
@@ -409,6 +413,9 @@ extension WidgetConfig {
                     entry["kind"] = "unbound"
                 case .modifierTap(let key)?:
                     entry["kind"] = "modifier_tap"
+                    entry["modifier"] = key.rawValue
+                case .modifierDoubleTap(let key)?:
+                    entry["kind"] = "modifier_double_tap"
                     entry["modifier"] = key.rawValue
                 case .keystroke(let hotkey)?:
                     entry["kind"] = "keystroke"

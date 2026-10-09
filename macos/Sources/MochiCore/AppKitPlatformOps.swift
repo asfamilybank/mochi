@@ -2515,6 +2515,12 @@ public final class AppKitPlatformOps: PlatformOps {
         inputMonitors = []
     }
 
+    public func schedule(after delay: TimeInterval, _ work: @escaping () -> Void) -> () -> Void {
+        let item = DispatchWorkItem(block: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
+        return { item.cancel() }
+    }
+
     public func performVideoCommand(_ command: VideoCommand, in window: WidgetWindowHandle) {
         handle(for: window)?.performVideoCommand(command)
     }

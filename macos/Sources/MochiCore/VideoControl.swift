@@ -33,6 +33,8 @@ public enum VideoControlAction: String, CaseIterable, Hashable, Sendable {
 /// or combo.
 public enum VideoControlTrigger: Hashable {
     case modifierTap(ModifierKey)
+    /// The same modifier tapped twice in quick succession (#91, ADR-0022).
+    case modifierDoubleTap(ModifierKey)
     case keystroke(Hotkey)
 
     /// Which of the three kinds of trigger key this is (#90) — what the settings row's
@@ -40,20 +42,24 @@ public enum VideoControlTrigger: Hashable {
     public var kind: TriggerKind {
         switch self {
         case .modifierTap: .tap
+        case .modifierDoubleTap: .doubleTap
         case .keystroke: .combo
         }
     }
 }
 
-/// How a trigger key is pressed (CONTEXT.md, ADR-0022): a modifier tapped on its own, or a
-/// combo. The settings rows that can take either let the user pick one first (#90).
+/// How a trigger key is pressed (CONTEXT.md, ADR-0022): a modifier tapped on its own, the same
+/// modifier tapped twice, or a combo. The settings rows that can take more than one let the user
+/// pick first (#90).
 public enum TriggerKind: CaseIterable, Hashable, Sendable {
     case tap
+    case doubleTap
     case combo
 
     public var displayName: String {
         switch self {
         case .tap: "轻按"
+        case .doubleTap: "连按两次"
         case .combo: "组合键"
         }
     }
@@ -82,7 +88,9 @@ public final class VideoControl {
     private let currentWindow: () -> WidgetWindowHandle?
     private var isObserving = false
     private var hasRequestedAccessibility = false
-    private var tapRecognizer = ModifierTapRecognizer()
+    private var tapRecognizer = TriggerTapRecognizer()
+    /// Cancels the wait on `tapRecognizer`'s held-back tap, while there is one.
+    private var cancelHeldBackTapRelease: (() -> Void)?
 
     public init(
         platformOps: PlatformOps,
@@ -111,29 +119,56 @@ public final class VideoControl {
                 platformOps.requestAccessibilityPermission()
             }
             isObserving = true
-            tapRecognizer = ModifierTapRecognizer()
+            tapRecognizer = TriggerTapRecognizer()
             platformOps.startObservingInput { [weak self] event in
                 self?.handle(event)
             }
         } else if !shouldObserve, isObserving {
             isObserving = false
             platformOps.stopObservingInput()
+            cancelHeldBackTapRelease?()
+            cancelHeldBackTapRelease = nil
         }
     }
 
     private func handle(_ event: RawInputEvent) {
-        guard isGhostModeActive(), let window = currentWindow() else { return }
+        guard isGhostModeActive(), currentWindow() != nil else { return }
+        let config = currentConfig()
+        // Which keys are bound which way decides whether a tap must wait to see if a second
+        // follows (#91) — read from the config at the moment of the press, like everything else.
+        let bound = VideoControlAction.allCases.compactMap { config.videoControlTrigger(for: $0) }
+        tapRecognizer.tapKeys = Set(bound.compactMap { if case .modifierTap(let key) = $0 { key } else { nil } })
+        tapRecognizer.doubleTapKeys = Set(bound.compactMap { if case .modifierDoubleTap(let key) = $0 { key } else { nil } })
+        let heldBackBefore = tapRecognizer.heldBackTap
         // Every event goes through the recognizer, even one that is itself a match: a key going
         // down is also what cancels a modifier tap in progress.
-        let tapped = tapRecognizer.handle(event)
-        let trigger: VideoControlTrigger
-        if let tapped {
-            trigger = .modifierTap(tapped)
-        } else if case .keyDown(let keyCode, let modifierFlags, isRepeat: false, _) = event {
-            trigger = .keystroke(Hotkey(keyCode: keyCode, modifierFlags: modifierFlags))
-        } else {
-            return
+        for tapEvent in tapRecognizer.handle(event) {
+            perform(tapEvent.trigger)
         }
+        if case .keyDown(let keyCode, let modifierFlags, isRepeat: false, _) = event {
+            perform(.keystroke(Hotkey(keyCode: keyCode, modifierFlags: modifierFlags)))
+        }
+        if tapRecognizer.heldBackTap != heldBackBefore {
+            waitOutHeldBackTap()
+        }
+    }
+
+    /// Restarts the wait for whatever tap `tapRecognizer` now holds back: when the double-tap
+    /// interval passes with no second tap, it was a tap after all.
+    private func waitOutHeldBackTap() {
+        cancelHeldBackTapRelease?()
+        cancelHeldBackTapRelease = nil
+        guard tapRecognizer.heldBackTap != nil else { return }
+        cancelHeldBackTapRelease = platformOps.schedule(after: TriggerTapRecognizer.doubleTapInterval) { [weak self] in
+            guard let self else { return }
+            cancelHeldBackTapRelease = nil
+            guard isGhostModeActive(), let tap = tapRecognizer.releaseHeldBackTap() else { return }
+            perform(tap.trigger)
+        }
+    }
+
+    private func perform(_ trigger: VideoControlTrigger) {
+        guard let window = currentWindow() else { return }
         let config = currentConfig()
         guard let action = VideoControlAction.allCases.first(where: { config.videoControlTrigger(for: $0) == trigger })
         else { return }

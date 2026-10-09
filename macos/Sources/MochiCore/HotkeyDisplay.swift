@@ -17,18 +17,25 @@ public enum HotkeyDisplay {
     }
 
     /// A 视频控制 key (#74): a modifier tap is one keycap naming its side ("右 ⌥") — it is
-    /// pressed on its own, so there is nothing to combine it with; a keystroke reads like any
-    /// other hotkey.
+    /// pressed on its own, so there is nothing to combine it with; a double tap (#91) is that cap
+    /// with "×2" after it; a keystroke reads like any other hotkey.
     public static func describe(_ trigger: VideoControlTrigger) -> String {
-        keys(of: trigger).joined()
+        switch trigger {
+        case .modifierDoubleTap(let key): "\(modifierTapLabel(key)) \(doubleTapMark)"
+        default: keys(of: trigger).joined()
+        }
     }
 
+    /// One keycap per physical key — a double tap's key is drawn once; the "×2" that says it is
+    /// pressed twice is `doubleTapMark`, for the caller to set beside the caps.
     public static func keys(of trigger: VideoControlTrigger) -> [String] {
         switch trigger {
-        case .modifierTap(let key): [modifierTapLabel(key)]
+        case .modifierTap(let key), .modifierDoubleTap(let key): [modifierTapLabel(key)]
         case .keystroke(let hotkey): keys(of: hotkey)
         }
     }
+
+    public static let doubleTapMark = "×2"
 
     private static func modifierTapLabel(_ key: ModifierKey) -> String {
         switch key {

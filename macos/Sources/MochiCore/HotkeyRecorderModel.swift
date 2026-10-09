@@ -50,7 +50,8 @@ public enum RecorderKeyOutcome: Equatable, Sendable {
     /// Unbind — the keyboard twin of the field's ⓧ.
     case clear
     case capture(Hotkey)
-    case captureTap(ModifierKey)
+    /// A modifier pressed on its own, once or twice.
+    case captureTap(ModifierTapEvent)
     /// Keep recording and say on the row why that key wasn't taken (#90).
     case hint(HotkeyRejection)
 }
@@ -71,6 +72,7 @@ public enum HotkeyRecorderModel {
         switch trigger {
         case nil: face(of: nil as Hotkey?)
         case .modifierTap(let key)?: .singleCap(HotkeyDisplay.describe(.modifierTap(key)))
+        case .modifierDoubleTap(let key)?: .singleCap(HotkeyDisplay.describe(.modifierDoubleTap(key)))
         case .keystroke(let hotkey)?: face(of: hotkey as Hotkey?)
         }
     }
@@ -86,14 +88,30 @@ public enum HotkeyRecorderModel {
         let hotkey = Hotkey(keyCode: keyCode, modifierFlags: modifierFlags)
         switch target {
         case .pageKeystroke: return .capture(hotkey)
-        case .trigger(.tap): return .hint(.needsModifierTap)
+        case .trigger(.tap), .trigger(.doubleTap): return .hint(.needsModifierTap)
         case .trigger(.combo): return hotkey.keepsItsCharacter ? .hint(.missingModifier) : .capture(hotkey)
         }
     }
 
-    /// A modifier tapped on its own: the key itself while a tap is wanted, otherwise nothing —
-    /// while recording a combo it is a combo begun and abandoned.
-    public static func outcome(ofModifierTap key: ModifierKey, recording target: RecorderTarget) -> RecorderKeyOutcome? {
-        target == .trigger(.tap) ? .captureTap(key) : nil
+    /// A modifier pressed on its own, once or twice: recorded when that is the kind wanted,
+    /// otherwise nothing — while recording a combo it is a combo begun and abandoned.
+    public static func outcome(of tap: ModifierTapEvent, recording target: RecorderTarget) -> RecorderKeyOutcome? {
+        switch (tap, target) {
+        case (.tap, .trigger(.tap)), (.doubleTap, .trigger(.doubleTap)): .captureTap(tap)
+        default: nil
+        }
+    }
+
+    /// The recognizer a recorder judges taps with while recording `target`: every key counts as
+    /// bound the way being recorded, so a double tap needs its second tap and a tap needn't wait.
+    public static func tapRecognizer(recording target: RecorderTarget) -> TriggerTapRecognizer {
+        var recognizer = TriggerTapRecognizer()
+        let everyKey = Set(ModifierKey.allCases)
+        switch target {
+        case .trigger(.tap): recognizer.tapKeys = everyKey
+        case .trigger(.doubleTap): recognizer.doubleTapKeys = everyKey
+        case .trigger(.combo), .pageKeystroke: break
+        }
+        return recognizer
     }
 }

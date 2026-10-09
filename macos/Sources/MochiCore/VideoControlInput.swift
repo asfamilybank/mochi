@@ -82,6 +82,102 @@ public struct ModifierTapRecognizer {
     }
 }
 
+extension RawInputEvent {
+    public var timestamp: TimeInterval {
+        switch self {
+        case .modifierChanged(_, _, _, let timestamp), .keyDown(_, _, _, let timestamp), .mouseDown(let timestamp):
+            timestamp
+        }
+    }
+}
+
+/// A modifier pressed on its own, once or twice (#91).
+public enum ModifierTapEvent: Equatable, Sendable {
+    case tap(ModifierKey)
+    case doubleTap(ModifierKey)
+
+    public var trigger: VideoControlTrigger {
+        switch self {
+        case .tap(let key): .modifierTap(key)
+        case .doubleTap(let key): .modifierDoubleTap(key)
+        }
+    }
+}
+
+/// Turns taps into taps and double taps (#91, ADR-0022), given which keys are bound which way:
+///
+/// - a key bound to a double tap remembers its tap; the same key tapped again within
+///   `doubleTapInterval` (release to release) is a double tap;
+/// - a key bound **both** ways holds its tap back until that interval has passed —
+///   `releaseHeldBackTap()`, called by whoever keeps the time, turns it into a tap then — so a
+///   double tap never also fires the tap;
+/// - every other key's tap is a tap at once, so binding a double tap somewhere never slows the
+///   default 播放/暂停 down.
+///
+/// Anything else pressed in between — a key, a mouse button, another modifier — ends the sequence
+/// and drops a held-back tap, the same rule a single tap already follows.
+public struct TriggerTapRecognizer {
+    public static let doubleTapInterval: TimeInterval = 0.3
+
+    /// The keys bound to a tap and to a double tap; set before each event.
+    public var tapKeys: Set<ModifierKey> = []
+    public var doubleTapKeys: Set<ModifierKey> = []
+
+    /// A tap waiting out the double-tap interval.
+    public struct HeldBackTap: Equatable, Sendable {
+        public var key: ModifierKey
+        public var at: TimeInterval
+    }
+
+    public private(set) var heldBackTap: HeldBackTap?
+    private var taps = ModifierTapRecognizer()
+    private var firstTap: (key: ModifierKey, at: TimeInterval)?
+
+    public init() {}
+
+    public mutating func handle(_ event: RawInputEvent) -> [ModifierTapEvent] {
+        guard let key = taps.handle(event) else {
+            if !isSecondPress(event) {
+                firstTap = nil
+                heldBackTap = nil
+            }
+            return []
+        }
+        let time = event.timestamp
+        if let firstTap, firstTap.key == key, time - firstTap.at <= Self.doubleTapInterval {
+            self.firstTap = nil
+            heldBackTap = nil
+            return [.doubleTap(key)]
+        }
+        // A held-back tap whose interval ran out before its release was delivered is still a tap.
+        let overdue = heldBackTap.map { [ModifierTapEvent.tap($0.key)] } ?? []
+        heldBackTap = nil
+        guard doubleTapKeys.contains(key) else {
+            firstTap = nil
+            return overdue + [.tap(key)]
+        }
+        firstTap = (key, time)
+        if tapKeys.contains(key) { heldBackTap = HeldBackTap(key: key, at: time) }
+        return overdue
+    }
+
+    /// The double-tap interval passed with no second tap: the held-back tap, a tap after all.
+    public mutating func releaseHeldBackTap() -> ModifierTapEvent? {
+        defer {
+            heldBackTap = nil
+            firstTap = nil
+        }
+        return heldBackTap.map { .tap($0.key) }
+    }
+
+    /// The same modifier going down again, alone — the start of the second tap, which mustn't
+    /// end the sequence it completes.
+    private func isSecondPress(_ event: RawInputEvent) -> Bool {
+        guard let firstTap, case .modifierChanged(let keyCode, let held, _, _) = event else { return false }
+        return keyCode == firstTap.key.keyCode && held == [firstTap.key]
+    }
+}
+
 /// A control that is capturing keys for itself — the settings panel's recorders (#79). While one
 /// is first responder and capturing, 视频控制 ignores Mochi's own input, so recording right ⌥
 /// doesn't also pause the video.

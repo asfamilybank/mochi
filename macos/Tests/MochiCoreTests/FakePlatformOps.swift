@@ -482,6 +482,27 @@ final class FakePlatformOps: PlatformOps {
         inputHandler = nil
     }
 
+    /// Scheduled work waits here until a test calls `runScheduledWork()` — the stand-in for time
+    /// passing (#91).
+    private var scheduledWork: [(id: Int, work: () -> Void)] = []
+    private var nextScheduledWorkID = 0
+
+    var pendingScheduledWorkCount: Int { scheduledWork.count }
+
+    func schedule(after delay: TimeInterval, _ work: @escaping () -> Void) -> () -> Void {
+        nextScheduledWorkID += 1
+        let id = nextScheduledWorkID
+        scheduledWork.append((id, work))
+        return { [weak self] in self?.scheduledWork.removeAll { $0.id == id } }
+    }
+
+    /// Runs everything scheduled and not cancelled, as if every delay had passed.
+    func runScheduledWork() {
+        let due = scheduledWork
+        scheduledWork = []
+        due.forEach { $0.work() }
+    }
+
     func performVideoCommand(_ command: VideoCommand, in window: WidgetWindowHandle) {
         videoCommands.append((command, (window as! FakeWidgetWindowHandle).id))
     }

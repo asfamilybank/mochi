@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import MochiCore
@@ -40,7 +41,7 @@ import Testing
 
     // MARK: - Keys pressed while recording
 
-    private static let everyTarget: [RecorderTarget] = [.trigger(.tap), .trigger(.combo), .pageKeystroke]
+    private static let everyTarget: [RecorderTarget] = [.trigger(.tap), .trigger(.doubleTap), .trigger(.combo), .pageKeystroke]
 
     /// Esc and ⌫/⌦ mean the same whatever is being recorded.
     @Test(arguments: everyTarget)
@@ -64,6 +65,7 @@ import Testing
         (target: .trigger(.combo), modifiers: UInt32(0x0200), outcome: .hint(.missingModifier)),
         (target: .trigger(.tap), modifiers: UInt32(0), outcome: .hint(.needsModifierTap)),
         (target: .trigger(.tap), modifiers: UInt32(0x0800), outcome: .hint(.needsModifierTap)),
+        (target: .trigger(.doubleTap), modifiers: UInt32(0), outcome: .hint(.needsModifierTap)),
         (target: .pageKeystroke, modifiers: UInt32(0), outcome: .capture(Hotkey(keyCode: 0x26, modifierFlags: 0))),
         (target: .pageKeystroke, modifiers: UInt32(0x0200), outcome: .capture(Hotkey(keyCode: 0x26, modifierFlags: 0x0200))),
     ])
@@ -71,19 +73,45 @@ import Testing
         #expect(HotkeyRecorderModel.outcome(ofKeyDown: 0x26, modifierFlags: c.modifiers, recording: c.target) == c.outcome)
     }
 
-    /// A modifier tapped on its own records only when a tap is what is being recorded; while a
-    /// combo is, it is just the start of one the user changed their mind about.
+    /// A modifier pressed on its own records only as the kind being recorded; while a combo is,
+    /// it is just the start of one the user changed their mind about.
     @Test(arguments: [
-        (target: RecorderTarget.trigger(.tap), outcome: RecorderKeyOutcome?.some(.captureTap(.rightOption))),
-        (target: .trigger(.combo), outcome: nil),
-        (target: .pageKeystroke, outcome: nil),
+        (tap: ModifierTapEvent.tap(.rightOption), target: RecorderTarget.trigger(.tap), recorded: true),
+        (tap: .doubleTap(.rightOption), target: .trigger(.doubleTap), recorded: true),
+        (tap: .tap(.rightOption), target: .trigger(.doubleTap), recorded: false),
+        (tap: .doubleTap(.rightOption), target: .trigger(.tap), recorded: false),
+        (tap: .tap(.rightOption), target: .trigger(.combo), recorded: false),
+        (tap: .tap(.rightOption), target: .pageKeystroke, recorded: false),
     ])
-    func aModifierTapIsRecordedOnlyAsATap(_ c: (target: RecorderTarget, outcome: RecorderKeyOutcome?)) {
-        #expect(HotkeyRecorderModel.outcome(ofModifierTap: .rightOption, recording: c.target) == c.outcome)
+    func aModifierIsRecordedOnlyAsTheKindBeingRecorded(_ c: (tap: ModifierTapEvent, target: RecorderTarget, recorded: Bool)) {
+        #expect(HotkeyRecorderModel.outcome(of: c.tap, recording: c.target) == (c.recorded ? .captureTap(c.tap) : nil))
+    }
+
+    /// While recording a double tap the first tap is only half of one; the second, soon after,
+    /// completes it. While recording a tap there is nothing to wait for.
+    @Test func theRecordersRecognizerWaitsForASecondTapOnlyWhenRecordingADoubleTap() {
+        let down = { (t: TimeInterval) in RawInputEvent.modifierChanged(keyCode: ModifierKey.rightOption.keyCode, held: [.rightOption], lastPressAt: 0, timestamp: t) }
+        let up = { (t: TimeInterval) in RawInputEvent.modifierChanged(keyCode: ModifierKey.rightOption.keyCode, held: [], lastPressAt: 0, timestamp: t) }
+
+        var doubleTap = HotkeyRecorderModel.tapRecognizer(recording: .trigger(.doubleTap))
+        #expect(doubleTap.handle(down(10)).isEmpty)
+        #expect(doubleTap.handle(up(10.05)).isEmpty)
+        #expect(doubleTap.handle(down(10.15)).isEmpty)
+        #expect(doubleTap.handle(up(10.2)) == [.doubleTap(.rightOption)])
+
+        var tap = HotkeyRecorderModel.tapRecognizer(recording: .trigger(.tap))
+        #expect(tap.handle(down(10)).isEmpty)
+        #expect(tap.handle(up(10.05)) == [.tap(.rightOption)])
+    }
+
+    @Test func aDoubleTapIsOneCapMarkedTimesTwo() {
+        #expect(HotkeyRecorderModel.face(of: VideoControlTrigger.modifierDoubleTap(.rightOption) as VideoControlTrigger?)
+            == .singleCap("右 ⌥ ×2"))
     }
 
     @Test func aVideoKeyIsOfTheKindItWasRecordedAs() {
         #expect(VideoControlTrigger.modifierTap(.rightOption).kind == .tap)
+        #expect(VideoControlTrigger.modifierDoubleTap(.rightOption).kind == .doubleTap)
         #expect(VideoControlTrigger.keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x0800)).kind == .combo)
     }
 }

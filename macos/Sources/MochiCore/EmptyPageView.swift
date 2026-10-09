@@ -103,14 +103,14 @@ struct EmptyPageView: View {
                 .foregroundStyle(color(palette.textSecondary))
             Grid(horizontalSpacing: 28, verticalSpacing: 8) {
                 ForEach(Array(quickReference.enumerated()), id: \.offset) { _, entry in
-                    hotkeyRow(entry.keys, label: entry.label)
+                    hotkeyRow(entry.keys, mark: entry.mark, label: entry.label)
                 }
             }
         }
         .opacity(0.55)
     }
 
-    private func hotkeyRow(_ keys: [String], label: String) -> some View {
+    private func hotkeyRow(_ keys: [String], mark: String?, label: String) -> some View {
         GridRow {
             Text(label)
                 .font(.system(size: 12))
@@ -119,6 +119,12 @@ struct EmptyPageView: View {
             HStack(spacing: 4) {
                 ForEach(Array(keys.enumerated()), id: \.offset) { _, key in
                     keycap(key)
+                }
+                // A double tap's "×2" (#91): plain text beside its one cap, not a second cap.
+                if let mark {
+                    Text(mark)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(color(palette.textSecondary))
                 }
             }
             .gridColumnAlignment(.trailing)

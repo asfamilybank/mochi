@@ -1,14 +1,17 @@
 import Foundation
 
 /// One row of the Empty Page's hotkey quick reference (#83): the action on the left, one keycap
-/// per key on the right.
+/// per key on the right — then `mark`, set beside the caps rather than drawn as one: "×2" for a
+/// double tap (#91), whose one key would otherwise read as two different keys.
 public struct HotkeyQuickReferenceEntry: Equatable, Sendable {
     public var label: String
     public var keys: [String]
+    public var mark: String?
 
-    public init(label: String, keys: [String]) {
+    public init(label: String, keys: [String], mark: String? = nil) {
         self.label = label
         self.keys = keys
+        self.mark = mark
     }
 }
 
@@ -25,7 +28,9 @@ public enum HotkeyQuickReference {
         }
         for action in VideoControlAction.allCases {
             guard let trigger = config.videoControlTrigger(for: action) else { continue }
-            entries.append(HotkeyQuickReferenceEntry(label: "\(label(for: action, seekStep: config.videoSeekStep))（幽灵模式下）", keys: HotkeyDisplay.keys(of: trigger)))
+            entries.append(HotkeyQuickReferenceEntry(
+                label: "\(label(for: action, seekStep: config.videoSeekStep))（幽灵模式下）", keys: HotkeyDisplay.keys(of: trigger),
+                mark: trigger.kind == .doubleTap ? HotkeyDisplay.doubleTapMark : nil))
         }
         entries.append(HotkeyQuickReferenceEntry(label: "打开设置", keys: HotkeyDisplay.keys(of: DefaultHotkeys.openSettings)))
         return entries

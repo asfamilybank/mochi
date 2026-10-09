@@ -891,6 +891,15 @@ import Testing
         #expect(try WidgetConfig.parse(config.serialized()) == config)
     }
 
+    @Test func aDoubleTapVideoKeyRoundTrips() throws {
+        let config = WidgetConfig().updatingVideoControlTrigger(.modifierDoubleTap(.leftControl), for: .seekForward)
+
+        let reparsed = try WidgetConfig.parse(config.serialized())
+
+        #expect(reparsed.videoControlTrigger(for: .seekForward) == .modifierDoubleTap(.leftControl))
+        #expect(config.serialized().contains("modifier_double_tap"))
+    }
+
     @Test func parsesEveryKindOfVideoControlBinding() throws {
         let toml = """
         [video_control]

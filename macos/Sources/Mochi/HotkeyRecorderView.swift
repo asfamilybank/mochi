@@ -108,7 +108,13 @@ final class HotkeyRecorderField: NSView, KeyCapturingResponder {
     var isRecordable = true { didSet { refreshClearButton() } }
 
     /// What a key pressed while recording is judged against (#90).
-    var target = RecorderTarget.trigger(.combo) { didSet { if target != oldValue { needsDisplay = true } } }
+    var target = RecorderTarget.trigger(.combo) {
+        didSet {
+            guard target != oldValue else { return }
+            tapRecognizer = HotkeyRecorderModel.tapRecognizer(recording: target)
+            needsDisplay = true
+        }
+    }
     /// A new value starts recording — on the next turn of the run loop, since it arrives in the
     /// middle of a SwiftUI update and starting tells the row to clear its hint.
     var recordingRequest = 0 {
@@ -120,7 +126,7 @@ final class HotkeyRecorderField: NSView, KeyCapturingResponder {
 
     private(set) var isCapturingKeys = false
     private let width: CGFloat
-    private var tapRecognizer = ModifierTapRecognizer()
+    private var tapRecognizer = HotkeyRecorderModel.tapRecognizer(recording: .trigger(.combo))
     private let clearButton = NSButton()
     /// While recording: a click anywhere else in the app ends it, even on something that doesn't
     /// take first responder (a blank stretch of the pane).
@@ -129,6 +135,7 @@ final class HotkeyRecorderField: NSView, KeyCapturingResponder {
     private var prompt: String {
         switch target {
         case .trigger(.tap): "轻按一颗修饰键…"
+        case .trigger(.doubleTap): "连按两次修饰键…"
         case .trigger(.combo): "按下组合键…"
         case .pageKeystroke: "按下按键…"
         }
@@ -178,7 +185,7 @@ final class HotkeyRecorderField: NSView, KeyCapturingResponder {
     private func startRecording() {
         guard isRecordable, !isCapturingKeys else { return }
         isCapturingKeys = true
-        tapRecognizer = ModifierTapRecognizer()
+        tapRecognizer = HotkeyRecorderModel.tapRecognizer(recording: target)
         onRecordingStarted?()
         window?.makeFirstResponder(self)
         clickElsewhereMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
@@ -218,9 +225,9 @@ final class HotkeyRecorderField: NSView, KeyCapturingResponder {
         case .capture(let hotkey):
             stopRecording()
             onCapture?(.keystroke(hotkey))
-        case .captureTap(let key):
+        case .captureTap(let tap):
             stopRecording()
-            onCapture?(.modifierTap(key))
+            onCapture?(tap.trigger)
         case .hint(let rejection):
             onHint?(rejection)
         }
@@ -239,10 +246,12 @@ final class HotkeyRecorderField: NSView, KeyCapturingResponder {
             super.flagsChanged(with: event)
             return
         }
-        if let tapped = tapRecognizer.handle(raw),
-           case .captureTap(let key)? = HotkeyRecorderModel.outcome(ofModifierTap: tapped, recording: target) {
-            stopRecording()
-            onCapture?(.modifierTap(key))
+        for tap in tapRecognizer.handle(raw) {
+            if case .captureTap(let captured)? = HotkeyRecorderModel.outcome(of: tap, recording: target) {
+                stopRecording()
+                onCapture?(captured.trigger)
+                return
+            }
         }
     }
 

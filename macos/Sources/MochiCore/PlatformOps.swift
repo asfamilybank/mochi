@@ -368,6 +368,10 @@ public protocol PlatformOps: AnyObject {
     /// Stops what `startObservingInput` started. A no-op when not observing.
     func stopObservingInput()
 
+    /// Runs `work` on the main thread after `delay` seconds, unless the returned closure is
+    /// called first — how a tap held back for a possible double tap is let go (#91).
+    func schedule(after delay: TimeInterval, _ work: @escaping () -> Void) -> () -> Void
+
     /// Carries `command` out on the page's target video — choosing it (playing, else most
     /// recently played, else largest visible) and doing nothing when the page has none.
     func performVideoCommand(_ command: VideoCommand, in window: WidgetWindowHandle)

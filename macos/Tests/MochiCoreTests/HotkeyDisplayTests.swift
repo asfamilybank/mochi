@@ -89,4 +89,24 @@ import Testing
         #expect(HotkeyDisplay.describe(.keystroke(backtick)) == "`")
         #expect(HotkeyDisplay.keys(of: .keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x0800))) == ["⌥", "J"])
     }
+
+    // MARK: #91 连按两次
+
+    @Test func aDoubleTapReadsAsItsKeyMarkedTimesTwo() {
+        #expect(HotkeyDisplay.describe(.modifierDoubleTap(.rightOption)) == "右 ⌥ ×2")
+        #expect(HotkeyDisplay.keys(of: .modifierDoubleTap(.rightOption)) == ["右 ⌥"])
+    }
+
+    /// The quick reference draws the key once, as a keycap, and the "×2" beside it — not as a
+    /// second keycap, which would read as two different keys.
+    @Test func theQuickReferenceMarksADoubleTapRatherThanDrawingItsKeyTwice() {
+        let config = WidgetConfig().updatingVideoControlTrigger(.modifierDoubleTap(.rightOption), for: .seekForward)
+
+        let entries = HotkeyQuickReference.entries(for: config)
+
+        let forward = entries.first { $0.label.hasPrefix("前进") }
+        #expect(forward?.keys == ["右 ⌥"])
+        #expect(forward?.mark == "×2")
+        #expect(entries.first { $0.label.hasPrefix("播放/暂停") }?.mark == nil)
+    }
 }

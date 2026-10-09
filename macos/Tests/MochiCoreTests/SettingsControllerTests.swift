@@ -1131,6 +1131,30 @@ import Testing
         #expect(store.config.hotkeyMappings.map(\.pageKeystroke) == [Hotkey(keyCode: 0x24, modifierFlags: 0)])
     }
 
+    // MARK: #91 连按两次
+
+    /// One key, two actions: a tap and a double tap of right ⌥ are different trigger keys.
+    @Test func aKeysTapAndItsDoubleTapMayGoToDifferentVideoActions() {
+        let store = PersistedStore(WidgetConfig())
+        let controller = makeController(store: store)
+
+        let rejection = controller.updateVideoControlTrigger(.modifierDoubleTap(.rightOption), for: .seekBackward)
+
+        #expect(rejection == nil)
+        #expect(store.config.videoControlTrigger(for: .togglePlayback) == .modifierTap(.rightOption))
+        #expect(store.config.videoControlTrigger(for: .seekBackward) == .modifierDoubleTap(.rightOption))
+    }
+
+    @Test func theSameDoubleTapCannotGoToTwoVideoActions() {
+        let store = PersistedStore(WidgetConfig().updatingVideoControlTrigger(.modifierDoubleTap(.rightOption), for: .seekBackward))
+        let controller = makeController(store: store)
+
+        let rejection = controller.updateVideoControlTrigger(.modifierDoubleTap(.rightOption), for: .seekForward)
+
+        #expect(rejection == .conflictsWithVideoControl(.seekBackward))
+        #expect(store.config.videoControlTrigger(for: .seekForward) == nil)
+    }
+
     @Test func reportsAccessibilityAndOpensItsSettingsPane() {
         let fake = FakePlatformOps()
         fake.stubbedAccessibilityTrusted = false
