@@ -144,7 +144,7 @@ public final class SettingsController {
         let current = currentConfig().hotkey(for: action)
         guard hotkey != current else { return nil }
         if let hotkey {
-            if hotkey.keepsItsCharacter { return .missingModifier }
+            if hotkey.isMissingModifier { return .missingModifier }
             if let conflict = inProcessConflict(with: hotkey, ignoringAction: action, ignoringMappingAt: nil) {
                 return conflict
             }
@@ -280,7 +280,7 @@ public final class SettingsController {
         guard case .keystroke(let hotkey) = trigger else {
             return tapConflict(trigger, ignoringVideoAction: nil, ignoringMappingAt: editedIndex)
         }
-        if hotkey.keepsItsCharacter { return .missingModifier }
+        if hotkey.isMissingModifier { return .missingModifier }
         return inProcessConflict(with: hotkey, ignoringAction: nil, ignoringMappingAt: editedIndex)
     }
 
@@ -361,10 +361,11 @@ public final class SettingsController {
         let config = currentConfig()
         if let trigger, trigger != config.videoControlTrigger(for: action) {
             if case .keystroke(let hotkey) = trigger {
+                // The combo itself first, as for every other row, then who else holds it.
+                if hotkey.isMissingModifier { return .missingModifier }
                 if let other = VideoControlAction.allCases.first(where: { $0 != action && config.videoControlTrigger(for: $0) == trigger }) {
                     return .conflictsWithVideoControl(other)
                 }
-                if hotkey.keepsItsCharacter { return .missingModifier }
                 if let conflict = inProcessConflict(with: hotkey, ignoringAction: nil, ignoringMappingAt: nil, ignoringVideoAction: action) {
                     return conflict
                 }

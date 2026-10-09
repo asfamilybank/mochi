@@ -14,12 +14,13 @@ public struct Hotkey: Hashable, Sendable {
 }
 
 extension Hotkey {
-    /// Whether this combo, held as a trigger, would take a character away from every other app
-    /// (#89, ADR-0022): it has no ⌃, ⌥ or ⌘, so it is either a bare key or ⇧ plus a key — and ⇧
-    /// plus a letter is that letter's capital, ⇧ plus an arrow is text selection. Only the
-    /// F-keys, which type nothing and mean nothing with ⇧ held, may go with ⇧ alone. The
-    /// settings refuse to record such a combo; one already in the config keeps working.
-    public var keepsItsCharacter: Bool {
+    /// Whether this combo lacks the modifier a trigger needs (#89, ADR-0022, ADR-0023): with no ⌃,
+    /// ⌥ or ⌘ it is a bare key or ⇧ plus a key, and held as a trigger it would take that key away
+    /// from every other app — ⇧ plus a letter is that letter's capital, ⇧ plus an arrow is text
+    /// selection. Only the F-keys, which type nothing and mean nothing with ⇧ held, may go with
+    /// ⇧ alone. The settings refuse to record such a combo; one already in the config keeps
+    /// working.
+    public var isMissingModifier: Bool {
         if modifierFlags & (Self.control | Self.option | Self.command) != 0 { return false }
         return !(modifierFlags & Self.shift != 0 && Self.functionKeyCodes.contains(keyCode))
     }

@@ -44,9 +44,10 @@ struct HotkeyRecorderView: NSViewRepresentable {
     }
 }
 
-/// Records a 视频控制 key (#79) of the `kind` its row's dropdown picked (#90): a modifier tapped
-/// on its own — judged by the same `ModifierTapRecognizer` that listens in Ghost Mode, so what
-/// records is exactly what fires — or a combo, taken on key-down.
+/// Records a trigger key — a 视频控制 key (#79), or since #92 a mapping's trigger — of the `kind`
+/// its row's dropdown picked (#90): a modifier tapped once or twice — judged by the same
+/// `TriggerTapRecognizer` that listens in Ghost Mode, so what records is exactly what fires — or
+/// a combo, taken on key-down.
 ///
 /// Bumping `recordingRequest` starts recording, the way picking a kind in the dropdown does;
 /// `onRecordingStopped` fires however recording ends, captured or not, so the row can drop the

@@ -10,8 +10,7 @@ public enum HotkeyRejection: Equatable, Sendable {
     case reservedMenuShortcut
     /// The OS refused to register it: another app holds the combo.
     case heldByAnotherApp
-    /// A combo with no ⌃/⌥/⌘ that still types a character (#89, ADR-0022) — see
-    /// `Hotkey.keepsItsCharacter`.
+    /// A combo with no ⌃/⌥/⌘ (#89, ADR-0022, ADR-0023) — see `Hotkey.isMissingModifier`.
     case missingModifier
     /// An ordinary key pressed while a tap is being recorded (#90).
     case needsModifierTap

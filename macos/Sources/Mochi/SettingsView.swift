@@ -612,12 +612,16 @@ private struct VideoControlRow: View {
 /// its trigger but not its page key, so a change is delete-and-add — with the add row below.
 ///
 /// Since #92 a trigger is a tap, a double tap or a combo, picked in the add row's dropdown
-/// (组合键 first, as every mapping used to be). Only a combo is taken from other apps, so the
-/// section no longer says its keys are; a combo says so itself — a lock beside each mapping's,
-/// a line under the add row while 组合键 is picked.
+/// (组合键 first, as every mapping used to be). Like a 视频控制 row's, picking a kind only tries
+/// it out: it starts recording, and leaving without a key puts the dropdown back and keeps any
+/// trigger already recorded. Only a combo is taken from other apps, so the section no longer
+/// says its keys are; a combo says so itself — a lock beside each mapping's, a line under the add
+/// row while 组合键 is picked.
 private struct HotkeyForwardingSection: View {
     @ObservedObject var viewModel: SettingsViewModel
     @State private var newKind = TriggerKind.combo
+    /// The kind being tried out while recording; `nil` otherwise.
+    @State private var pendingKind: TriggerKind?
     @State private var newTrigger: TriggerKey?
     @State private var newPageKeystroke: Hotkey?
     @State private var newTriggerRecordingRequest = 0
@@ -666,11 +670,9 @@ private struct HotkeyForwardingSection: View {
                     Picker(
                         "触发方式",
                         selection: Binding(
-                            get: { newKind },
+                            get: { pendingKind ?? newKind },
                             set: { kind in
-                                newKind = kind
-                                // A key recorded as another kind isn't one of this kind.
-                                if newTrigger?.kind != kind { newTrigger = nil }
+                                pendingKind = kind
                                 newTriggerRecordingRequest += 1
                             }
                         )
@@ -682,11 +684,17 @@ private struct HotkeyForwardingSection: View {
                     .labelsHidden()
                     .fixedSize()
                     TriggerKeyRecorderView(
-                        trigger: newTrigger, kind: newKind, accessibilityName: "触发键", width: HotkeyRecorderField.mappingWidth,
+                        trigger: newTrigger, kind: pendingKind ?? newKind, accessibilityName: "触发键",
+                        width: HotkeyRecorderField.mappingWidth,
                         recordingRequest: newTriggerRecordingRequest,
                         onRecordingStarted: viewModel.clearRowRejection,
+                        onRecordingStopped: { pendingKind = nil },
                         onHint: { viewModel.showHint($0, on: .newMapping) },
-                        onCapture: { newTrigger = $0 }, onClear: { newTrigger = nil })
+                        onCapture: { trigger in
+                            newTrigger = trigger
+                            newKind = trigger.kind
+                        },
+                        onClear: { newTrigger = nil })
                     Image(systemName: "arrow.right")
                     HotkeyRecorderView(
                         hotkey: newPageKeystroke, accessibilityName: "页面按键", width: HotkeyRecorderField.mappingWidth,
@@ -707,7 +715,7 @@ private struct HotkeyForwardingSection: View {
                     Text(rejection)
                         .font(.caption)
                         .foregroundStyle(.red)
-                } else if newKind == .combo {
+                } else if (pendingKind ?? newKind) == .combo {
                     Text(Self.occupiedNote)
                         .font(.caption)
                         .foregroundStyle(.secondary)

@@ -1108,6 +1108,59 @@ import Testing
         #expect(store.config.videoControlTrigger(for: .seekForward) == nil)
     }
 
+    @Test(arguments: combosWithAModifier)
+    func aNewMappingsTriggerWithAModifierIsAccepted(_ combo: Hotkey) {
+        let store = PersistedStore(WidgetConfig())
+        let fake = FakePlatformOps()
+        let controller = makeController(store: store, platformOps: fake)
+
+        #expect(controller.addHotkeyMapping(trigger: .keystroke(combo), pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0)) == nil)
+        #expect(fake.registeredHotkeys == [combo])
+    }
+
+    @Test(arguments: combosWithAModifier)
+    func anEditedMappingsTriggerWithAModifierIsAccepted(_ combo: Hotkey) {
+        let existing = HotkeyMapping(trigger: Hotkey(keyCode: 0x01, modifierFlags: 0x1000), pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0))
+        let store = PersistedStore(WidgetConfig(hotkeyMappings: [existing]))
+        let controller = makeController(store: store)
+
+        #expect(controller.updateHotkeyMapping(at: 0, trigger: .keystroke(combo), pageKeystroke: existing.pageKeystroke) == nil)
+        #expect(store.config.hotkeyMappings.map(\.trigger) == [.keystroke(combo)])
+    }
+
+    @Test(arguments: combosWithAModifier)
+    func aVideoKeystrokeWithAModifierIsAccepted(_ combo: Hotkey) {
+        let store = PersistedStore(WidgetConfig())
+        let controller = makeController(store: store)
+
+        #expect(controller.updateVideoControlTrigger(.keystroke(combo), for: .seekForward) == nil)
+        #expect(store.config.videoControlTrigger(for: .seekForward) == .keystroke(combo))
+    }
+
+    /// Every row judges a recorded combo the same way: a bare key is refused for lacking a
+    /// modifier even when an older binding also happens to hold it.
+    @Test func aBareVideoKeyHeldByAnOlderBindingIsRefusedForItsMissingModifier() {
+        let bare = Hotkey(keyCode: 0x26, modifierFlags: 0)
+        let store = PersistedStore(WidgetConfig().updatingVideoControlTrigger(.keystroke(bare), for: .seekForward))
+        let controller = makeController(store: store)
+
+        #expect(controller.updateVideoControlTrigger(.keystroke(bare), for: .seekBackward) == .missingModifier)
+    }
+
+    /// 恢复默认热键 (#88) leaves the opacity — set on the same pane — where it is.
+    @Test func restoringDefaultHotkeysLeavesTheGhostOpacityAlone() {
+        let store = PersistedStore(WidgetConfig()
+            .updatingVideoControlTrigger(.modifierTap(.leftControl), for: .togglePlayback))
+        let controller = makeController(store: store)
+        controller.updateGhostOpacity(0.3)
+
+        controller.resetVideoControlToDefaults()
+        controller.resetActionHotkeysToDefaults()
+
+        #expect(store.config.ghostOpacity == 0.3)
+        #expect(store.config.videoControlTrigger(for: .togglePlayback) == .modifierTap(.rightOption))
+    }
+
     /// The page side is a keystroke to send, not a key to listen for: a bare key is exactly what
     /// most players want.
     @Test func aMappingsPageKeystrokeMayBeABareKey() {

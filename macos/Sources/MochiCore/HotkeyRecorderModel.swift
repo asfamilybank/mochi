@@ -89,7 +89,7 @@ public enum HotkeyRecorderModel {
         switch target {
         case .pageKeystroke: return .capture(hotkey)
         case .trigger(.tap), .trigger(.doubleTap): return .hint(.needsModifierTap)
-        case .trigger(.combo): return hotkey.keepsItsCharacter ? .hint(.missingModifier) : .capture(hotkey)
+        case .trigger(.combo): return hotkey.isMissingModifier ? .hint(.missingModifier) : .capture(hotkey)
         }
     }
 
