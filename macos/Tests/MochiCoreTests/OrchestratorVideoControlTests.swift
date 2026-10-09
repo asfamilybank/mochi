@@ -86,6 +86,45 @@ import Testing
         #expect(fake.videoCommands.map(\.command) == [.togglePlayback])
     }
 
+    // MARK: Seeking (#77)
+
+    @Test func tappingRightCommandSeeksBackFiveSeconds() {
+        let fake = FakePlatformOps()
+        let orchestrator = startedInGhostMode(fake)
+
+        withExtendedLifetime(orchestrator) {
+            fake.simulateModifierTap(.rightCommand)
+        }
+
+        #expect(fake.videoCommands.map(\.command) == [.seek(seconds: -5)])
+    }
+
+    @Test func outOfTheBoxOnlyRightOptionAndRightCommandDoAnything() {
+        let fake = FakePlatformOps()
+        let orchestrator = startedInGhostMode(fake)
+
+        withExtendedLifetime(orchestrator) {
+            for (index, key) in ModifierKey.allCases.enumerated() {
+                fake.simulateModifierTap(key, at: 100 + Double(index))
+            }
+        }
+
+        #expect(fake.videoCommands.map(\.command) == [.seek(seconds: -5), .togglePlayback])
+    }
+
+    @Test func seekingForwardWorksOnceTheUserBindsIt() {
+        let fake = FakePlatformOps()
+        var config = WidgetConfig(url: nil)
+        config.setVideoControlTrigger(.modifierTap(.rightShift), for: .seekForward)
+        let orchestrator = startedInGhostMode(fake, config: config)
+
+        withExtendedLifetime(orchestrator) {
+            fake.simulateModifierTap(.rightShift)
+        }
+
+        #expect(fake.videoCommands.map(\.command) == [.seek(seconds: 5)])
+    }
+
     // MARK: When to listen
 
     @Test func listensFromEnteringGhostModeUntilLeavingIt() {

@@ -16,6 +16,33 @@ public enum HotkeyDisplay {
         modifierGlyphs(for: hotkey.modifierFlags) + [keyGlyph(for: hotkey.keyCode)]
     }
 
+    /// A 视频控制 key (#74): a modifier tap is one keycap naming its side ("右 ⌥") — it is
+    /// pressed on its own, so there is nothing to combine it with; a keystroke reads like any
+    /// other hotkey.
+    public static func describe(_ trigger: VideoControlTrigger) -> String {
+        keys(of: trigger).joined()
+    }
+
+    public static func keys(of trigger: VideoControlTrigger) -> [String] {
+        switch trigger {
+        case .modifierTap(let key): [modifierTapLabel(key)]
+        case .keystroke(let hotkey): keys(of: hotkey)
+        }
+    }
+
+    private static func modifierTapLabel(_ key: ModifierKey) -> String {
+        switch key {
+        case .leftCommand: "左 ⌘"
+        case .rightCommand: "右 ⌘"
+        case .leftOption: "左 ⌥"
+        case .rightOption: "右 ⌥"
+        case .leftShift: "左 ⇧"
+        case .rightShift: "右 ⇧"
+        case .leftControl: "左 ⌃"
+        case .rightControl: "右 ⌃"
+        }
+    }
+
     /// The character an `NSMenuItem.keyEquivalent` needs to draw `hotkey` in a menu's
     /// key-equivalent column (the tray's hints, #63) — AppKit adds the modifier glyphs from the
     /// item's modifier mask. Letters are lowercase, because an uppercase key equivalent means
@@ -61,5 +88,6 @@ public enum HotkeyDisplay {
         0x31: "Space", 0x24: "Return", 0x30: "Tab", 0x33: "Delete", 0x35: "Esc",
         0x7B: "←", 0x7C: "→", 0x7D: "↓", 0x7E: "↑",
         0x18: "=", 0x1B: "-", 0x2B: ",", 0x2F: ".",
+        0x32: "`", 0x21: "[", 0x1E: "]", 0x29: ";", 0x27: "'", 0x2C: "/", 0x2A: "\\",
     ]
 }

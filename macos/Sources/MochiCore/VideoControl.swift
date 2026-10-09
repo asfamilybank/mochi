@@ -4,11 +4,17 @@ import Foundation
 /// config file stores a binding under — never the declaration order, like `HotkeyAction`.
 public enum VideoControlAction: String, CaseIterable, Hashable, Sendable {
     case togglePlayback = "toggle_playback"
+    case seekBackward = "seek_backward"
+    case seekForward = "seek_forward"
 
-    /// What the action is bound to until the user says otherwise; `nil` means unbound.
+    /// What the action is bound to until the user says otherwise; `nil` means unbound. Forward
+    /// starts unbound: the modifiers left after right ⌥ and right ⌘ all have side effects
+    /// (right ⇧ switches many Chinese input methods), so Mochi won't claim one on its own.
     public var defaultTrigger: VideoControlTrigger? {
         switch self {
         case .togglePlayback: .modifierTap(.rightOption)
+        case .seekBackward: .modifierTap(.rightCommand)
+        case .seekForward: nil
         }
     }
 }
@@ -24,6 +30,9 @@ public enum VideoControlTrigger: Hashable {
 /// What 视频控制 asks the page to do to its target video.
 public enum VideoCommand: Equatable, Sendable {
     case togglePlayback
+    /// Moves playback by `seconds` (negative is back), clamped to the video, leaving it playing
+    /// or paused as it was. A live stream, with no finite duration, is left alone.
+    case seek(seconds: Double)
 }
 
 /// Drives 视频控制 (#74, ADR-0020): while Ghost Mode is active, listens — never intercepts — for
@@ -82,12 +91,14 @@ public final class VideoControl {
         guard let action = VideoControlAction.allCases.first(where: {
             config.videoControlTrigger(for: $0) == .modifierTap(tapped)
         }) else { return }
-        platformOps.performVideoCommand(command(for: action), in: window)
+        platformOps.performVideoCommand(command(for: action, step: Double(config.videoSeekStep)), in: window)
     }
 
-    private func command(for action: VideoControlAction) -> VideoCommand {
+    private func command(for action: VideoControlAction, step: Double) -> VideoCommand {
         switch action {
         case .togglePlayback: .togglePlayback
+        case .seekBackward: .seek(seconds: -step)
+        case .seekForward: .seek(seconds: step)
         }
     }
 }

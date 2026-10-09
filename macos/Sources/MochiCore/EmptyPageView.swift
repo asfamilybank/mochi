@@ -91,7 +91,7 @@ struct EmptyPageView: View {
     }
 
     /// The default hotkeys' actual combos (`HotkeyDisplay.keys`), not hardcoded label text —
-    /// so this stays correct if `DefaultHotkeys` ever changes. Laid out like a menu's shortcut
+    /// so this stays correct if `DefaultHotkeys` or a 视频控制 default ever changes. Laid out like a menu's shortcut
     /// column: the action on the left, its keys on the right, one keycap per key.
     private var hotkeyQuickReference: some View {
         VStack(spacing: 10) {
@@ -100,24 +100,33 @@ struct EmptyPageView: View {
                 .tracking(0.4)
                 .foregroundStyle(color(palette.textSecondary))
             Grid(horizontalSpacing: 28, verticalSpacing: 8) {
-                hotkeyRow(DefaultHotkeys.toggleGhostMode, label: "切换幽灵模式")
+                hotkeyRow(HotkeyDisplay.keys(of: DefaultHotkeys.toggleGhostMode), label: "切换幽灵模式")
                 // The Empty Page is Normal Mode content, and Hidden is a deliberate no-op outside
                 // Ghost Mode (ADR-0012) — the label says so, or pressing it here would read as broken.
-                hotkeyRow(DefaultHotkeys.hideWidget, label: "隐藏窗口（幽灵模式下）")
-                hotkeyRow(DefaultHotkeys.openSettings, label: "打开设置")
+                hotkeyRow(HotkeyDisplay.keys(of: DefaultHotkeys.hideWidget), label: "隐藏窗口（幽灵模式下）")
+                // 视频控制 (#74) only listens in Ghost Mode, so the same applies.
+                if let trigger = VideoControlAction.togglePlayback.defaultTrigger {
+                    hotkeyRow(HotkeyDisplay.keys(of: trigger), label: "播放/暂停（幽灵模式下）")
+                }
+                if let trigger = VideoControlAction.seekBackward.defaultTrigger {
+                    hotkeyRow(
+                        HotkeyDisplay.keys(of: trigger),
+                        label: "后退 \(WidgetConfig.defaultVideoSeekStep) 秒（幽灵模式下）")
+                }
+                hotkeyRow(HotkeyDisplay.keys(of: DefaultHotkeys.openSettings), label: "打开设置")
             }
         }
         .opacity(0.55)
     }
 
-    private func hotkeyRow(_ hotkey: Hotkey, label: String) -> some View {
+    private func hotkeyRow(_ keys: [String], label: String) -> some View {
         GridRow {
             Text(label)
                 .font(.system(size: 12))
                 .foregroundStyle(color(palette.textSecondary))
                 .gridColumnAlignment(.leading)
             HStack(spacing: 4) {
-                ForEach(Array(HotkeyDisplay.keys(of: hotkey).enumerated()), id: \.offset) { _, key in
+                ForEach(Array(keys.enumerated()), id: \.offset) { _, key in
                     keycap(key)
                 }
             }

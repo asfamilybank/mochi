@@ -86,6 +86,18 @@ public struct WidgetConfig: Equatable {
     /// `Orchestrator.reapplyConfiguration`.
     public var popupWindowPolicy: PopupWindowPolicy = .block
 
+    /// 视频控制 (#74): the user's explicit bindings, keyed by action. Like `hotkeyOverrides`, only
+    /// what the user changed is stored and an absent key means the action's default — but here a
+    /// stored `nil` means the user *cleared* the action, kept apart from "default" so clearing
+    /// 播放/暂停 doesn't snap back to right ⌥ on the next launch. Read through
+    /// `videoControlTrigger(for:)`, written through `setVideoControlTrigger(_:for:)`.
+    public var videoControlOverrides: [VideoControlAction: VideoControlTrigger?] = [:]
+
+    /// How far 后退/前进 jump, in whole seconds (#74).
+    public var videoSeekStep: Int = WidgetConfig.defaultVideoSeekStep
+    public static let defaultVideoSeekStep = 5
+    public static let videoSeekStepRange = 1...60
+
     /// Where the Smart Address Field sends non-address input (#71), Google by default. Edited
     /// from the 通用 pane and read at the moment of each submit, never cached.
     public var searchEngine: SearchEngine
@@ -122,7 +134,14 @@ public struct WidgetConfig: Equatable {
 
     /// The key currently bound to a 视频控制 action (#74); `nil` when the action is unbound.
     public func videoControlTrigger(for action: VideoControlAction) -> VideoControlTrigger? {
-        action.defaultTrigger
+        if let override = videoControlOverrides[action] { return override }
+        return action.defaultTrigger
+    }
+
+    /// Binds `action` to `trigger`, or clears it with `nil` — an explicit choice either way,
+    /// remembered even when it happens to equal the default.
+    public mutating func setVideoControlTrigger(_ trigger: VideoControlTrigger?, for action: VideoControlAction) {
+        videoControlOverrides.updateValue(trigger, forKey: action)
     }
 }
 

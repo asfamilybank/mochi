@@ -905,6 +905,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         let argument: String
         switch command {
         case .togglePlayback: argument = "{ kind: 'toggle' }"
+        case .seek(let seconds): argument = "{ kind: 'seek', seconds: \(seconds) }"
         }
         webView.evaluateJavaScript(
             "window.__mochiVideo && window.__mochiVideo.perform(\(argument)); true",
@@ -958,6 +959,10 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
             } else {
               video.pause();
             }
+          } else if (command.kind === "seek") {
+            // A live stream's duration is Infinity: there is nowhere sensible to jump to.
+            if (!Number.isFinite(video.duration)) return;
+            video.currentTime = Math.min(Math.max(video.currentTime + command.seconds, 0), video.duration);
           }
         },
       };

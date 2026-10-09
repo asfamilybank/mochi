@@ -67,4 +67,26 @@ import Testing
     @Test func menuKeyEquivalentIsNilForAnUnmappedKeyCode() {
         #expect(HotkeyDisplay.menuKeyEquivalent(for: Hotkey(keyCode: 999, modifierFlags: 0)) == nil)
     }
+    // MARK: 视频控制 (#74)
+
+    @Test(arguments: [
+        (key: ModifierKey.rightOption, expected: "右 ⌥"),
+        (key: .leftOption, expected: "左 ⌥"),
+        (key: .rightCommand, expected: "右 ⌘"),
+        (key: .leftCommand, expected: "左 ⌘"),
+        (key: .rightShift, expected: "右 ⇧"),
+        (key: .leftShift, expected: "左 ⇧"),
+        (key: .rightControl, expected: "右 ⌃"),
+        (key: .leftControl, expected: "左 ⌃"),
+    ])
+    func describesAModifierTapByItsSide(_ testCase: (key: ModifierKey, expected: String)) {
+        #expect(HotkeyDisplay.describe(.modifierTap(testCase.key)) == testCase.expected)
+        #expect(HotkeyDisplay.keys(of: .modifierTap(testCase.key)) == [testCase.expected])
+    }
+
+    @Test func describesAKeystrokeTriggerLikeTheHotkeyItWraps() {
+        let backtick = Hotkey(keyCode: 0x32, modifierFlags: 0)
+        #expect(HotkeyDisplay.describe(.keystroke(backtick)) == "`")
+        #expect(HotkeyDisplay.keys(of: .keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x0800))) == ["⌥", "J"])
+    }
 }
