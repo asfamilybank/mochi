@@ -161,6 +161,33 @@ private final class PageScrollReporter: NSObject, WKScriptMessageHandler {
     }
 }
 
+/// A frame's best 视频控制 candidate (#80), ranked exactly like the page script ranks videos
+/// within one frame: playing beats paused, then the most recently played, then the largest
+/// visible — so picking across frames and within a frame can never disagree.
+private struct VideoCandidateRank: Comparable {
+    let isPlaying: Bool
+    let lastPlayedAt: Double
+    let visibleArea: Double
+
+    /// `nil` for a frame with no video (the script's `null`) or a reply it can't read.
+    init?(scriptValue: Any?) {
+        guard let value = scriptValue as? [String: Any],
+              let isPlaying = value["playing"] as? Bool,
+              let lastPlayedAt = (value["lastPlayed"] as? NSNumber)?.doubleValue,
+              let visibleArea = (value["area"] as? NSNumber)?.doubleValue
+        else { return nil }
+        self.isPlaying = isPlaying
+        self.lastPlayedAt = lastPlayedAt
+        self.visibleArea = visibleArea
+    }
+
+    static func < (lhs: Self, rhs: Self) -> Bool {
+        if lhs.isPlaying != rhs.isPlaying { return !lhs.isPlaying }
+        if lhs.lastPlayedAt != rhs.lastPlayedAt { return lhs.lastPlayedAt < rhs.lastPlayedAt }
+        return lhs.visibleArea < rhs.visibleArea
+    }
+}
+
 /// Records each frame's 视频控制 controller as it announces itself (#76). A separate object for
 /// the same retain-cycle reason as `PageScrollReporter`.
 private final class MediaFrameRegistrar: NSObject, WKScriptMessageHandler {
@@ -889,27 +916,50 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         }
     }
 
-    /// Runs `call` on the controller in `frame` — but only if the document there is still the one
-    /// that registered as `token`; otherwise (or if the frame is gone) the entry is dropped.
-    private func callMediaController(_ call: String, inFrameRegisteredAs token: String, frame: WKFrameInfo) {
-        let source = """
-        (window.__mochiVideo && window.__mochiVideo.token === "\(token)") ? (window.__mochiVideo.\(call), true) : "stale"
-        """
-        webView.evaluateJavaScript(source, in: frame, in: Self.videoControlWorld) { [weak self] result in
-            if case .success(let value) = result, (value as? String) != "stale" { return }
-            self?.mediaFrames[token] = nil
-        }
-    }
-
+    /// Picks one target video across every frame (#80) — each frame proposes its own best
+    /// candidate, the best of those wins under the same ranking the script uses within a frame —
+    /// and has only that frame carry `command` out.
     func performVideoCommand(_ command: VideoCommand) {
         let argument: String
         switch command {
         case .togglePlayback: argument = "{ kind: 'toggle' }"
         case .seek(let seconds): argument = "{ kind: 'seek', seconds: \(seconds) }"
         }
-        webView.evaluateJavaScript(
-            "window.__mochiVideo && window.__mochiVideo.perform(\(argument)); true",
-            in: nil, in: Self.videoControlWorld, completionHandler: nil)
+        var proposals: [(token: String, frame: WKFrameInfo, rank: VideoCandidateRank)] = []
+        let group = DispatchGroup()
+        for (token, frame) in mediaFrames {
+            group.enter()
+            callMediaController("candidate()", inFrameRegisteredAs: token, frame: frame) { value in
+                if let rank = VideoCandidateRank(scriptValue: value) {
+                    proposals.append((token, frame, rank))
+                }
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) { [weak self] in
+            guard let best = proposals.max(by: { $0.rank < $1.rank }) else { return }
+            self?.callMediaController("perform(\(argument))", inFrameRegisteredAs: best.token, frame: best.frame)
+        }
+    }
+
+    /// Runs `call` on the controller in `frame` and hands back what it returned — but only if the
+    /// document there is still the one that registered as `token`; otherwise (or if the frame is
+    /// gone) the entry is dropped and `completion` gets `nil`.
+    private func callMediaController(
+        _ call: String, inFrameRegisteredAs token: String, frame: WKFrameInfo,
+        completion: ((Any?) -> Void)? = nil
+    ) {
+        let source = """
+        (window.__mochiVideo && window.__mochiVideo.token === "\(token)") ? { value: window.__mochiVideo.\(call) ?? null } : "stale"
+        """
+        webView.evaluateJavaScript(source, in: frame, in: Self.videoControlWorld) { [weak self] result in
+            guard case .success(let reply as [String: Any]) = result else {
+                self?.mediaFrames[token] = nil
+                completion?(nil)
+                return
+            }
+            completion?(reply["value"])
+        }
     }
 
     /// The target video is the one playing, else the one most recently played, else the largest
@@ -919,11 +969,13 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     (() => {
       if (window.__mochiVideo) return;
       const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      let active = true;
       const announce = () => window.webkit.messageHandlers.\(AppKitWidgetWindowHandle.mediaFrameMessageName).postMessage(token);
+      // Wall-clock times, so recency compares across frames (#80).
       const lastPlayed = new WeakMap();
-      let clock = 0;
+      const now = () => performance.timeOrigin + performance.now();
       document.addEventListener("play", (event) => {
-        if (event.target instanceof HTMLMediaElement) lastPlayed.set(event.target, ++clock);
+        if (event.target instanceof HTMLMediaElement) lastPlayed.set(event.target, now());
       }, true);
       const visibleArea = (video) => {
         const r = video.getBoundingClientRect();
@@ -931,16 +983,22 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         const height = Math.max(0, Math.min(r.bottom, window.innerHeight) - Math.max(r.top, 0));
         return width * height;
       };
-      const isPlaying = (video) => !video.paused && !video.ended;
-      const byRecencyThenArea = (a, b) =>
-        ((lastPlayed.get(b) || 0) - (lastPlayed.get(a) || 0)) || (visibleArea(b) - visibleArea(a));
+      // Playing beats paused; then the most recently played (never played counts as 0); then
+      // the largest visible. Mirrored by `VideoCandidateRank`, which ranks across frames.
+      const rank = (video) => ({
+        playing: !video.paused && !video.ended,
+        lastPlayed: lastPlayed.get(video) || 0,
+        area: visibleArea(video),
+      });
+      const outranks = (a, b) =>
+        a.playing !== b.playing ? a.playing : a.lastPlayed !== b.lastPlayed ? a.lastPlayed > b.lastPlayed : a.area > b.area;
       const target = () => {
-        const videos = Array.from(document.querySelectorAll("video"));
-        const playing = videos.filter(isPlaying);
-        if (playing.length > 0) return playing.sort(byRecencyThenArea)[0];
-        const played = videos.filter((video) => lastPlayed.has(video));
-        if (played.length > 0) return played.sort(byRecencyThenArea)[0];
-        return videos.sort((a, b) => visibleArea(b) - visibleArea(a))[0] || null;
+        let best = null;
+        for (const video of document.querySelectorAll("video")) {
+          const candidate = { video, rank: rank(video) };
+          if (!best || outranks(candidate.rank, best.rank)) best = candidate;
+        }
+        return best;
       };
       window.__mochiVideo = {
         token,
@@ -949,9 +1007,14 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
             if (!media.paused) media.pause();
           }
         },
+        candidate() {
+          const best = active ? target() : null;
+          return best ? best.rank : null;
+        },
         perform(command) {
-          const video = target();
-          if (!video) return;
+          const best = active ? target() : null;
+          if (!best) return;
+          const video = best.video;
           if (command.kind === "toggle") {
             if (video.paused || video.ended) {
               const playing = video.play();
@@ -967,9 +1030,15 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         },
       };
       announce();
-      // A page restored from the back/forward cache doesn't rerun this script, and its old entry
-      // was dropped as stale while it was away.
-      window.addEventListener("pageshow", (event) => { if (event.persisted) announce(); });
+      // A page navigated away from can live on in the back/forward cache, iframes and all, and
+      // still answer under its own token — it must not compete with the page on screen.
+      window.addEventListener("pagehide", () => { active = false; });
+      // Restored from that cache, the script doesn't rerun, and the main frame's old entry was
+      // dropped as stale while it was away.
+      window.addEventListener("pageshow", (event) => {
+        active = true;
+        if (event.persisted) announce();
+      });
     })();
     """
 
