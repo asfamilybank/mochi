@@ -367,6 +367,10 @@ public protocol PlatformOps: AnyObject {
     /// Carries `command` out on the page's target video — choosing it (playing, else most
     /// recently played, else largest visible) and doing nothing when the page has none.
     func performVideoCommand(_ command: VideoCommand, in window: WidgetWindowHandle)
+
+    /// Pauses every `<video>`/`<audio>` that is playing, in every frame of the page — cross-origin
+    /// iframes included (#76). Never resumes anything; there is no inverse.
+    func pauseAllMedia(in window: WidgetWindowHandle)
 }
 
 // #70

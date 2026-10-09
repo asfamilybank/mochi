@@ -161,6 +161,24 @@ private final class PageScrollReporter: NSObject, WKScriptMessageHandler {
     }
 }
 
+/// Records each frame's 视频控制 controller as it announces itself (#76). A separate object for
+/// the same retain-cycle reason as `PageScrollReporter`.
+private final class MediaFrameRegistrar: NSObject, WKScriptMessageHandler {
+    private let onRegister: (String, WKFrameInfo) -> Void
+
+    init(onRegister: @escaping (String, WKFrameInfo) -> Void) {
+        self.onRegister = onRegister
+    }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        // Tokens are interpolated into later calls, so only ever accept what the script makes.
+        guard let token = message.body as? String, !token.isEmpty,
+              token.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) })
+        else { return }
+        onRegister(token, message.frameInfo)
+    }
+}
+
 /// The Smart Address Field's text (#18) — just the text. Borderless and background-free: the
 /// capsule, the site icon and the refresh affordance all belong to `AddressBarView`, which hosts
 /// this as one of three siblings (Safari's own layout, read off its accessibility tree).
@@ -844,13 +862,43 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// can see, replace or call the controller.
     private static let videoControlWorld = WKContentWorld.world(name: "mochiVideoControl")
 
-    /// Installed once, injected into every document at its start, so the controller is already
-    /// recording `play` events before any page script can start a video.
+    fileprivate static let mediaFrameMessageName = "mochiMediaFrame"
+
+    /// Every frame's controller, cross-origin iframes included, by the token it announced itself
+    /// with (#76). There is no public way to list a web view's frames, so each frame reports in;
+    /// an entry goes stale when its frame navigates or disappears, and is dropped the next time a
+    /// call to it finds a different token there or fails.
+    private var mediaFrames: [String: WKFrameInfo] = [:]
+
+    /// Installed once, injected into every document of every frame at its start, so the
+    /// controller is already recording `play` events before any page script can start a video.
     private func installVideoControlScript() {
-        webView.configuration.userContentController.addUserScript(
+        let controller = webView.configuration.userContentController
+        controller.add(MediaFrameRegistrar { [weak self] token, frame in
+            self?.mediaFrames[token] = frame
+        }, contentWorld: Self.videoControlWorld, name: Self.mediaFrameMessageName)
+        controller.addUserScript(
             WKUserScript(
-                source: Self.videoControlScript, injectionTime: .atDocumentStart, forMainFrameOnly: true,
+                source: Self.videoControlScript, injectionTime: .atDocumentStart, forMainFrameOnly: false,
                 in: Self.videoControlWorld))
+    }
+
+    func pauseAllMedia() {
+        for (token, frame) in mediaFrames {
+            callMediaController("pauseAll()", inFrameRegisteredAs: token, frame: frame)
+        }
+    }
+
+    /// Runs `call` on the controller in `frame` — but only if the document there is still the one
+    /// that registered as `token`; otherwise (or if the frame is gone) the entry is dropped.
+    private func callMediaController(_ call: String, inFrameRegisteredAs token: String, frame: WKFrameInfo) {
+        let source = """
+        (window.__mochiVideo && window.__mochiVideo.token === "\(token)") ? (window.__mochiVideo.\(call), true) : "stale"
+        """
+        webView.evaluateJavaScript(source, in: frame, in: Self.videoControlWorld) { [weak self] result in
+            if case .success(let value) = result, (value as? String) != "stale" { return }
+            self?.mediaFrames[token] = nil
+        }
     }
 
     func performVideoCommand(_ command: VideoCommand) {
@@ -869,6 +917,8 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     private static let videoControlScript = """
     (() => {
       if (window.__mochiVideo) return;
+      const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      const announce = () => window.webkit.messageHandlers.\(AppKitWidgetWindowHandle.mediaFrameMessageName).postMessage(token);
       const lastPlayed = new WeakMap();
       let clock = 0;
       document.addEventListener("play", (event) => {
@@ -892,6 +942,12 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         return videos.sort((a, b) => visibleArea(b) - visibleArea(a))[0] || null;
       };
       window.__mochiVideo = {
+        token,
+        pauseAll() {
+          for (const media of document.querySelectorAll("video, audio")) {
+            if (!media.paused) media.pause();
+          }
+        },
         perform(command) {
           const video = target();
           if (!video) return;
@@ -905,6 +961,10 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
           }
         },
       };
+      announce();
+      // A page restored from the back/forward cache doesn't rerun this script, and its old entry
+      // was dropped as stale while it was away.
+      window.addEventListener("pageshow", (event) => { if (event.persisted) announce(); });
     })();
     """
 
@@ -2321,6 +2381,10 @@ public final class AppKitPlatformOps: PlatformOps {
 
     public func performVideoCommand(_ command: VideoCommand, in window: WidgetWindowHandle) {
         handle(for: window)?.performVideoCommand(command)
+    }
+
+    public func pauseAllMedia(in window: WidgetWindowHandle) {
+        handle(for: window)?.pauseAllMedia()
     }
 
     /// The device-dependent bits (`NX_DEVICE*KEYMASK` in IOKit's `IOLLEvent.h`) that tell the two

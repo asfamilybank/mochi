@@ -32,7 +32,7 @@ Widget 的隐身状态，由全局热键整体切换开关。它是一个**不�
 _Avoid_: 召唤工具栏（ADR-0006 的旧设计，已被 ADR-0012 砍掉；用户要操作工具栏应先退出 Ghost Mode）；鼠标移入避让 / 鼠标移入即隐藏（ADR-0012 的可关闭偏好、ADR-0006 的恒开行为，已被 [ADR-0019](docs/adr/0019-remove-mouse-entered-avoidance.md) 整个砍掉；Ghost Mode 下鼠标不影响可见性，要看不见就用 Hidden）
 
 **Hidden（隐藏 / 老板键）**:
-Ghost Mode 内部的一个独立可见性维度，由一个仅在 Ghost Mode 生效的全局热键切换：窗口**完全看不见，但仍然存在、网页继续运行**（视频不会停）。这是它跟"关闭 Widget"的分界线——关闭是销毁并停止，Hidden 只是看不见。热键一直保持隐藏，直到再按一次热键取消，或退出 Ghost Mode。实现上必须用 `alphaValue = 0` 而非 `orderOut`，否则 WebKit 会因窗口被判定遮挡而节流渲染，破坏"页面继续跑"这条语义（见 [ADR-0012](docs/adr/0012-ghost-mode-as-pure-invisibility.md)）。
+Ghost Mode 内部的一个独立可见性维度，由一个仅在 Ghost Mode 生效的全局热键切换：窗口**完全看不见，但仍然存在、网页继续运行**。进入 Hidden 时会暂停页面上所有正在播放的视频和音频（包括跨域 iframe 里的）；取消隐藏、或在隐藏状态下退出 Ghost Mode 时都**不**自动恢复，想继续看就用视频控制按一下播放（见 [ADR-0021](docs/adr/0021-hidden-pauses-media-and-never-resumes.md)）。这是它跟"关闭 Widget"的分界线——关闭是销毁并停止，Hidden 只是看不见、暂停。热键一直保持隐藏，直到再按一次热键取消，或退出 Ghost Mode。实现上必须用 `alphaValue = 0` 而非 `orderOut`，否则 WebKit 会因窗口被判定遮挡而节流渲染，破坏"页面继续跑"这条语义（见 [ADR-0012](docs/adr/0012-ghost-mode-as-pure-invisibility.md)）。
 _Avoid_: 快速隐藏（旧名，当时是 Normal Mode 专用能力，已随 Normal Mode 回归普通窗口而移除）；收起（一个被否决的中间概念，⌘W 是真关闭，不是收起）
 
 **Mouse Passthrough（鼠标穿透）**:

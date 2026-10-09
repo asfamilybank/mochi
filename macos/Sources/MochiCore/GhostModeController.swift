@@ -75,13 +75,18 @@ public final class GhostModeController {
     }
 
     /// The boss key (ADR-0012): makes the window completely invisible while leaving it in place
-    /// so the page keeps running — the video the user is listening to must not stall. A silent
-    /// no-op in Normal Mode, which is a plain macOS window with no visibility concept of its own
-    /// beyond what the system already provides (`⌘M`).
+    /// so the page keeps running. Going Hidden pauses every playing video and audio on the page —
+    /// hiding means "I can't watch this right now" — and coming back resumes nothing, so the user
+    /// picks up exactly where they left off, when they choose to (ADR-0021). A silent no-op in
+    /// Normal Mode, which is a plain macOS window with no visibility concept of its own beyond
+    /// what the system already provides (`⌘M`).
     public func toggleHidden() {
         guard mode == .ghost else { return }
         isHidden.toggle()
         applyEffectiveOpacity()
+        if isHidden {
+            platformOps.pauseAllMedia(in: window)
+        }
     }
 
     /// Hidden → fully invisible; Ghost → its configured target; Normal → opaque. The single

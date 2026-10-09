@@ -248,4 +248,44 @@ private final class ConfigStore {
 
         #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 0.0, 1.0])
     }
+    // MARK: Hidden pauses the page (#76, ADR-0021)
+
+    @Test func goingHiddenPausesEveryPlayingMediaElementOnThePage() {
+        let (fake, _, controller) = makeSUT()
+        controller.toggle()
+
+        controller.toggleHidden()
+
+        #expect(fake.mediaPausedWindowIDs == [1])
+    }
+
+    @Test func comingBackFromHiddenResumesNothing() {
+        let (fake, _, controller) = makeSUT()
+        controller.toggle()
+        controller.toggleHidden()
+
+        controller.toggleHidden()
+
+        #expect(fake.mediaPausedWindowIDs == [1])
+        #expect(fake.videoCommands.isEmpty)
+    }
+
+    @Test func leavingGhostModeWhileHiddenResumesNothingEither() {
+        let (fake, _, controller) = makeSUT()
+        controller.toggle()
+        controller.toggleHidden()
+
+        controller.toggle()
+
+        #expect(fake.mediaPausedWindowIDs == [1])
+        #expect(fake.videoCommands.isEmpty)
+    }
+
+    @Test func pressingHiddenInNormalModePausesNothing() {
+        let (fake, _, controller) = makeSUT()
+
+        controller.toggleHidden()
+
+        #expect(fake.mediaPausedWindowIDs.isEmpty)
+    }
 }

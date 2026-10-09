@@ -478,6 +478,13 @@ final class FakePlatformOps: PlatformOps {
         videoCommands.append((command, (window as! FakeWidgetWindowHandle).id))
     }
 
+    // #76
+    private(set) var mediaPausedWindowIDs: [Int] = []
+
+    func pauseAllMedia(in window: WidgetWindowHandle) {
+        mediaPausedWindowIDs.append((window as! FakeWidgetWindowHandle).id)
+    }
+
     /// Delivers one raw event, as the platform's listener would. Dropped while not observing —
     /// exactly what a real listener that was never installed (or was removed) does.
     func simulateInput(_ event: RawInputEvent) {
