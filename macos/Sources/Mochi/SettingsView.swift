@@ -5,7 +5,9 @@ import SwiftUI
 /// that `SettingsWindowController` builds, one toolbar button per case. Regrouped by the user's
 /// mental model rather than by implementation (#46), then widened from four tabs to six so the
 /// settings #64 adds each have a home: 网页内容 and 高级 start out empty and are filled by later
-/// tickets, which add items to a pane rather than inventing panes of their own.
+/// tickets, which add items to a pane rather than inventing panes of their own. #88 folded 热键
+/// and 窗口 into 幽灵模式: nearly every hotkey only works in Ghost Mode, and its opacity sat a pane
+/// away from them; 窗口's one remaining switch, Snap, moved to 通用.
 ///
 /// Every pane is backed by `SettingsViewModel` so each edit flows through `SettingsController`'s
 /// persistence path — view-local `@State` only ever holds a value mid-edit (text being typed, a
@@ -16,7 +18,7 @@ import SwiftUI
 /// already-executed JavaScript can't be undone — so that pane says "next page load" and offers the
 /// load as a button.
 enum SettingsPane: CaseIterable {
-    case general, window, hotkeys, webContent, scripts, advanced
+    case general, ghostMode, webContent, scripts, advanced
 
     /// Fixed for every pane, like Safari's: only the height follows the content, so switching
     /// panes never makes the window jump sideways.
@@ -25,8 +27,7 @@ enum SettingsPane: CaseIterable {
     var title: String {
         switch self {
         case .general: "通用"
-        case .window: "窗口"
-        case .hotkeys: "热键"
+        case .ghostMode: "幽灵模式"
         case .webContent: "网页内容"
         case .scripts: "脚本"
         case .advanced: "高级"
@@ -36,8 +37,9 @@ enum SettingsPane: CaseIterable {
     var symbolName: String {
         switch self {
         case .general: "gearshape"
-        case .window: "macwindow"
-        case .hotkeys: "command"
+        // An SF Symbol rather than the hand-drawn ghost (ADR-0013); `eye.slash` would read as
+        // Hidden, which is one thing inside Ghost Mode, not the mode itself.
+        case .ghostMode: "rectangle.dashed"
         case .webContent: "globe"
         case .scripts: "curlybraces"
         case .advanced: "gearshape.2"
@@ -45,15 +47,14 @@ enum SettingsPane: CaseIterable {
     }
 
     /// The pane's content at its natural height and the shared fixed width. The two list-driven
-    /// panes (hotkeys' mapping table, scripts' editor) have no natural height of their own — a
+    /// panes (幽灵模式's mapping table, scripts' editor) have no natural height of their own — a
     /// `List`/`TextEditor` takes whatever it is offered — so they get an explicit one.
     @ViewBuilder
     func content(viewModel: SettingsViewModel) -> some View {
         Group {
             switch self {
             case .general: GeneralSettingsTab(viewModel: viewModel)
-            case .window: WindowSettingsTab(viewModel: viewModel)
-            case .hotkeys: HotkeysTab(viewModel: viewModel).frame(height: 720)
+            case .ghostMode: GhostModeSettingsTab(viewModel: viewModel).frame(height: 790)
             case .webContent: WebContentSettingsTab(viewModel: viewModel)
             case .scripts: ScriptsTab(viewModel: viewModel).frame(height: 560)
             case .advanced: AdvancedSettingsTab(viewModel: viewModel)
@@ -325,6 +326,18 @@ struct GeneralSettingsTab: View {
             }
 
             DownloadLocationSection(viewModel: viewModel)
+
+            // Snap's home since #88 removed the 窗口 pane: it is the one window setting left that
+            // isn't about Ghost Mode.
+            Section("窗口") {
+                Toggle(
+                    "拖动时吸附屏幕边缘",
+                    isOn: Binding(
+                        get: { viewModel.config.isSnapEnabled },
+                        set: { viewModel.updateSnapEnabled($0) }
+                    )
+                )
+            }
         }
         .formStyle(.columns)
     }
@@ -342,59 +355,19 @@ struct GeneralSettingsTab: View {
     }
 }
 
-/// #46: everything about how the window behaves on the desktop (the 窗口 pane since #65, formerly
-/// 窗口与外观) — Ghost Mode's target opacity and Snap (#39). The Snap switch got its first UI here;
-/// before this it was only reachable by hand-editing the config file.
-struct WindowSettingsTab: View {
-    @ObservedObject var viewModel: SettingsViewModel
-    @State private var ghostOpacity: Double
-
-    init(viewModel: SettingsViewModel) {
-        self.viewModel = viewModel
-        _ghostOpacity = State(initialValue: viewModel.config.ghostOpacity)
-    }
-
-    var body: some View {
-        Form {
-            Section("幽灵模式") {
-                HStack {
-                    Slider(
-                        value: $ghostOpacity, in: 0...1,
-                        onEditingChanged: { editing in
-                            if !editing { viewModel.updateGhostOpacity(ghostOpacity) }
-                        }
-                    ) {
-                        Text("目标透明度")
-                    }
-                    Text(String(format: "%.0f%%", ghostOpacity * 100))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, alignment: .trailing)
-                }
-            }
-
-            Section("普通模式") {
-                Toggle(
-                    "拖动时吸附屏幕边缘",
-                    isOn: Binding(
-                        get: { viewModel.config.isSnapEnabled },
-                        set: { viewModel.updateSnapEnabled($0) }
-                    )
-                )
-            }
-        }
-        .formStyle(.columns)
-    }
-}
-
-/// #45 + #14 + #79, together in one place since the user thinks of all of them as "hotkeys"
-/// (#46). Laid out per #84: three sections — 全局热键, 视频控制, 热键传递 — each saying whether
-/// its keys are taken from other apps, and every row its own one-line description; the fixed
-/// shortcuts and 恢复默认 sit in a footer below all three.
-struct HotkeysTab: View {
+/// Everything about Ghost Mode in one pane (#88): its look, then the keys — #45 + #14 + #79,
+/// laid out per #84 as three sections (全局热键, 视频控制, 热键传递), each saying whether its keys
+/// are taken from other apps, and every row its own one-line description. 恢复默认热键 sits in a
+/// footer below all of them and leaves the opacity alone.
+struct GhostModeSettingsTab: View {
     @ObservedObject var viewModel: SettingsViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            GhostAppearanceSection(viewModel: viewModel)
+
+            Divider()
+
             SectionHeader(title: "全局热键", caption: "在任何应用里按下都会生效，并会占用这个组合。")
             ForEach(HotkeyAction.allCases, id: \.self) { action in
                 HotkeyRow(
@@ -425,11 +398,8 @@ struct HotkeysTab: View {
             Divider()
 
             HStack {
-                Text("刷新与缩放使用固定的 ⌘R / ⌘+ / ⌘- / ⌘0，不可自定义。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 Spacer()
-                Button("恢复默认") {
+                Button("恢复默认热键") {
                     viewModel.resetHotkeysToDefaults()
                 }
                 .disabled(
@@ -438,6 +408,41 @@ struct HotkeysTab: View {
             }
         }
         .padding(.vertical, 8)
+    }
+}
+
+/// 外观 (#88): Ghost Mode's target opacity, moved here from the old 窗口 pane and laid out like
+/// the hotkey rows below it. Written only when the drag ends — mid-drag values stay in `@State`.
+private struct GhostAppearanceSection: View {
+    @ObservedObject var viewModel: SettingsViewModel
+    @State private var opacity: Double
+
+    init(viewModel: SettingsViewModel) {
+        self.viewModel = viewModel
+        _opacity = State(initialValue: viewModel.config.ghostOpacity)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("外观").font(.headline)
+            HotkeyRow(title: "目标透明度") {
+                HStack {
+                    Slider(
+                        value: $opacity, in: 0...1,
+                        onEditingChanged: { editing in
+                            if !editing { viewModel.updateGhostOpacity(opacity) }
+                        }
+                    ) {
+                        Text("目标透明度")
+                    }
+                    .labelsHidden()
+                    .frame(width: 180)
+                    Text(String(format: "%.0f%%", opacity * 100))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, alignment: .trailing)
+                }
+            }
+        }
     }
 }
 

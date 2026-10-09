@@ -21,8 +21,8 @@ public struct WidgetConfig: Equatable {
     public var windowState: WindowState?
     public var customScript: String?
     public var ghostOpacity: Double
-    /// Magnetic edge/corner snapping while dragging (#6), on by default. Edited from the same
-    /// 窗口与外观 tab and re-applied to the live window on every change (#46).
+    /// Magnetic edge/corner snapping while dragging (#6), on by default. Edited from the
+    /// 通用 pane since #88 and re-applied to the live window on every change (#46).
     public var isSnapEnabled: Bool
     public var hotkeyMappings: [HotkeyMapping]
     public var startupTarget: StartupTarget?
