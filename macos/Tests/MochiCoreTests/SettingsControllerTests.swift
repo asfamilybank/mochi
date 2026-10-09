@@ -636,6 +636,101 @@ import Testing
         #expect(fake.presentedAlerts.count == 1)
     }
 
+    // MARK: - #85: clearing an action hotkey
+
+    @Test func clearingAnActionReleasesItsComboAndPersistsItAsUnbound() {
+        let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
+        let fake = FakePlatformOps()
+        let controller = makeController(store: store, platformOps: fake)
+
+        let succeeded = controller.updateActionHotkey(.hideWidget, to: nil)
+
+        #expect(succeeded)
+        #expect(fake.hotkeyCallOrder == [.unregister(DefaultHotkeys.hideWidget)])
+        #expect(store.config.hotkey(for: .hideWidget) == nil)
+        #expect(store.config.hotkey(for: .toggleGhostMode) == DefaultHotkeys.toggleGhostMode)
+    }
+
+    @Test func recordingAComboForAClearedActionOnlyRegistersIt() {
+        let store = PersistedStore(
+            WidgetConfig(url: URL(string: "https://example.com")!, hotkeyOverrides: [.toggleGhostMode: nil]))
+        let fake = FakePlatformOps()
+        let pressLog = PressLog()
+        let controller = makeController(store: store, platformOps: fake, pressLog: pressLog)
+
+        let succeeded = controller.updateActionHotkey(.toggleGhostMode, to: customToggle)
+        fake.simulateHotkeyPressed(customToggle)
+
+        #expect(succeeded)
+        #expect(fake.hotkeyCallOrder == [.register(customToggle)])
+        #expect(store.config.hotkey(for: .toggleGhostMode) == customToggle)
+        #expect(pressLog.pressed == [customToggle])
+    }
+
+    /// Nothing to roll back to — the action simply stays cleared.
+    @Test func recordingAComboAnotherAppHoldsForAClearedActionLeavesItCleared() {
+        let store = PersistedStore(
+            WidgetConfig(url: URL(string: "https://example.com")!, hotkeyOverrides: [.toggleGhostMode: nil]))
+        let fake = FakePlatformOps()
+        fake.hotkeysThatFailToRegister = [customToggle]
+        let controller = makeController(store: store, platformOps: fake)
+
+        let succeeded = controller.updateActionHotkey(.toggleGhostMode, to: customToggle)
+
+        #expect(!succeeded)
+        #expect(fake.hotkeyCallOrder == [.register(customToggle)])
+        #expect(store.config.hotkey(for: .toggleGhostMode) == nil)
+        #expect(store.writeCount == 0)
+    }
+
+    @Test func clearingAnAlreadyClearedActionTouchesNothing() {
+        let store = PersistedStore(
+            WidgetConfig(url: URL(string: "https://example.com")!, hotkeyOverrides: [.hideWidget: nil]))
+        let fake = FakePlatformOps()
+        let controller = makeController(store: store, platformOps: fake)
+
+        #expect(controller.updateActionHotkey(.hideWidget, to: nil))
+        #expect(fake.hotkeyCallOrder.isEmpty)
+        #expect(store.writeCount == 0)
+    }
+
+    @Test func restoringDefaultsRegistersAClearedActionAgain() {
+        let store = PersistedStore(
+            WidgetConfig(url: URL(string: "https://example.com")!, hotkeyOverrides: [.toggleGhostMode: nil]))
+        let fake = FakePlatformOps()
+        let controller = makeController(store: store, platformOps: fake)
+
+        controller.resetActionHotkeysToDefaults()
+
+        #expect(fake.hotkeyCallOrder == [.register(DefaultHotkeys.toggleGhostMode)])
+        #expect(store.config.hotkeyOverrides.isEmpty)
+    }
+
+    @Test func restoringDefaultsKeepsAClearedActionClearedWhenAnotherAppHoldsItsDefault() {
+        let store = PersistedStore(
+            WidgetConfig(url: URL(string: "https://example.com")!, hotkeyOverrides: [.toggleGhostMode: nil]))
+        let fake = FakePlatformOps()
+        fake.hotkeysThatFailToRegister = [DefaultHotkeys.toggleGhostMode]
+        let controller = makeController(store: store, platformOps: fake)
+
+        controller.resetActionHotkeysToDefaults()
+
+        #expect(fake.hotkeyCallOrder == [.register(DefaultHotkeys.toggleGhostMode)])
+        #expect(store.config.hotkey(for: .toggleGhostMode) == nil)
+        #expect(fake.presentedAlerts.count == 1)
+    }
+
+    /// A cleared action holds no combo, so its default is free for anything else to take.
+    @Test func aClearedActionsDefaultComboIsFreeForAMappingOrAVideoKey() {
+        let store = PersistedStore(
+            WidgetConfig(url: URL(string: "https://example.com")!, hotkeyOverrides: [.hideWidget: nil]))
+        let controller = makeController(store: store)
+
+        #expect(controller.addHotkeyMapping(trigger: DefaultHotkeys.hideWidget, pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0)))
+        #expect(controller.updateActionHotkey(.toggleGhostMode, to: Hotkey(keyCode: 0x26, modifierFlags: 0x0800)))
+        #expect(controller.updateVideoControlTrigger(.keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x1000)), for: .seekForward))
+    }
+
     // #70
 
     @Test func updatingAutoplayPolicyPersistsAndNotifies() {

@@ -118,7 +118,7 @@ final class SettingsViewModel: ObservableObject {
     }
 
     @discardableResult
-    func updateActionHotkey(_ action: HotkeyAction, to hotkey: Hotkey) -> Bool {
+    func updateActionHotkey(_ action: HotkeyAction, to hotkey: Hotkey?) -> Bool {
         let succeeded = controller.updateActionHotkey(action, to: hotkey)
         config = controller.config
         return succeeded

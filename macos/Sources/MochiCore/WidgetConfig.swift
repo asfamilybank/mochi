@@ -33,9 +33,10 @@ public struct WidgetConfig: Equatable {
     /// The user's *explicit* rebindings of Mochi's two global hotkeys (#45), keyed by action —
     /// same shape as `disabledBuiltInScriptIDs`: only what the user changed is stored, an absent
     /// key means "use `HotkeyAction.defaultHotkey`". So a later change to a default needs no
-    /// migration and the file never fills up with entries that just restate the defaults. Read
-    /// through `hotkey(for:)`, never directly.
-    public var hotkeyOverrides: [HotkeyAction: Hotkey]
+    /// migration and the file never fills up with entries that just restate the defaults. A `nil`
+    /// value is an action the user cleared (#85): no hotkey at all, the combo left to other apps.
+    /// Read through `hotkey(for:)`, never directly.
+    public var hotkeyOverrides: [HotkeyAction: Hotkey?]
     /// #73: inline CSS injected on every navigation (see `CustomStylesheet`); `nil` = none,
     /// and then omitted from `config.toml`. Not an init parameter — set via
     /// `updatingCustomStylesheet`, so the long memberwise init stays untouched.
@@ -111,7 +112,7 @@ public struct WidgetConfig: Equatable {
         isSnapEnabled: Bool = true,
         hotkeyMappings: [HotkeyMapping] = [], startupTarget: StartupTarget? = nil,
         disabledBuiltInScriptIDs: Set<String> = [],
-        hotkeyOverrides: [HotkeyAction: Hotkey] = [:],
+        hotkeyOverrides: [HotkeyAction: Hotkey?] = [:],
         searchEngine: SearchEngine = .google
     ) {
         self.url = url
@@ -127,9 +128,10 @@ public struct WidgetConfig: Equatable {
     }
 
     /// The combo currently in effect for `action`: the user's override if there is one, else the
-    /// built-in default.
-    public func hotkey(for action: HotkeyAction) -> Hotkey {
-        hotkeyOverrides[action] ?? action.defaultHotkey
+    /// built-in default; `nil` when the user cleared it (#85).
+    public func hotkey(for action: HotkeyAction) -> Hotkey? {
+        if let override = hotkeyOverrides[action] { return override }
+        return action.defaultHotkey
     }
 
     /// The key currently bound to a 视频控制 action (#74); `nil` when the action is unbound.
@@ -285,14 +287,19 @@ extension WidgetConfig {
     /// Same leniency as `parseHotkeyMappings`: an unknown action identifier (a typo, or an action
     /// a later version removed) is ignored, and a malformed entry falls back to that action's
     /// default rather than throwing — an override that can't be parsed must never brick the app.
-    private static func parseHotkeyOverrides(from table: TOMLTable?) -> [HotkeyAction: Hotkey] {
+    ///
+    /// `kind = "unbound"` is a cleared action (#85), written like `[video_control]`'s; an entry
+    /// with no `kind` is a rebinding, as every entry was before clearing existed.
+    private static func parseHotkeyOverrides(from table: TOMLTable?) -> [HotkeyAction: Hotkey?] {
         guard let table else { return [:] }
-        var overrides: [HotkeyAction: Hotkey] = [:]
+        var overrides: [HotkeyAction: Hotkey?] = [:]
         for action in HotkeyAction.allCases {
-            guard let entry = table[action.rawValue]?.table,
-                let hotkey = parseKeystroke(keyCodeKey: "key_code", modifiersKey: "modifiers", in: entry)
-            else { continue }
-            overrides[action] = hotkey
+            guard let entry = table[action.rawValue]?.table else { continue }
+            if entry["kind"]?.string == "unbound" {
+                overrides.updateValue(nil, forKey: action)
+            } else if let hotkey = parseKeystroke(keyCodeKey: "key_code", modifiersKey: "modifiers", in: entry) {
+                overrides[action] = hotkey
+            }
         }
         return overrides
     }
@@ -379,8 +386,12 @@ extension WidgetConfig {
             let hotkeysTable = TOMLTable()
             for (action, hotkey) in hotkeyOverrides.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
                 let entry = TOMLTable()
-                entry["key_code"] = Int(hotkey.keyCode)
-                entry["modifiers"] = Int(hotkey.modifierFlags)
+                if let hotkey {
+                    entry["key_code"] = Int(hotkey.keyCode)
+                    entry["modifiers"] = Int(hotkey.modifierFlags)
+                } else {
+                    entry["kind"] = "unbound"
+                }
                 hotkeysTable[action.rawValue] = entry
             }
             table["hotkeys"] = hotkeysTable
@@ -550,14 +561,15 @@ extension WidgetConfig {
         return copy
     }
 
-    /// Rebinding an action back to its own default drops the entry instead of storing it — the
-    /// override table records only what differs from the defaults (see `hotkeyOverrides`).
-    public func updatingHotkeyOverride(_ action: HotkeyAction, to hotkey: Hotkey) -> WidgetConfig {
+    /// Rebinds an action, or clears it with `nil` (#85). Rebinding an action back to its own
+    /// default drops the entry instead of storing it — the override table records only what
+    /// differs from the defaults (see `hotkeyOverrides`).
+    public func updatingHotkeyOverride(_ action: HotkeyAction, to hotkey: Hotkey?) -> WidgetConfig {
         var copy = self
         if hotkey == action.defaultHotkey {
             copy.hotkeyOverrides.removeValue(forKey: action)
         } else {
-            copy.hotkeyOverrides[action] = hotkey
+            copy.hotkeyOverrides.updateValue(hotkey, forKey: action)
         }
         return copy
     }

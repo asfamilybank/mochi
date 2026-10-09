@@ -18,16 +18,24 @@ public enum HotkeyQuickReference {
     /// and opening Settings only acts in Ghost Mode, and the Empty Page is Normal Mode content
     /// (ADR-0012), so those rows say so; otherwise pressing one here would read as broken.
     public static func entries(for config: WidgetConfig) -> [HotkeyQuickReferenceEntry] {
-        var entries = [
-            HotkeyQuickReferenceEntry(label: "切换幽灵模式", keys: HotkeyDisplay.keys(of: config.hotkey(for: .toggleGhostMode))),
-            HotkeyQuickReferenceEntry(label: "隐藏窗口（幽灵模式下）", keys: HotkeyDisplay.keys(of: config.hotkey(for: .hideWidget))),
-        ]
+        var entries: [HotkeyQuickReferenceEntry] = []
+        for action in HotkeyAction.allCases {
+            guard let hotkey = config.hotkey(for: action) else { continue }
+            entries.append(HotkeyQuickReferenceEntry(label: label(for: action), keys: HotkeyDisplay.keys(of: hotkey)))
+        }
         for action in VideoControlAction.allCases {
             guard let trigger = config.videoControlTrigger(for: action) else { continue }
             entries.append(HotkeyQuickReferenceEntry(label: "\(label(for: action, seekStep: config.videoSeekStep))（幽灵模式下）", keys: HotkeyDisplay.keys(of: trigger)))
         }
         entries.append(HotkeyQuickReferenceEntry(label: "打开设置", keys: HotkeyDisplay.keys(of: DefaultHotkeys.openSettings)))
         return entries
+    }
+
+    private static func label(for action: HotkeyAction) -> String {
+        switch action {
+        case .toggleGhostMode: action.displayName
+        case .hideWidget: "\(action.displayName)（幽灵模式下）"
+        }
     }
 
     private static func label(for action: VideoControlAction, seekStep: Int) -> String {

@@ -405,7 +405,7 @@ struct HotkeysTab: View {
                         hotkey: viewModel.config.hotkey(for: action),
                         accessibilityName: action.displayName,
                         onCapture: { viewModel.updateActionHotkey(action, to: $0) },
-                        onClear: nil
+                        onClear: { viewModel.updateActionHotkey(action, to: nil) }
                     )
                 }
             }

@@ -535,6 +535,52 @@ import Testing
         #expect(updated.hotkey(for: .hideWidget) == custom)
     }
 
+    // #85: an action hotkey can be cleared — the user takes the combo back from Mochi.
+
+    @Test func aClearedActionHotkeyIsWrittenAsUnboundAndReadsBackAsNoHotkey() throws {
+        let cleared = WidgetConfig().updatingHotkeyOverride(.hideWidget, to: nil)
+
+        #expect(cleared.hotkey(for: .hideWidget) == nil)
+        #expect(cleared.hotkey(for: .toggleGhostMode) == DefaultHotkeys.toggleGhostMode)
+        let reparsed = try WidgetConfig.parse(cleared.serialized())
+        #expect(reparsed == cleared)
+        #expect(reparsed.hotkey(for: .hideWidget) == nil)
+    }
+
+    @Test func parsesAnUnboundActionHotkey() throws {
+        let toml = """
+        [hotkeys.toggle_ghost_mode]
+        kind = "unbound"
+        """
+
+        let config = try WidgetConfig.parse(toml)
+
+        #expect(config.hotkey(for: .toggleGhostMode) == nil)
+        #expect(config.hotkey(for: .hideWidget) == DefaultHotkeys.hideWidget)
+    }
+
+    /// Files written before #85 have no `kind` — a bare key code + modifiers is still a rebinding.
+    @Test func anEntryWithoutAKindIsStillARebinding() throws {
+        let toml = """
+        [hotkeys.hide_widget]
+        key_code = 11
+        modifiers = 2304
+        """
+
+        let config = try WidgetConfig.parse(toml)
+
+        #expect(config.hotkey(for: .hideWidget) == Hotkey(keyCode: 11, modifierFlags: 2304))
+    }
+
+    @Test func clearingAndThenRestoringTheDefaultLeavesNoHotkeysTable() {
+        let restored = WidgetConfig()
+            .updatingHotkeyOverride(.toggleGhostMode, to: nil)
+            .updatingHotkeyOverride(.toggleGhostMode, to: DefaultHotkeys.toggleGhostMode)
+
+        #expect(restored.hotkeyOverrides.isEmpty)
+        #expect(restored.serialized().contains("hotkeys") == false)
+    }
+
     /// #58: moving the defaults to ⌥G/⌥H needs no migration because the config only stores
     /// overrides — a user who customised either action (here: pinned the old ⌥⌘G/⌥⌘H combos
     /// by hand) keeps exactly what they chose after upgrading.

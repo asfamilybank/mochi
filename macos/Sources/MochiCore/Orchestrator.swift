@@ -272,8 +272,9 @@ public final class Orchestrator {
         let config = currentConfig()
         var failedActionNames: [String] = []
         var registered: Set<Hotkey> = []
+        // A cleared action (#85) holds no combo at all.
         for action in HotkeyAction.allCases {
-            let hotkey = config.hotkey(for: action)
+            guard let hotkey = config.hotkey(for: action) else { continue }
             if register(hotkey) {
                 registered.insert(hotkey)
             } else {

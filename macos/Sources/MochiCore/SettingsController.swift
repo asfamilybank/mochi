@@ -131,28 +131,34 @@ public final class SettingsController {
 
     // MARK: - #45: the two action hotkeys
 
-    /// Rebinds `action` to `hotkey`, live. Order matters: the old combo is released *before* the
-    /// new one is claimed, since the new one might be the old one with a different action (a swap)
-    /// — and if claiming fails (another app holds it), the old combo is re-registered and the
-    /// config left untouched, so a failed attempt can never leave the action with no hotkey at all.
+    /// Rebinds `action` to `hotkey`, live, or clears it with `nil` (#85) — releasing the combo
+    /// to other apps. Order matters: the old combo is released *before* the new one is claimed,
+    /// since the new one might be the old one with a different action (a swap) — and if claiming
+    /// fails (another app holds it), the old combo is re-registered and the config left
+    /// untouched, so a failed attempt can never take away the hotkey the action had. A cleared
+    /// action has nothing to release first, and nothing to fall back to: it stays cleared.
     @discardableResult
-    public func updateActionHotkey(_ action: HotkeyAction, to hotkey: Hotkey) -> Bool {
+    public func updateActionHotkey(_ action: HotkeyAction, to hotkey: Hotkey?) -> Bool {
         let current = currentConfig().hotkey(for: action)
         guard hotkey != current else { return true }
-        guard !isReservedInProcess(hotkey, ignoringAction: action, ignoringMappingAt: nil) else {
-            presentConflictAlert()
-            return false
-        }
-        guard rebind(from: current, to: hotkey) else {
-            presentConflictAlert()
-            return false
+        if let hotkey {
+            guard !isReservedInProcess(hotkey, ignoringAction: action, ignoringMappingAt: nil) else {
+                presentConflictAlert()
+                return false
+            }
+            guard rebind(from: current, to: hotkey) else {
+                presentConflictAlert()
+                return false
+            }
+        } else if let current {
+            platformOps.unregisterGlobalHotkey(current)
         }
         persistAndNotify { $0.updatingHotkeyOverride(action, to: hotkey) }
         return true
     }
 
-    /// Puts every overridden action back on its built-in combo — the escape hatch for a user who
-    /// bound both hotkeys to something odd and forgot what (#45). Each action is its own
+    /// Puts every overridden action back on its built-in combo, cleared ones included (#85) — the
+    /// escape hatch for a user who bound both hotkeys to something odd and forgot what (#45). Each action is its own
     /// transaction with the same rollback rule as `updateActionHotkey`; one default being held by
     /// another app doesn't stop the other from being restored.
     public func resetActionHotkeysToDefaults() {
@@ -182,10 +188,11 @@ public final class SettingsController {
 
     /// The unregister-then-register transaction shared by every live hotkey change, with the
     /// rollback that keeps "old released, new not claimed" from ever being an observable state.
-    private func rebind(from old: Hotkey, to new: Hotkey) -> Bool {
-        platformOps.unregisterGlobalHotkey(old)
+    /// `old` is `nil` for a cleared action (#85): nothing to release, nothing to roll back to.
+    private func rebind(from old: Hotkey?, to new: Hotkey) -> Bool {
+        if let old { platformOps.unregisterGlobalHotkey(old) }
         if registerDispatching(new) { return true }
-        platformOps.registerGlobalHotkey(old) { [onGlobalHotkeyPressed] in onGlobalHotkeyPressed(old) }
+        if let old { platformOps.registerGlobalHotkey(old) { [onGlobalHotkeyPressed] in onGlobalHotkeyPressed(old) } }
         return false
     }
 

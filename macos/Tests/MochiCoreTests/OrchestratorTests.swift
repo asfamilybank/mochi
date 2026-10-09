@@ -291,6 +291,38 @@ enum TrayScenario: Sendable {
         ])
     }
 
+    // #85: a cleared action hotkey is no hotkey at all.
+
+    @Test func aClearedActionHotkeyIsNeitherRegisteredNorHintedNorOnTheQuickReference() {
+        let fake = FakePlatformOps()
+        let config = WidgetConfig(url: nil, hotkeyOverrides: [.hideWidget: nil])
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+
+        orchestrator.start()
+
+        #expect(fake.registeredHotkeys == [DefaultHotkeys.toggleGhostMode])
+        #expect(fake.presentedAlerts.isEmpty)
+        #expect(fake.trayItem("隐藏窗口").hotkeyHint() == nil)
+        #expect(fake.hotkeyQuickReferences.last?.entries.map(\.label) == [
+            "切换幽灵模式", "播放/暂停（幽灵模式下）", "后退 5 秒（幽灵模式下）", "打开设置",
+        ])
+    }
+
+    /// With Hidden cleared, its old default is just another combo — here a mapping's trigger.
+    @Test func aClearedActionsOldComboDispatchesToWhateverNowHoldsIt() {
+        let fake = FakePlatformOps()
+        let mapping = HotkeyMapping(trigger: DefaultHotkeys.hideWidget, pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0))
+        let config = WidgetConfig(url: URL(string: "https://example.com")!, hotkeyMappings: [mapping], hotkeyOverrides: [.hideWidget: nil])
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+        orchestrator.start()
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.hideWidget)
+
+        #expect(fake.forwardedKeystrokes == [mapping.pageKeystroke])
+        #expect(fake.registeredHotkeys == [DefaultHotkeys.toggleGhostMode, mapping.trigger])
+    }
+
     /// The tray is built once, so a hint has to be read from the config each time the menu opens:
     /// a rebind in the settings panel shows up on the very next open, with no second tray.
     @Test func trayHintsFollowARebindWithoutRebuildingTheTray() {
