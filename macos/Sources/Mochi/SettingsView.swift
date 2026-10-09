@@ -53,7 +53,7 @@ enum SettingsPane: CaseIterable {
             switch self {
             case .general: GeneralSettingsTab(viewModel: viewModel)
             case .window: WindowSettingsTab(viewModel: viewModel)
-            case .hotkeys: HotkeysTab(viewModel: viewModel).frame(height: 660)
+            case .hotkeys: HotkeysTab(viewModel: viewModel).frame(height: 720)
             case .webContent: WebContentSettingsTab(viewModel: viewModel)
             case .scripts: ScriptsTab(viewModel: viewModel).frame(height: 560)
             case .advanced: AdvancedSettingsTab(viewModel: viewModel)
@@ -386,21 +386,18 @@ struct WindowSettingsTab: View {
     }
 }
 
-/// #45 + #14, together in one place since the user thinks of both as "hotkeys" (#46): the two
-/// customizable action hotkeys on top, the forwarding mapping table below. Both sections reuse
-/// the same recorder control and display formatting.
+/// #45 + #14 + #79, together in one place since the user thinks of all of them as "hotkeys"
+/// (#46). Laid out per #84: three sections — 全局热键, 视频控制, 热键传递 — each saying whether
+/// its keys are taken from other apps, and every row its own one-line description; the fixed
+/// shortcuts and 恢复默认 sit in a footer below all three.
 struct HotkeysTab: View {
     @ObservedObject var viewModel: SettingsViewModel
-    @State private var newTrigger: Hotkey?
-    @State private var newPageKeystroke: Hotkey?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("功能热键").font(.headline)
+            SectionHeader(title: "全局热键", caption: "在任何应用里按下都会生效，并会占用这个组合。")
             ForEach(HotkeyAction.allCases, id: \.self) { action in
-                HStack {
-                    Text(action.displayName)
-                    Spacer()
+                HotkeyRow(title: action.displayName, description: action.settingsDescription) {
                     // The field shows the combo currently in effect, read straight from the config, so
                     // a rejected recording (conflict, or held by another app) snaps the control
                     // back to the unchanged binding instead of displaying a combo that isn't live.
@@ -412,8 +409,19 @@ struct HotkeysTab: View {
                     )
                 }
             }
+
+            Divider()
+
+            VideoControlSection(viewModel: viewModel)
+
+            Divider()
+
+            HotkeyForwardingSection(viewModel: viewModel)
+
+            Divider()
+
             HStack {
-                Text("全局生效，按下即刻切换；刷新与缩放使用固定的 ⌘R / ⌘+ / ⌘- / ⌘0，不可自定义。")
+                Text("刷新与缩放使用固定的 ⌘R / ⌘+ / ⌘- / ⌘0，不可自定义。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -424,54 +432,66 @@ struct HotkeysTab: View {
                     viewModel.config.hotkeyOverrides.isEmpty && viewModel.config.videoControlOverrides.isEmpty
                         && viewModel.config.videoSeekStep == WidgetConfig.defaultVideoSeekStep)
             }
-
-            Divider()
-
-            VideoControlSection(viewModel: viewModel)
-
-            Divider()
-
-            Text("热键映射").font(.headline)
-            Text("幽灵模式下按触发热键，向页面转发对应按键。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            List {
-                ForEach(Array(viewModel.config.hotkeyMappings.enumerated()), id: \.offset) { index, mapping in
-                    HStack {
-                        Text(HotkeyDisplay.describe(mapping.trigger))
-                        Image(systemName: "arrow.right")
-                        Text(HotkeyDisplay.describe(mapping.pageKeystroke))
-                        Spacer()
-                        Button {
-                            viewModel.removeHotkeyMapping(at: index)
-                        } label: {
-                            Image(systemName: "trash")
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                }
-            }
-
-            HStack {
-                HotkeyRecorderView(
-                    hotkey: newTrigger, accessibilityName: "触发热键",
-                    onCapture: { newTrigger = $0 }, onClear: { newTrigger = nil })
-                Image(systemName: "arrow.right")
-                HotkeyRecorderView(
-                    hotkey: newPageKeystroke, accessibilityName: "页面按键",
-                    onCapture: { newPageKeystroke = $0 }, onClear: { newPageKeystroke = nil })
-                Button("添加") {
-                    guard let trigger = newTrigger, let pageKeystroke = newPageKeystroke else { return }
-                    if viewModel.addHotkeyMapping(trigger: trigger, pageKeystroke: pageKeystroke) {
-                        newTrigger = nil
-                        newPageKeystroke = nil
-                    }
-                }
-                .disabled(newTrigger == nil || newPageKeystroke == nil)
-            }
         }
         .padding(.vertical, 8)
+    }
+}
+
+/// A section's headline plus the one line saying what all its keys share — chiefly whether they
+/// are taken from every other app (#84).
+private struct SectionHeader: View {
+    var title: String
+    var caption: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.headline)
+            Text(caption)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// One hotkey: its name with a one-line description underneath on the left, the recorder on the
+/// right (#84).
+private struct HotkeyRow<Control: View>: View {
+    var title: String
+    var description: String?
+    @ViewBuilder var control: Control
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                if let description {
+                    Text(description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 0)
+            control
+        }
+    }
+}
+
+private extension HotkeyAction {
+    var settingsDescription: String {
+        switch self {
+        case .toggleGhostMode: "隐藏窗口装饰、置顶并让鼠标穿透；再按一次退出。"
+        case .hideWidget: "幽灵模式下让窗口完全看不见，页面继续运行，视频会暂停。"
+        }
+    }
+}
+
+private extension VideoControlAction {
+    var settingsDescription: String {
+        switch self {
+        case .togglePlayback: "作用于正在播放或最近播放过的视频。修饰键要单独轻按一下。"
+        case .seekBackward, .seekForward: "按下面设定的步长跳转。"
+        }
     }
 }
 
@@ -482,28 +502,20 @@ private struct VideoControlSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("视频控制").font(.headline)
-            Text("幽灵模式下按下即可控制页面视频。按键照常传给当前应用，不会被占用；修饰键要单独轻按一下。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            SectionHeader(title: "视频控制", caption: "幽灵模式下生效。按键照常传给当前应用，不会被占用。")
             ForEach(VideoControlAction.allCases, id: \.self) { action in
-                let trigger = viewModel.config.videoControlTrigger(for: action)
-                HStack {
-                    Text(action.displayName)
-                    Spacer()
+                HotkeyRow(title: action.displayName, description: action.settingsDescription) {
                     // Shows the binding in effect straight from the config, like the action
                     // hotkeys above, so a refused recording snaps back to what is live.
                     VideoControlRecorderView(
-                        trigger: trigger,
+                        trigger: viewModel.config.videoControlTrigger(for: action),
                         accessibilityName: action.displayName,
                         onCapture: { viewModel.updateVideoControlTrigger($0, for: action) },
                         onClear: { viewModel.updateVideoControlTrigger(nil, for: action) }
                     )
                 }
             }
-            HStack {
-                Text("后退/前进步长")
-                Spacer()
+            HotkeyRow(title: "后退/前进步长") {
                 Stepper(
                     "\(viewModel.config.videoSeekStep) 秒",
                     value: Binding(
@@ -531,6 +543,63 @@ private struct VideoControlSection: View {
         .onAppear { viewModel.refreshAccessibilityStatus() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             viewModel.refreshAccessibilityStatus()
+        }
+    }
+}
+
+/// 热键传递 (#14): each 映射 read-only — re-recording one in place would mean re-registering
+/// its trigger but not its page key, so a change is delete-and-add — with the add row below.
+private struct HotkeyForwardingSection: View {
+    @ObservedObject var viewModel: SettingsViewModel
+    @State private var newTrigger: Hotkey?
+    @State private var newPageKeystroke: Hotkey?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "热键传递", caption: "幽灵模式下按触发热键，向页面发送对应按键；触发热键会被占用。")
+
+            List {
+                ForEach(Array(viewModel.config.hotkeyMappings.enumerated()), id: \.offset) { index, mapping in
+                    HStack {
+                        HotkeyRecorderView(hotkey: mapping.trigger, accessibilityName: "触发热键", isRecordable: false,
+                            width: HotkeyRecorderField.mappingWidth)
+                        Image(systemName: "arrow.right")
+                        HotkeyRecorderView(hotkey: mapping.pageKeystroke, accessibilityName: "页面按键", isRecordable: false,
+                            width: HotkeyRecorderField.mappingWidth)
+                        Spacer()
+                        Button {
+                            viewModel.removeHotkeyMapping(at: index)
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("删除映射")
+                        .accessibilityLabel("删除映射")
+                    }
+                    .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+
+            HStack {
+                HotkeyRecorderView(
+                    hotkey: newTrigger, accessibilityName: "触发热键", width: HotkeyRecorderField.mappingWidth,
+                    onCapture: { newTrigger = $0 }, onClear: { newTrigger = nil })
+                Image(systemName: "arrow.right")
+                HotkeyRecorderView(
+                    hotkey: newPageKeystroke, accessibilityName: "页面按键", width: HotkeyRecorderField.mappingWidth,
+                    onCapture: { newPageKeystroke = $0 }, onClear: { newPageKeystroke = nil })
+                Spacer()
+                Button("添加映射") {
+                    guard let trigger = newTrigger, let pageKeystroke = newPageKeystroke else { return }
+                    if viewModel.addHotkeyMapping(trigger: trigger, pageKeystroke: pageKeystroke) {
+                        newTrigger = nil
+                        newPageKeystroke = nil
+                    }
+                }
+                .disabled(newTrigger == nil || newPageKeystroke == nil)
+            }
         }
     }
 }

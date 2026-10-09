@@ -7,20 +7,25 @@ import SwiftUI
 /// keyCode/modifier bitmask by hand isn't something a user should ever have to do.
 ///
 /// `onClear` is the field's ⓧ (and ⌫ while recording); `nil` leaves the binding unclearable.
+///
+/// `isRecordable: false` is the read-only form a 映射 row shows its keys in (#84).
 struct HotkeyRecorderView: NSViewRepresentable {
     var hotkey: Hotkey?
     var accessibilityName: String
-    var onCapture: (Hotkey) -> Void
+    var isRecordable = true
+    var width = HotkeyRecorderField.defaultWidth
+    var onCapture: (Hotkey) -> Void = { _ in }
     var onClear: (() -> Void)?
 
     func makeNSView(context: Context) -> HotkeyRecorderField {
-        HotkeyRecorderField(recordsModifierTaps: false)
+        HotkeyRecorderField(recordsModifierTaps: false, width: width)
     }
 
     func updateNSView(_ field: HotkeyRecorderField, context: Context) {
         field.accessibilityName = accessibilityName
         field.face = HotkeyRecorderModel.face(of: hotkey)
         field.isBound = hotkey != nil
+        field.isRecordable = isRecordable
         field.onCapture = { if case .keystroke(let captured) = $0 { onCapture(captured) } }
         field.onClear = onClear
     }
@@ -40,7 +45,7 @@ struct VideoControlRecorderView: NSViewRepresentable {
     var onClear: () -> Void
 
     func makeNSView(context: Context) -> HotkeyRecorderField {
-        HotkeyRecorderField(recordsModifierTaps: true)
+        HotkeyRecorderField(recordsModifierTaps: true, width: HotkeyRecorderField.defaultWidth)
     }
 
     func updateNSView(_ field: HotkeyRecorderField, context: Context) {
@@ -63,7 +68,9 @@ struct VideoControlRecorderView: NSViewRepresentable {
 ///
 /// Colors are read in `draw(_:)`, not cached, so the field follows light/dark and accent changes.
 final class HotkeyRecorderField: NSView, KeyCapturingResponder {
-    static let width: CGFloat = 200
+    static let defaultWidth: CGFloat = 200
+    /// A 映射 row holds two fields side by side, so each is narrower.
+    static let mappingWidth: CGFloat = 170
     static let height: CGFloat = 24
 
     var face: RecorderFace = .slots(lit: [], key: nil) { didSet { if face != oldValue { needsDisplay = true } } }
@@ -71,17 +78,21 @@ final class HotkeyRecorderField: NSView, KeyCapturingResponder {
     var accessibilityName = "" { didSet { refreshAccessibility() } }
     var onCapture: ((VideoControlTrigger) -> Void)?
     var onClear: (() -> Void)? { didSet { refreshClearButton() } }
+    /// `false` for the read-only form: no recording, no ⓧ.
+    var isRecordable = true { didSet { refreshClearButton() } }
 
     private(set) var isCapturingKeys = false
     private let recordsModifierTaps: Bool
+    private let width: CGFloat
     private var tapRecognizer = ModifierTapRecognizer()
     private let clearButton = NSButton()
 
     private var prompt: String { recordsModifierTaps ? "按下按键，或单独轻按修饰键…" : "按下组合键…" }
 
-    init(recordsModifierTaps: Bool) {
+    init(recordsModifierTaps: Bool, width: CGFloat) {
         self.recordsModifierTaps = recordsModifierTaps
-        super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: Self.height))
+        self.width = width
+        super.init(frame: NSRect(x: 0, y: 0, width: width, height: Self.height))
         clearButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: nil)
         clearButton.isBordered = false
         clearButton.imagePosition = .imageOnly
@@ -106,8 +117,8 @@ final class HotkeyRecorderField: NSView, KeyCapturingResponder {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override var intrinsicContentSize: NSSize { NSSize(width: Self.width, height: Self.height) }
-    override var acceptsFirstResponder: Bool { true }
+    override var intrinsicContentSize: NSSize { NSSize(width: width, height: Self.height) }
+    override var acceptsFirstResponder: Bool { isRecordable }
 
     // MARK: Recording
 
@@ -121,7 +132,7 @@ final class HotkeyRecorderField: NSView, KeyCapturingResponder {
     }
 
     private func startRecording() {
-        guard !isCapturingKeys else { return }
+        guard isRecordable, !isCapturingKeys else { return }
         isCapturingKeys = true
         tapRecognizer = ModifierTapRecognizer()
         window?.makeFirstResponder(self)
@@ -186,7 +197,8 @@ final class HotkeyRecorderField: NSView, KeyCapturingResponder {
     }
 
     private func refreshClearButton() {
-        clearButton.isHidden = !isBound || onClear == nil || isCapturingKeys
+        clearButton.isHidden = !isBound || onClear == nil || !isRecordable || isCapturingKeys
+        setAccessibilityRole(isRecordable ? .button : .staticText)
         clearButton.setAccessibilityLabel("清除\(accessibilityName)按键")
     }
 

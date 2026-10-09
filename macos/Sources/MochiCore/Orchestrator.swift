@@ -301,8 +301,8 @@ public final class Orchestrator {
         }
         if mappingConflictCount > 0 {
             platformOps.presentAlert(
-                title: "热键映射注册失败",
-                message: "\(mappingConflictCount) 条热键映射的触发热键已被其他应用或 Mochi 自身的热键占用，请检查冲突后调整映射。"
+                title: "部分映射注册失败",
+                message: "\(mappingConflictCount) 条映射的触发热键已被其他应用或 Mochi 自身的热键占用，请在设置的「热键传递」里调整。"
             )
         }
     }
