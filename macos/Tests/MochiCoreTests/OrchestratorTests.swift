@@ -320,7 +320,7 @@ enum TrayScenario: Sendable {
         fake.simulateHotkeyPressed(DefaultHotkeys.hideWidget)
 
         #expect(fake.forwardedKeystrokes == [mapping.pageKeystroke])
-        #expect(fake.registeredHotkeys == [DefaultHotkeys.toggleGhostMode, mapping.trigger])
+        #expect(fake.registeredHotkeys == [DefaultHotkeys.toggleGhostMode, mapping.registeredHotkey!])
     }
 
     /// The tray is built once, so a hint has to be read from the config each time the menu opens:
@@ -744,7 +744,7 @@ enum TrayScenario: Sendable {
 
         orchestrator.start()
 
-        #expect(fake.registeredHotkeys == [DefaultHotkeys.toggleGhostMode, DefaultHotkeys.hideWidget, mapping.trigger])
+        #expect(fake.registeredHotkeys == [DefaultHotkeys.toggleGhostMode, DefaultHotkeys.hideWidget, mapping.registeredHotkey!])
         #expect(fake.presentedAlerts.isEmpty)
     }
 
@@ -756,7 +756,7 @@ enum TrayScenario: Sendable {
         orchestrator.start()
         fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
 
-        fake.simulateHotkeyPressed(mapping.trigger)
+        fake.simulateHotkeyPressed(mapping.registeredHotkey!)
 
         #expect(fake.forwardedKeystrokes == [mapping.pageKeystroke])
     }
@@ -768,7 +768,7 @@ enum TrayScenario: Sendable {
         let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
         orchestrator.start()
 
-        fake.simulateHotkeyPressed(mapping.trigger)
+        fake.simulateHotkeyPressed(mapping.registeredHotkey!)
 
         #expect(fake.forwardedKeystrokes.isEmpty)
     }
@@ -1464,8 +1464,8 @@ enum TrayScenario: Sendable {
         orchestrator.start()
 
         config = config
-            .updatingTriggerKey(nil, for: .togglePlayback)
-            .updatingTriggerKey(.keystroke(Hotkey(keyCode: 0x7C, modifierFlags: 0x0100)), for: .seekForward)
+            .updatingVideoControlTrigger(nil, for: .togglePlayback)
+            .updatingVideoControlTrigger(.keystroke(Hotkey(keyCode: 0x7C, modifierFlags: 0x0100)), for: .seekForward)
         orchestrator.reapplyConfiguration()
 
         #expect(fake.hotkeyQuickReferences.count == 2)

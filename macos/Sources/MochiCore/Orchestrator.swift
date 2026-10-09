@@ -80,7 +80,8 @@ public final class Orchestrator {
             platformOps: platformOps,
             currentConfig: currentConfig,
             isGhostModeActive: { [weak self] in self?.isGhostModeActive ?? false },
-            currentWindow: { [weak self] in self?.window }
+            currentWindow: { [weak self] in self?.window },
+            forward: { [weak self] in self?.hotkeyForwarder?.forward($0) }
         )
         registerGlobalHotkeys()
         platformOps.createTrayIcon(items: trayMenuItems())
@@ -289,13 +290,14 @@ public final class Orchestrator {
         }
 
         var mappingConflictCount = 0
-        for mapping in config.hotkeyMappings {
-            guard !registered.contains(mapping.trigger) else {
+        // A tap or double tap (#92) is listened for by `videoControl`, not registered.
+        for hotkey in config.hotkeyMappings.compactMap(\.registeredHotkey) {
+            guard !registered.contains(hotkey) else {
                 mappingConflictCount += 1
                 continue
             }
-            if register(mapping.trigger) {
-                registered.insert(mapping.trigger)
+            if register(hotkey) {
+                registered.insert(hotkey)
             } else {
                 mappingConflictCount += 1
             }
@@ -329,7 +331,7 @@ public final class Orchestrator {
             perform(action)
             return
         }
-        if let mapping = config.hotkeyMappings.first(where: { $0.trigger == hotkey }) {
+        if let mapping = config.hotkeyMappings.first(where: { $0.registeredHotkey == hotkey }) {
             hotkeyForwarder?.forward(mapping.pageKeystroke)
         }
     }

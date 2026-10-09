@@ -175,8 +175,8 @@ final class SettingsViewModel: ObservableObject {
     /// hotkeys pane appears and whenever the app comes back to the front.
     @Published private(set) var isAccessibilityTrusted = true
 
-    func updateTriggerKey(_ trigger: TriggerKey?, for action: VideoControlAction) {
-        let rejection = controller.updateTriggerKey(trigger, for: action)
+    func updateVideoControlTrigger(_ trigger: TriggerKey?, for action: VideoControlAction) {
+        let rejection = controller.updateVideoControlTrigger(trigger, for: action)
         config = controller.config
         show(rejection, on: .videoControl(action))
     }
@@ -195,7 +195,7 @@ final class SettingsViewModel: ObservableObject {
     }
 
     /// `true` once the mapping is live; a refusal is shown on the add row instead.
-    func addHotkeyMapping(trigger: Hotkey, pageKeystroke: Hotkey) -> Bool {
+    func addHotkeyMapping(trigger: TriggerKey, pageKeystroke: Hotkey) -> Bool {
         let rejection = controller.addHotkeyMapping(trigger: trigger, pageKeystroke: pageKeystroke)
         config = controller.config
         show(rejection, on: .newMapping)

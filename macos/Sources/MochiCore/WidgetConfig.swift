@@ -91,7 +91,7 @@ public struct WidgetConfig: Equatable {
     /// what differs from the default is stored and an absent key means the action's default — but
     /// here a stored `nil` means the user *cleared* the action, kept apart from "default" so
     /// clearing 播放/暂停 doesn't snap back to right ⌥ on the next launch. Read through
-    /// `videoControlTrigger(for:)`, written through `updatingTriggerKey(_:for:)`.
+    /// `videoControlTrigger(for:)`, written through `updatingVideoControlTrigger(_:for:)`.
     public var videoControlOverrides: [VideoControlAction: TriggerKey?] = [:]
 
     /// How far 后退/前进 jump, in whole seconds (#74), always within `videoSeekStepRange`.
@@ -263,14 +263,32 @@ extension WidgetConfig {
     /// malformed entry (out-of-range/negative numbers a hand-edit could easily introduce) is
     /// skipped rather than crashing the whole app on every launch — this is the boundary where
     /// untrusted external data enters the system, so it validates rather than trusting the file.
+    ///
+    /// A tap- or double-tap-triggered mapping (#92) says so with `trigger_kind =
+    /// "modifier_tap"`/`"modifier_double_tap"` and a `trigger_modifier`; without `trigger_kind` the
+    /// trigger is the combo in `trigger_key_code`/`trigger_modifiers`, as every mapping was before.
     private static func parseHotkeyMappings(from array: TOMLArray?) -> [HotkeyMapping] {
         guard let array else { return [] }
         return array.compactMap { value -> HotkeyMapping? in
             guard let table = value.table,
-                let trigger = parseKeystroke(keyCodeKey: "trigger_key_code", modifiersKey: "trigger_modifiers", in: table),
+                let trigger = parseMappingTrigger(in: table),
                 let pageKeystroke = parseKeystroke(keyCodeKey: "page_key_code", modifiersKey: "page_modifiers", in: table)
             else { return nil }
             return HotkeyMapping(trigger: trigger, pageKeystroke: pageKeystroke)
+        }
+    }
+
+    private static func parseMappingTrigger(in table: TOMLTable) -> TriggerKey? {
+        let modifier = { table["trigger_modifier"]?.string.flatMap(ModifierKey.init(rawValue:)) }
+        switch table["trigger_kind"]?.string {
+        case nil:
+            return parseKeystroke(keyCodeKey: "trigger_key_code", modifiersKey: "trigger_modifiers", in: table).map { .keystroke($0) }
+        case "modifier_tap":
+            return modifier().map { .modifierTap($0) }
+        case "modifier_double_tap":
+            return modifier().map { .modifierDoubleTap($0) }
+        default:
+            return nil
         }
     }
 
@@ -365,8 +383,17 @@ extension WidgetConfig {
             table["hotkey_mappings"] = TOMLArray(
                 hotkeyMappings.map { mapping -> TOMLTable in
                     let mappingTable = TOMLTable()
-                    mappingTable["trigger_key_code"] = Int(mapping.trigger.keyCode)
-                    mappingTable["trigger_modifiers"] = Int(mapping.trigger.modifierFlags)
+                    switch mapping.trigger {
+                    case .keystroke(let hotkey):
+                        mappingTable["trigger_key_code"] = Int(hotkey.keyCode)
+                        mappingTable["trigger_modifiers"] = Int(hotkey.modifierFlags)
+                    case .modifierTap(let key):
+                        mappingTable["trigger_kind"] = "modifier_tap"
+                        mappingTable["trigger_modifier"] = key.rawValue
+                    case .modifierDoubleTap(let key):
+                        mappingTable["trigger_kind"] = "modifier_double_tap"
+                        mappingTable["trigger_modifier"] = key.rawValue
+                    }
                     mappingTable["page_key_code"] = Int(mapping.pageKeystroke.keyCode)
                     mappingTable["page_modifiers"] = Int(mapping.pageKeystroke.modifierFlags)
                     return mappingTable
@@ -583,7 +610,7 @@ extension WidgetConfig {
 
     /// Binds a 视频控制 action to `trigger`, or clears it with `nil`. Like
     /// `updatingHotkeyOverride`, choosing the default removes the entry instead of restating it.
-    public func updatingTriggerKey(_ trigger: TriggerKey?, for action: VideoControlAction) -> WidgetConfig {
+    public func updatingVideoControlTrigger(_ trigger: TriggerKey?, for action: VideoControlAction) -> WidgetConfig {
         var copy = self
         if trigger == action.defaultTrigger {
             copy.videoControlOverrides.removeValue(forKey: action)

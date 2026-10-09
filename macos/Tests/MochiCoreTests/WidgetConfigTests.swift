@@ -887,17 +887,61 @@ import Testing
 
         #expect(config.hotkey(for: .hideWidget) == Hotkey(keyCode: 38, modifierFlags: 0))
         #expect(config.videoControlTrigger(for: .seekForward) == .keystroke(Hotkey(keyCode: 37, modifierFlags: 512)))
-        #expect(config.hotkeyMappings.map(\.trigger) == [Hotkey(keyCode: 40, modifierFlags: 0)])
+        #expect(config.hotkeyMappings.map(\.registeredHotkey) == [Hotkey(keyCode: 40, modifierFlags: 0)])
         #expect(try WidgetConfig.parse(config.serialized()) == config)
     }
 
     @Test func aDoubleTapVideoKeyRoundTrips() throws {
-        let config = WidgetConfig().updatingTriggerKey(.modifierDoubleTap(.leftControl), for: .seekForward)
+        let config = WidgetConfig().updatingVideoControlTrigger(.modifierDoubleTap(.leftControl), for: .seekForward)
 
         let reparsed = try WidgetConfig.parse(config.serialized())
 
         #expect(reparsed.videoControlTrigger(for: .seekForward) == .modifierDoubleTap(.leftControl))
         #expect(config.serialized().contains("modifier_double_tap"))
+    }
+
+    @Test func everyKindOfMappingTriggerRoundTrips() throws {
+        let page = Hotkey(keyCode: 0x31, modifierFlags: 0)
+        let config = WidgetConfig(hotkeyMappings: [
+            HotkeyMapping(trigger: .keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x1000)), pageKeystroke: page),
+            HotkeyMapping(trigger: .modifierTap(.leftControl), pageKeystroke: page),
+            HotkeyMapping(trigger: .modifierDoubleTap(.rightShift), pageKeystroke: page),
+        ])
+
+        #expect(try WidgetConfig.parse(config.serialized()).hotkeyMappings == config.hotkeyMappings)
+    }
+
+    /// A mapping written before #92 has no `trigger_kind`: its trigger is the combo it always was.
+    @Test func aMappingWithoutATriggerKindIsACombo() throws {
+        let toml = """
+        [[hotkey_mappings]]
+        trigger_key_code = 38
+        trigger_modifiers = 4096
+        page_key_code = 49
+        page_modifiers = 0
+        """
+
+        let config = try WidgetConfig.parse(toml)
+
+        #expect(config.hotkeyMappings.map(\.trigger) == [.keystroke(Hotkey(keyCode: 38, modifierFlags: 4096))])
+    }
+
+    @Test func aMappingWithAnUnknownTriggerKindOrModifierIsSkipped() throws {
+        let toml = """
+        [[hotkey_mappings]]
+        trigger_kind = "chord"
+        trigger_modifier = "left_control"
+        page_key_code = 49
+        page_modifiers = 0
+
+        [[hotkey_mappings]]
+        trigger_kind = "modifier_tap"
+        trigger_modifier = "middle_option"
+        page_key_code = 49
+        page_modifiers = 0
+        """
+
+        #expect(try WidgetConfig.parse(toml).hotkeyMappings.isEmpty)
     }
 
     @Test func parsesEveryKindOfVideoControlBinding() throws {
@@ -966,9 +1010,9 @@ import Testing
 
     @Test func serializingThenReparsingRoundTripsVideoControl() throws {
         let original = WidgetConfig()
-            .updatingTriggerKey(.keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x0800)), for: .togglePlayback)
-            .updatingTriggerKey(nil, for: .seekBackward)
-            .updatingTriggerKey(.modifierTap(.leftControl), for: .seekForward)
+            .updatingVideoControlTrigger(.keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x0800)), for: .togglePlayback)
+            .updatingVideoControlTrigger(nil, for: .seekBackward)
+            .updatingVideoControlTrigger(.modifierTap(.leftControl), for: .seekForward)
             .updatingVideoSeekStep(15)
 
         let reparsed = try WidgetConfig.parse(original.serialized())
@@ -978,7 +1022,7 @@ import Testing
     }
 
     @Test func clearingADefaultBoundActionIsRememberedAcrossARestart() throws {
-        let cleared = WidgetConfig().updatingTriggerKey(nil, for: .togglePlayback)
+        let cleared = WidgetConfig().updatingVideoControlTrigger(nil, for: .togglePlayback)
 
         let reparsed = try WidgetConfig.parse(cleared.serialized())
 
@@ -987,9 +1031,9 @@ import Testing
 
     @Test func bindingAnActionBackToItsDefaultLeavesNothingInTheFile() {
         let config = WidgetConfig()
-            .updatingTriggerKey(.modifierTap(.leftOption), for: .togglePlayback)
-            .updatingTriggerKey(.modifierTap(.rightOption), for: .togglePlayback)
-            .updatingTriggerKey(nil, for: .seekForward)
+            .updatingVideoControlTrigger(.modifierTap(.leftOption), for: .togglePlayback)
+            .updatingVideoControlTrigger(.modifierTap(.rightOption), for: .togglePlayback)
+            .updatingVideoControlTrigger(nil, for: .seekForward)
 
         #expect(config.videoControlOverrides.isEmpty)
         #expect(config.serialized().contains("video_control") == false)

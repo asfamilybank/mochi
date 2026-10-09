@@ -600,8 +600,8 @@ private struct VideoControlRow: View {
                     onRecordingStarted: viewModel.clearRowRejection,
                     onRecordingStopped: { pendingKind = nil },
                     onHint: { viewModel.showHint($0, on: .videoControl(action)) },
-                    onCapture: { viewModel.updateTriggerKey($0, for: action) },
-                    onClear: { viewModel.updateTriggerKey(nil, for: action) }
+                    onCapture: { viewModel.updateVideoControlTrigger($0, for: action) },
+                    onClear: { viewModel.updateVideoControlTrigger(nil, for: action) }
                 )
             }
         }
@@ -610,20 +610,38 @@ private struct VideoControlRow: View {
 
 /// 热键传递 (#14): each 映射 read-only — re-recording one in place would mean re-registering
 /// its trigger but not its page key, so a change is delete-and-add — with the add row below.
+///
+/// Since #92 a trigger is a tap, a double tap or a combo, picked in the add row's dropdown
+/// (组合键 first, as every mapping used to be). Only a combo is taken from other apps, so the
+/// section no longer says its keys are; a combo says so itself — a lock beside each mapping's,
+/// a line under the add row while 组合键 is picked.
 private struct HotkeyForwardingSection: View {
     @ObservedObject var viewModel: SettingsViewModel
-    @State private var newTrigger: Hotkey?
+    @State private var newKind = TriggerKind.combo
+    @State private var newTrigger: TriggerKey?
     @State private var newPageKeystroke: Hotkey?
+    @State private var newTriggerRecordingRequest = 0
+
+    private static let occupiedNote = "这个组合会被占用，其他应用里按不出来"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "热键传递", caption: "幽灵模式下按触发热键，向页面发送对应按键；触发热键会被占用。")
+            SectionHeader(title: "热键传递", caption: "幽灵模式下按触发键，向页面发送对应按键。")
 
             List {
                 ForEach(Array(viewModel.config.hotkeyMappings.enumerated()), id: \.offset) { index, mapping in
                     HStack {
-                        HotkeyRecorderView(hotkey: mapping.trigger, accessibilityName: "触发热键", isRecordable: false,
-                            width: HotkeyRecorderField.mappingWidth)
+                        TriggerKeyRecorderView(
+                            trigger: mapping.trigger, kind: mapping.trigger.kind, accessibilityName: "触发键",
+                            isRecordable: false, width: HotkeyRecorderField.mappingWidth)
+                        // Always takes its width, so every row's arrow lines up.
+                        Image(systemName: "lock")
+                            .foregroundStyle(.secondary)
+                            .frame(width: 14)
+                            .opacity(mapping.trigger.kind == .combo ? 1 : 0)
+                            .help(Self.occupiedNote)
+                            .accessibilityLabel(Self.occupiedNote)
+                            .accessibilityHidden(mapping.trigger.kind != .combo)
                         Image(systemName: "arrow.right")
                         HotkeyRecorderView(hotkey: mapping.pageKeystroke, accessibilityName: "页面按键", isRecordable: false,
                             width: HotkeyRecorderField.mappingWidth)
@@ -643,32 +661,57 @@ private struct HotkeyForwardingSection: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
 
-            HStack {
-                HotkeyRecorderView(
-                    hotkey: newTrigger, accessibilityName: "触发热键", width: HotkeyRecorderField.mappingWidth,
-                    onRecordingStarted: viewModel.clearRowRejection,
-                    onHint: { viewModel.showHint($0, on: .newMapping) },
-                    onCapture: { newTrigger = $0 }, onClear: { newTrigger = nil })
-                Image(systemName: "arrow.right")
-                HotkeyRecorderView(
-                    hotkey: newPageKeystroke, accessibilityName: "页面按键", width: HotkeyRecorderField.mappingWidth,
-                    target: .pageKeystroke,
-                    onRecordingStarted: viewModel.clearRowRejection,
-                    onCapture: { newPageKeystroke = $0 }, onClear: { newPageKeystroke = nil })
-                Spacer()
-                Button("添加映射") {
-                    guard let trigger = newTrigger, let pageKeystroke = newPageKeystroke else { return }
-                    if viewModel.addHotkeyMapping(trigger: trigger, pageKeystroke: pageKeystroke) {
-                        newTrigger = nil
-                        newPageKeystroke = nil
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Picker(
+                        "触发方式",
+                        selection: Binding(
+                            get: { newKind },
+                            set: { kind in
+                                newKind = kind
+                                // A key recorded as another kind isn't one of this kind.
+                                if newTrigger?.kind != kind { newTrigger = nil }
+                                newTriggerRecordingRequest += 1
+                            }
+                        )
+                    ) {
+                        ForEach(TriggerKind.allCases, id: \.self) { kind in
+                            Text(kind.displayName).tag(kind)
+                        }
                     }
+                    .labelsHidden()
+                    .fixedSize()
+                    TriggerKeyRecorderView(
+                        trigger: newTrigger, kind: newKind, accessibilityName: "触发键", width: HotkeyRecorderField.mappingWidth,
+                        recordingRequest: newTriggerRecordingRequest,
+                        onRecordingStarted: viewModel.clearRowRejection,
+                        onHint: { viewModel.showHint($0, on: .newMapping) },
+                        onCapture: { newTrigger = $0 }, onClear: { newTrigger = nil })
+                    Image(systemName: "arrow.right")
+                    HotkeyRecorderView(
+                        hotkey: newPageKeystroke, accessibilityName: "页面按键", width: HotkeyRecorderField.mappingWidth,
+                        target: .pageKeystroke,
+                        onRecordingStarted: viewModel.clearRowRejection,
+                        onCapture: { newPageKeystroke = $0 }, onClear: { newPageKeystroke = nil })
+                    Spacer()
+                    Button("添加映射") {
+                        guard let trigger = newTrigger, let pageKeystroke = newPageKeystroke else { return }
+                        if viewModel.addHotkeyMapping(trigger: trigger, pageKeystroke: pageKeystroke) {
+                            newTrigger = nil
+                            newPageKeystroke = nil
+                        }
+                    }
+                    .disabled(newTrigger == nil || newPageKeystroke == nil)
                 }
-                .disabled(newTrigger == nil || newPageKeystroke == nil)
-            }
-            if let rejection = viewModel.rejectionMessage(for: .newMapping) {
-                Text(rejection)
-                    .font(.caption)
-                    .foregroundStyle(.red)
+                if let rejection = viewModel.rejectionMessage(for: .newMapping) {
+                    Text(rejection)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                } else if newKind == .combo {
+                    Text(Self.occupiedNote)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }

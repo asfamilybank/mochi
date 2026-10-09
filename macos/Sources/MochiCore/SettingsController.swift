@@ -222,16 +222,22 @@ public final class SettingsController {
     ///    its page keystroke against the config at press time, so the mapping forwards from the
     ///    moment it's persisted.
     ///
+    /// A tap or double tap (#92) skips the second tier: nothing is registered — the input
+    /// listener hears it, and starts listening through `configDidChange` — so it can only clash
+    /// in-process, with a video key or another mapping.
+    ///
     /// Returns why it was refused (#86), or `nil` once the mapping is live.
     @discardableResult
-    public func addHotkeyMapping(trigger: Hotkey, pageKeystroke: Hotkey) -> HotkeyRejection? {
-        if trigger.keepsItsCharacter { return .missingModifier }
-        if let conflict = inProcessConflict(with: trigger, ignoringAction: nil, ignoringMappingAt: nil) {
-            return conflict
-        }
-        guard registerDispatching(trigger) else { return .heldByAnotherApp }
+    public func addHotkeyMapping(trigger: TriggerKey, pageKeystroke: Hotkey) -> HotkeyRejection? {
+        if let refusal = mappingTriggerRefusal(trigger, ignoringMappingAt: nil) { return refusal }
+        if case .keystroke(let hotkey) = trigger, !registerDispatching(hotkey) { return .heldByAnotherApp }
         persistAndNotify { $0.updatingHotkeyMappings($0.hotkeyMappings + [HotkeyMapping(trigger: trigger, pageKeystroke: pageKeystroke)]) }
         return nil
+    }
+
+    @discardableResult
+    public func addHotkeyMapping(trigger: Hotkey, pageKeystroke: Hotkey) -> HotkeyRejection? {
+        addHotkeyMapping(trigger: .keystroke(trigger), pageKeystroke: pageKeystroke)
     }
 
     /// Re-runs the same two-tiered conflict check as `addHotkeyMapping` only when `trigger`
@@ -243,16 +249,17 @@ public final class SettingsController {
     /// Returns why it was refused (#86), or `nil` once the change is live — an index out of range
     /// is a no-op, not a refusal.
     @discardableResult
-    public func updateHotkeyMapping(at index: Int, trigger: Hotkey, pageKeystroke: Hotkey) -> HotkeyRejection? {
+    public func updateHotkeyMapping(at index: Int, trigger: TriggerKey, pageKeystroke: Hotkey) -> HotkeyRejection? {
         let mappings = currentConfig().hotkeyMappings
         guard mappings.indices.contains(index) else { return nil }
-        let oldTrigger = mappings[index].trigger
-        if trigger != oldTrigger {
-            if trigger.keepsItsCharacter { return .missingModifier }
-            if let conflict = inProcessConflict(with: trigger, ignoringAction: nil, ignoringMappingAt: index) {
-                return conflict
+        if trigger != mappings[index].trigger {
+            if let refusal = mappingTriggerRefusal(trigger, ignoringMappingAt: index) { return refusal }
+            let oldHotkey = mappings[index].registeredHotkey
+            if case .keystroke(let hotkey) = trigger {
+                guard rebind(from: oldHotkey, to: hotkey) else { return .heldByAnotherApp }
+            } else if let oldHotkey {
+                platformOps.unregisterGlobalHotkey(oldHotkey)
             }
-            guard rebind(from: oldTrigger, to: trigger) else { return .heldByAnotherApp }
         }
         persistAndNotify { config in
             var mappings = config.hotkeyMappings
@@ -262,12 +269,41 @@ public final class SettingsController {
         return nil
     }
 
+    @discardableResult
+    public func updateHotkeyMapping(at index: Int, trigger: Hotkey, pageKeystroke: Hotkey) -> HotkeyRejection? {
+        updateHotkeyMapping(at: index, trigger: .keystroke(trigger), pageKeystroke: pageKeystroke)
+    }
+
+    /// Why `trigger` can't be a mapping's: a combo with no ⌃/⌥/⌘ (#89) or one already held
+    /// in-process; a tap or double tap (#92) already some video key's or another mapping's.
+    private func mappingTriggerRefusal(_ trigger: TriggerKey, ignoringMappingAt editedIndex: Int?) -> HotkeyRejection? {
+        guard case .keystroke(let hotkey) = trigger else {
+            return tapConflict(trigger, ignoringVideoAction: nil, ignoringMappingAt: editedIndex)
+        }
+        if hotkey.keepsItsCharacter { return .missingModifier }
+        return inProcessConflict(with: hotkey, ignoringAction: nil, ignoringMappingAt: editedIndex)
+    }
+
+    /// What already listens for the tap or double tap `trigger` (#92): a video key or a mapping.
+    /// Taps are never registered with the OS, so this is the only check they get.
+    private func tapConflict(
+        _ trigger: TriggerKey, ignoringVideoAction editedVideoAction: VideoControlAction?, ignoringMappingAt editedIndex: Int?
+    ) -> HotkeyRejection? {
+        let config = currentConfig()
+        if let action = VideoControlAction.allCases.first(where: { $0 != editedVideoAction && config.videoControlTrigger(for: $0) == trigger }) {
+            return .conflictsWithVideoControl(action)
+        }
+        let mapping = config.hotkeyMappings.enumerated().first { $0.offset != editedIndex && $0.element.trigger == trigger }
+        return mapping.map { .conflictsWithMapping($0.element) }
+    }
+
     /// Deleting a mapping hands its trigger back to the system immediately (#46) — the combo is
-    /// genuinely released, not still intercepted until the next launch.
+    /// genuinely released, not still intercepted until the next launch. A tap or double tap was
+    /// never taken; the listener just stops answering for it.
     public func removeHotkeyMapping(at index: Int) {
         let mappings = currentConfig().hotkeyMappings
         guard mappings.indices.contains(index) else { return }
-        platformOps.unregisterGlobalHotkey(mappings[index].trigger)
+        if let hotkey = mappings[index].registeredHotkey { platformOps.unregisterGlobalHotkey(hotkey) }
         persistAndNotify { config in
             var mappings = config.hotkeyMappings
             guard mappings.indices.contains(index) else { return config }
@@ -306,7 +342,7 @@ public final class SettingsController {
             return .conflictsWithVideoControl(action)
         }
         let mapping = config.hotkeyMappings.enumerated().first { offset, mapping in
-            offset != editedIndex && mapping.trigger == candidate
+            offset != editedIndex && mapping.registeredHotkey == candidate
         }
         return mapping.map { .conflictsWithMapping($0.element) }
     }
@@ -321,19 +357,22 @@ public final class SettingsController {
     ///
     /// Returns why it was refused (#86), or `nil` once the change is live.
     @discardableResult
-    public func updateTriggerKey(_ trigger: TriggerKey?, for action: VideoControlAction) -> HotkeyRejection? {
+    public func updateVideoControlTrigger(_ trigger: TriggerKey?, for action: VideoControlAction) -> HotkeyRejection? {
         let config = currentConfig()
         if let trigger, trigger != config.videoControlTrigger(for: action) {
-            if let other = VideoControlAction.allCases.first(where: { $0 != action && config.videoControlTrigger(for: $0) == trigger }) {
-                return .conflictsWithVideoControl(other)
-            }
-            if case .keystroke(let hotkey) = trigger, hotkey.keepsItsCharacter { return .missingModifier }
-            if case .keystroke(let hotkey) = trigger,
-               let conflict = inProcessConflict(with: hotkey, ignoringAction: nil, ignoringMappingAt: nil, ignoringVideoAction: action) {
+            if case .keystroke(let hotkey) = trigger {
+                if let other = VideoControlAction.allCases.first(where: { $0 != action && config.videoControlTrigger(for: $0) == trigger }) {
+                    return .conflictsWithVideoControl(other)
+                }
+                if hotkey.keepsItsCharacter { return .missingModifier }
+                if let conflict = inProcessConflict(with: hotkey, ignoringAction: nil, ignoringMappingAt: nil, ignoringVideoAction: action) {
+                    return conflict
+                }
+            } else if let conflict = tapConflict(trigger, ignoringVideoAction: action, ignoringMappingAt: nil) {
                 return conflict
             }
         }
-        persistAndNotify { $0.updatingTriggerKey(trigger, for: action) }
+        persistAndNotify { $0.updatingVideoControlTrigger(trigger, for: action) }
         return nil
     }
 
@@ -345,7 +384,7 @@ public final class SettingsController {
     public func resetVideoControlToDefaults() {
         persistAndNotify { config in
             VideoControlAction.allCases
-                .reduce(config) { $0.updatingTriggerKey($1.defaultTrigger, for: $1) }
+                .reduce(config) { $0.updatingVideoControlTrigger($1.defaultTrigger, for: $1) }
                 .updatingVideoSeekStep(WidgetConfig.defaultVideoSeekStep)
         }
     }

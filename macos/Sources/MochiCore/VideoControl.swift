@@ -37,7 +37,10 @@ public enum VideoCommand: Equatable, Sendable {
 }
 
 /// Drives 视频控制 (#74, ADR-0020): while Ghost Mode is active, listens — never intercepts — for
-/// the configured keys and turns each one into a `VideoCommand` on the widget's page.
+/// the configured keys and turns each one into a `VideoCommand` on the widget's page. Since #92
+/// it is also the ear of every Hotkey Forwarding mapping set off by a tap or a double tap — those
+/// are never registered with Carbon — handing their page keystroke to `HotkeyForwarder`; one
+/// recognizer serves both, so a key bound both ways across the two waits the same way.
 ///
 /// App-global like `HotkeyForwarder`, built once by `Orchestrator.start()`, so the "ask for
 /// Accessibility at most once per launch" bookkeeping survives a widget close and reopen. Whether
@@ -49,6 +52,8 @@ public final class VideoControl {
     private let currentConfig: () -> WidgetConfig
     private let isGhostModeActive: () -> Bool
     private let currentWindow: () -> WidgetWindowHandle?
+    /// Hands a tap-triggered mapping's page keystroke to Hotkey Forwarding (#92).
+    private let forward: (Hotkey) -> Void
     private var isObserving = false
     private var hasRequestedAccessibility = false
     private var tapRecognizer = TriggerTapRecognizer()
@@ -59,12 +64,14 @@ public final class VideoControl {
         platformOps: PlatformOps,
         currentConfig: @escaping () -> WidgetConfig,
         isGhostModeActive: @escaping () -> Bool,
-        currentWindow: @escaping () -> WidgetWindowHandle?
+        currentWindow: @escaping () -> WidgetWindowHandle?,
+        forward: @escaping (Hotkey) -> Void = { _ in }
     ) {
         self.platformOps = platformOps
         self.currentConfig = currentConfig
         self.isGhostModeActive = isGhostModeActive
         self.currentWindow = currentWindow
+        self.forward = forward
     }
 
     /// Starts or stops listening to match the current state: only in Ghost Mode, only with a
@@ -74,7 +81,7 @@ public final class VideoControl {
     /// (`Orchestrator.reapplyConfiguration()`).
     public func refreshObservation() {
         let config = currentConfig()
-        let anythingBound = VideoControlAction.allCases.contains { config.videoControlTrigger(for: $0) != nil }
+        let anythingBound = !Self.listenedTriggers(in: config).isEmpty
         let shouldObserve = isGhostModeActive() && currentWindow() != nil && anythingBound
         if shouldObserve, !isObserving {
             if !platformOps.isAccessibilityTrusted(), !hasRequestedAccessibility {
@@ -99,7 +106,7 @@ public final class VideoControl {
         let config = currentConfig()
         // Which keys are bound which way decides whether a tap must wait to see if a second
         // follows (#91) — read from the config at the moment of the press, like everything else.
-        let bound = VideoControlAction.allCases.compactMap { config.videoControlTrigger(for: $0) }
+        let bound = Self.listenedTriggers(in: config)
         tapRecognizer.tapKeys = Set(bound.compactMap { if case .modifierTap(let key) = $0 { key } else { nil } })
         tapRecognizer.doubleTapKeys = Set(bound.compactMap { if case .modifierDoubleTap(let key) = $0 { key } else { nil } })
         let heldBackBefore = tapRecognizer.heldBackTap
@@ -133,9 +140,19 @@ public final class VideoControl {
     private func perform(_ trigger: TriggerKey) {
         guard let window = currentWindow() else { return }
         let config = currentConfig()
-        guard let action = VideoControlAction.allCases.first(where: { config.videoControlTrigger(for: $0) == trigger })
-        else { return }
-        platformOps.performVideoCommand(command(for: action, step: Double(config.videoSeekStep)), in: window)
+        if let action = VideoControlAction.allCases.first(where: { config.videoControlTrigger(for: $0) == trigger }) {
+            platformOps.performVideoCommand(command(for: action, step: Double(config.videoSeekStep)), in: window)
+        } else if trigger.kind != .combo, let mapping = config.hotkeyMappings.first(where: { $0.trigger == trigger }) {
+            // A combo mapping is Carbon's to dispatch; hearing its keyDown here too would forward twice.
+            forward(mapping.pageKeystroke)
+        }
+    }
+
+    /// Every trigger key this listener answers for: the bound video keys, and since #92 the
+    /// mappings set off by a tap or a double tap.
+    private static func listenedTriggers(in config: WidgetConfig) -> [TriggerKey] {
+        VideoControlAction.allCases.compactMap { config.videoControlTrigger(for: $0) }
+            + config.hotkeyMappings.map(\.trigger).filter { $0.kind != .combo }
     }
 
     private func command(for action: VideoControlAction, step: Double) -> VideoCommand {

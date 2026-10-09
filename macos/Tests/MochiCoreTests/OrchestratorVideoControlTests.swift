@@ -116,7 +116,7 @@ import Testing
 
     @Test func seekingForwardWorksOnceTheUserBindsIt() {
         let fake = FakePlatformOps()
-        let config = WidgetConfig(url: nil).updatingTriggerKey(.modifierTap(.rightShift), for: .seekForward)
+        let config = WidgetConfig(url: nil).updatingVideoControlTrigger(.modifierTap(.rightShift), for: .seekForward)
         let orchestrator = startedInGhostMode(fake, config: config)
 
         withExtendedLifetime(orchestrator) {
@@ -145,7 +145,7 @@ import Testing
     ])
     func keystrokeBinding(_ scenario: (name: String, event: RawInputEvent, togglesPlayback: Bool)) {
         let fake = FakePlatformOps()
-        let config = WidgetConfig(url: nil).updatingTriggerKey(.keystroke(Self.backtick), for: .togglePlayback)
+        let config = WidgetConfig(url: nil).updatingVideoControlTrigger(.keystroke(Self.backtick), for: .togglePlayback)
         let orchestrator = startedInGhostMode(fake, config: config)
 
         withExtendedLifetime(orchestrator) {
@@ -157,7 +157,7 @@ import Testing
 
     @Test func aComboBindingNeedsItsModifiersExactly() {
         let fake = FakePlatformOps()
-        let config = WidgetConfig(url: nil).updatingTriggerKey(.keystroke(Self.optionJ), for: .seekForward)
+        let config = WidgetConfig(url: nil).updatingVideoControlTrigger(.keystroke(Self.optionJ), for: .seekForward)
         let orchestrator = startedInGhostMode(fake, config: config)
 
         withExtendedLifetime(orchestrator) {
@@ -179,7 +179,7 @@ import Testing
             fake.simulateModifierTap(.rightCommand, at: 100)
             store.config = store.config
                 .updatingVideoSeekStep(10)
-                .updatingTriggerKey(.modifierTap(.leftCommand), for: .seekBackward)
+                .updatingVideoControlTrigger(.modifierTap(.leftCommand), for: .seekBackward)
             fake.simulateModifierTap(.rightCommand, at: 101)
             fake.simulateModifierTap(.leftCommand, at: 102)
         }
@@ -221,7 +221,7 @@ import Testing
         let fake = FakePlatformOps()
         fake.stubbedAccessibilityTrusted = false
         let config = VideoControlAction.allCases.reduce(WidgetConfig(url: nil)) {
-            $0.updatingTriggerKey(nil, for: $1)
+            $0.updatingVideoControlTrigger(nil, for: $1)
         }
         let orchestrator = startedInGhostMode(fake, config: config)
 
@@ -240,12 +240,12 @@ import Testing
             orchestrator.start()
             fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
             store.config = VideoControlAction.allCases.reduce(store.config) {
-                $0.updatingTriggerKey(nil, for: $1)
+                $0.updatingVideoControlTrigger(nil, for: $1)
             }
             orchestrator.reapplyConfiguration()
             #expect(!fake.isObservingInput)
 
-            store.config = store.config.updatingTriggerKey(.modifierTap(.rightOption), for: .togglePlayback)
+            store.config = store.config.updatingVideoControlTrigger(.modifierTap(.rightOption), for: .togglePlayback)
             orchestrator.reapplyConfiguration()
             #expect(fake.isObservingInput)
         }

@@ -55,21 +55,24 @@ struct TriggerKeyRecorderView: NSViewRepresentable {
     var trigger: TriggerKey?
     var kind: TriggerKind
     var accessibilityName: String
+    var isRecordable = true
+    var width = HotkeyRecorderField.defaultWidth
     var recordingRequest = 0
     var onRecordingStarted: () -> Void = {}
     var onRecordingStopped: () -> Void = {}
     var onHint: (HotkeyRejection) -> Void = { _ in }
-    var onCapture: (TriggerKey) -> Void
-    var onClear: () -> Void
+    var onCapture: (TriggerKey) -> Void = { _ in }
+    var onClear: (() -> Void)?
 
     func makeNSView(context: Context) -> HotkeyRecorderField {
-        HotkeyRecorderField(width: HotkeyRecorderField.defaultWidth)
+        HotkeyRecorderField(width: width)
     }
 
     func updateNSView(_ field: HotkeyRecorderField, context: Context) {
         field.accessibilityName = accessibilityName
         field.face = HotkeyRecorderModel.face(of: trigger)
         field.isBound = trigger != nil
+        field.isRecordable = isRecordable
         field.target = .trigger(kind)
         field.onRecordingStarted = onRecordingStarted
         field.onRecordingStopped = onRecordingStopped
@@ -92,8 +95,9 @@ struct TriggerKeyRecorderView: NSViewRepresentable {
 /// Colors are read in `draw(_:)`, not cached, so the field follows light/dark and accent changes.
 final class HotkeyRecorderField: NSView, KeyCapturingResponder {
     static let defaultWidth: CGFloat = 200
-    /// A 映射 row holds two fields side by side, so each is narrower.
-    static let mappingWidth: CGFloat = 170
+    /// A 映射 row holds two fields side by side — and since #92 the add row a dropdown too — so
+    /// each is narrower.
+    static let mappingWidth: CGFloat = 140
     static let height: CGFloat = 24
 
     var face: RecorderFace = .slots(lit: [], key: nil) { didSet { if face != oldValue { needsDisplay = true } } }

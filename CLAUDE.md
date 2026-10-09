@@ -196,7 +196,7 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 - 验证浅色外观不用改系统设置：启动参数加 `-NSRequiresAquaSystemAppearance YES`。截图裁剪没有 PIL，用 `sips -c <h> <w> --cropOffset <y> <x> in.png --out out.png`。
 - Mochi 自己注册着的 Carbon 全局热键（⌥G/⌥H 及映射触发键），在设置面板录制时也会先被 Carbon 吞掉、到不了录制框——这类组合没法在真机上「录」出冲突。测就地冲突提示要用 ⌘,（保留的菜单快捷键，录制框靠 `performKeyEquivalent` 截住）；合成的右 ⌥ 轻按（`flagsChanged`）也录不进录制框，新旧代码都一样，这一项只能请用户手按。
 - `NSViewRepresentable` 不会尊重 `intrinsicContentSize`，会被拉满可用宽度：要固定尺寸就实现 `sizeThatFits(_:nsView:context:)` 返回它。macOS 上 `List` 的行默认有左缩进，要跟外面的控件对齐用 `.listStyle(.plain)` + `.listRowInsets(...)`。
-- 设置面板的录制控件只有一个：`HotkeyRecorderField`（`HotkeyRecorderView`/`VideoControlRecorderView` 两层薄包装），显示和录制中的按键判定都在 MochiCore 的 `HotkeyRecorderModel` 里；`SettingsController` 拒绝修改时返回 `HotkeyRejection`（不弹框），由 view model 显示在出错那一行。新增热键类设置照此接，别再造录制按钮或 alert。
+- 设置面板的录制控件只有一个：`HotkeyRecorderField`（`HotkeyRecorderView`/`TriggerKeyRecorderView` 两层薄包装），显示和录制中的按键判定都在 MochiCore 的 `HotkeyRecorderModel` 里；`SettingsController` 拒绝修改时返回 `HotkeyRejection`（不弹框），由 view model 显示在出错那一行。新增热键类设置照此接，别再造录制按钮或 alert。
 
 ### 关闭 issue
 
