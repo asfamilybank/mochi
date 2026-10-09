@@ -36,6 +36,13 @@ public enum RecorderFace: Equatable, Sendable {
     case singleCap(String)
 }
 
+/// What a recorder is recording (#90): a trigger key of a given kind, or the page key a mapping
+/// sends — which, being a keystroke to send rather than one to listen for, may be anything.
+public enum RecorderTarget: Equatable, Sendable {
+    case trigger(TriggerKind)
+    case pageKeystroke
+}
+
 /// What a key pressed while a recorder is recording means (#82).
 public enum RecorderKeyOutcome: Equatable, Sendable {
     /// Stop recording, keep what was bound.
@@ -43,6 +50,9 @@ public enum RecorderKeyOutcome: Equatable, Sendable {
     /// Unbind — the keyboard twin of the field's ⓧ.
     case clear
     case capture(Hotkey)
+    case captureTap(ModifierKey)
+    /// Keep recording and say on the row why that key wasn't taken (#90).
+    case hint(HotkeyRejection)
 }
 
 /// The rules every recorder in the settings panel shares — the action hotkeys', the mappings' and
@@ -66,10 +76,24 @@ public enum HotkeyRecorderModel {
     }
 
     /// Only the bare Esc, ⌫ and ⌦ are taken over; with any modifier they are keys like any other.
-    public static func outcome(ofKeyDown keyCode: UInt32, modifierFlags: UInt32) -> RecorderKeyOutcome {
-        guard modifierFlags == 0 else { return .capture(Hotkey(keyCode: keyCode, modifierFlags: modifierFlags)) }
-        if keyCode == escapeKeyCode { return .cancel }
-        if deleteKeyCodes.contains(keyCode) { return .clear }
-        return .capture(Hotkey(keyCode: keyCode, modifierFlags: 0))
+    /// Past those, a key records only if it fits `target`: a combo that keeps its character
+    /// (#89), or any key at all while a tap is wanted, is turned away with a hint instead.
+    public static func outcome(ofKeyDown keyCode: UInt32, modifierFlags: UInt32, recording target: RecorderTarget) -> RecorderKeyOutcome {
+        if modifierFlags == 0 {
+            if keyCode == escapeKeyCode { return .cancel }
+            if deleteKeyCodes.contains(keyCode) { return .clear }
+        }
+        let hotkey = Hotkey(keyCode: keyCode, modifierFlags: modifierFlags)
+        switch target {
+        case .pageKeystroke: return .capture(hotkey)
+        case .trigger(.tap): return .hint(.needsModifierTap)
+        case .trigger(.combo): return hotkey.keepsItsCharacter ? .hint(.missingModifier) : .capture(hotkey)
+        }
+    }
+
+    /// A modifier tapped on its own: the key itself while a tap is wanted, otherwise nothing —
+    /// while recording a combo it is a combo begun and abandoned.
+    public static func outcome(ofModifierTap key: ModifierKey, recording target: RecorderTarget) -> RecorderKeyOutcome? {
+        target == .trigger(.tap) ? .captureTap(key) : nil
     }
 }

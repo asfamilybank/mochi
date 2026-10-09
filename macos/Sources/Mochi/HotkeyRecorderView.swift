@@ -9,17 +9,22 @@ import SwiftUI
 /// `onClear` is the field's ⓧ (and ⌫ while recording); `nil` leaves the binding unclearable.
 ///
 /// `isRecordable: false` is the read-only form a 映射 row shows its keys in (#84).
+///
+/// `target` is a combo trigger unless this is a mapping's page key, which may be any keystroke;
+/// a key that doesn't fit is turned away through `onHint` and recording goes on (#89, #90).
 struct HotkeyRecorderView: NSViewRepresentable {
     var hotkey: Hotkey?
     var accessibilityName: String
     var isRecordable = true
     var width = HotkeyRecorderField.defaultWidth
+    var target = RecorderTarget.trigger(.combo)
     var onRecordingStarted: () -> Void = {}
+    var onHint: (HotkeyRejection) -> Void = { _ in }
     var onCapture: (Hotkey) -> Void = { _ in }
     var onClear: (() -> Void)?
 
     func makeNSView(context: Context) -> HotkeyRecorderField {
-        HotkeyRecorderField(recordsModifierTaps: false, width: width)
+        HotkeyRecorderField(width: width)
     }
 
     func updateNSView(_ field: HotkeyRecorderField, context: Context) {
@@ -27,7 +32,9 @@ struct HotkeyRecorderView: NSViewRepresentable {
         field.face = HotkeyRecorderModel.face(of: hotkey)
         field.isBound = hotkey != nil
         field.isRecordable = isRecordable
+        field.target = target
         field.onRecordingStarted = onRecordingStarted
+        field.onHint = onHint
         field.onCapture = { if case .keystroke(let captured) = $0 { onCapture(captured) } }
         field.onClear = onClear
     }
@@ -37,27 +44,39 @@ struct HotkeyRecorderView: NSViewRepresentable {
     }
 }
 
-/// Records a 视频控制 key (#79): either a modifier tapped on its own — judged by the same
-/// `ModifierTapRecognizer` that listens in Ghost Mode, so what records is exactly what fires — or
-/// an ordinary key or combo, taken on key-down.
+/// Records a 视频控制 key (#79) of the `kind` its row's dropdown picked (#90): a modifier tapped
+/// on its own — judged by the same `ModifierTapRecognizer` that listens in Ghost Mode, so what
+/// records is exactly what fires — or a combo, taken on key-down.
+///
+/// Bumping `recordingRequest` starts recording, the way picking a kind in the dropdown does;
+/// `onRecordingStopped` fires however recording ends, captured or not, so the row can drop the
+/// kind it was only trying out.
 struct VideoControlRecorderView: NSViewRepresentable {
     var trigger: VideoControlTrigger?
+    var kind: TriggerKind
     var accessibilityName: String
+    var recordingRequest = 0
     var onRecordingStarted: () -> Void = {}
+    var onRecordingStopped: () -> Void = {}
+    var onHint: (HotkeyRejection) -> Void = { _ in }
     var onCapture: (VideoControlTrigger) -> Void
     var onClear: () -> Void
 
     func makeNSView(context: Context) -> HotkeyRecorderField {
-        HotkeyRecorderField(recordsModifierTaps: true, width: HotkeyRecorderField.defaultWidth)
+        HotkeyRecorderField(width: HotkeyRecorderField.defaultWidth)
     }
 
     func updateNSView(_ field: HotkeyRecorderField, context: Context) {
         field.accessibilityName = accessibilityName
         field.face = HotkeyRecorderModel.face(of: trigger)
         field.isBound = trigger != nil
+        field.target = .trigger(kind)
         field.onRecordingStarted = onRecordingStarted
+        field.onRecordingStopped = onRecordingStopped
+        field.onHint = onHint
         field.onCapture = onCapture
         field.onClear = onClear
+        field.recordingRequest = recordingRequest
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: HotkeyRecorderField, context: Context) -> CGSize? {
@@ -81,13 +100,25 @@ final class HotkeyRecorderField: NSView, KeyCapturingResponder {
     var isBound = false { didSet { refreshClearButton() } }
     var accessibilityName = "" { didSet { refreshAccessibility() } }
     var onRecordingStarted: (() -> Void)?
+    var onRecordingStopped: (() -> Void)?
+    var onHint: ((HotkeyRejection) -> Void)?
     var onCapture: ((VideoControlTrigger) -> Void)?
     var onClear: (() -> Void)? { didSet { refreshClearButton() } }
     /// `false` for the read-only form: no recording, no ⓧ.
     var isRecordable = true { didSet { refreshClearButton() } }
 
+    /// What a key pressed while recording is judged against (#90).
+    var target = RecorderTarget.trigger(.combo) { didSet { if target != oldValue { needsDisplay = true } } }
+    /// A new value starts recording — on the next turn of the run loop, since it arrives in the
+    /// middle of a SwiftUI update and starting tells the row to clear its hint.
+    var recordingRequest = 0 {
+        didSet {
+            guard recordingRequest != oldValue else { return }
+            DispatchQueue.main.async { [weak self] in self?.startRecording() }
+        }
+    }
+
     private(set) var isCapturingKeys = false
-    private let recordsModifierTaps: Bool
     private let width: CGFloat
     private var tapRecognizer = ModifierTapRecognizer()
     private let clearButton = NSButton()
@@ -95,10 +126,15 @@ final class HotkeyRecorderField: NSView, KeyCapturingResponder {
     /// take first responder (a blank stretch of the pane).
     private var clickElsewhereMonitor: Any?
 
-    private var prompt: String { recordsModifierTaps ? "按下按键，或单独轻按修饰键…" : "按下组合键…" }
+    private var prompt: String {
+        switch target {
+        case .trigger(.tap): "轻按一颗修饰键…"
+        case .trigger(.combo): "按下组合键…"
+        case .pageKeystroke: "按下按键…"
+        }
+    }
 
-    init(recordsModifierTaps: Bool, width: CGFloat) {
-        self.recordsModifierTaps = recordsModifierTaps
+    init(width: CGFloat) {
         self.width = width
         super.init(frame: NSRect(x: 0, y: 0, width: width, height: Self.height))
         clearButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: nil)
@@ -162,6 +198,7 @@ final class HotkeyRecorderField: NSView, KeyCapturingResponder {
         clickElsewhereMonitor = nil
         refreshClearButton()
         needsDisplay = true
+        onRecordingStopped?()
     }
 
     override func keyDown(with event: NSEvent) {
@@ -172,7 +209,7 @@ final class HotkeyRecorderField: NSView, KeyCapturingResponder {
             return
         }
         _ = tapRecognizer.handle(raw)
-        switch HotkeyRecorderModel.outcome(ofKeyDown: keyCode, modifierFlags: modifierFlags) {
+        switch HotkeyRecorderModel.outcome(ofKeyDown: keyCode, modifierFlags: modifierFlags, recording: target) {
         case .cancel:
             stopRecording()
         case .clear:
@@ -181,6 +218,11 @@ final class HotkeyRecorderField: NSView, KeyCapturingResponder {
         case .capture(let hotkey):
             stopRecording()
             onCapture?(.keystroke(hotkey))
+        case .captureTap(let key):
+            stopRecording()
+            onCapture?(.modifierTap(key))
+        case .hint(let rejection):
+            onHint?(rejection)
         }
     }
 
@@ -193,13 +235,14 @@ final class HotkeyRecorderField: NSView, KeyCapturingResponder {
     }
 
     override func flagsChanged(with event: NSEvent) {
-        guard isCapturingKeys, recordsModifierTaps, let raw = RawInputEvent(event) else {
+        guard isCapturingKeys, let raw = RawInputEvent(event) else {
             super.flagsChanged(with: event)
             return
         }
-        if let tapped = tapRecognizer.handle(raw) {
+        if let tapped = tapRecognizer.handle(raw),
+           case .captureTap(let key)? = HotkeyRecorderModel.outcome(ofModifierTap: tapped, recording: target) {
             stopRecording()
-            onCapture?(.modifierTap(tapped))
+            onCapture?(.modifierTap(key))
         }
     }
 

@@ -34,6 +34,29 @@ public enum VideoControlAction: String, CaseIterable, Hashable, Sendable {
 public enum VideoControlTrigger: Hashable {
     case modifierTap(ModifierKey)
     case keystroke(Hotkey)
+
+    /// Which of the three kinds of trigger key this is (#90) — what the settings row's
+    /// dropdown shows.
+    public var kind: TriggerKind {
+        switch self {
+        case .modifierTap: .tap
+        case .keystroke: .combo
+        }
+    }
+}
+
+/// How a trigger key is pressed (CONTEXT.md, ADR-0022): a modifier tapped on its own, or a
+/// combo. The settings rows that can take either let the user pick one first (#90).
+public enum TriggerKind: CaseIterable, Hashable, Sendable {
+    case tap
+    case combo
+
+    public var displayName: String {
+        switch self {
+        case .tap: "轻按"
+        case .combo: "组合键"
+        }
+    }
 }
 
 /// What 视频控制 asks the page to do to its target video.

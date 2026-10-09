@@ -140,6 +140,11 @@ final class SettingsViewModel: ObservableObject {
         rowRejection?.row == row ? rowRejection?.message : nil
     }
 
+    /// A key a recorder turned away while still recording (#90) — shown like a refusal.
+    func showHint(_ rejection: HotkeyRejection, on row: HotkeyRowID) {
+        show(rejection, on: row)
+    }
+
     func clearRowRejection() {
         rejectionExpiry?.cancel()
         rejectionExpiry = nil

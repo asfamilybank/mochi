@@ -381,6 +381,7 @@ struct GhostModeSettingsTab: View {
                         hotkey: viewModel.config.hotkey(for: action),
                         accessibilityName: action.displayName,
                         onRecordingStarted: viewModel.clearRowRejection,
+                        onHint: { viewModel.showHint($0, on: .action(action)) },
                         onCapture: { viewModel.updateActionHotkey(action, to: $0) },
                         onClear: { viewModel.updateActionHotkey(action, to: nil) }
                     )
@@ -504,7 +505,7 @@ private extension HotkeyAction {
 private extension VideoControlAction {
     var settingsDescription: String {
         switch self {
-        case .togglePlayback: "作用于正在播放或最近播放过的视频。修饰键要单独轻按一下。"
+        case .togglePlayback: "作用于正在播放或最近播放过的视频。"
         case .seekBackward, .seekForward: "按下面设定的步长跳转。"
         }
     }
@@ -519,20 +520,7 @@ private struct VideoControlSection: View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader(title: "视频控制", caption: "幽灵模式下生效。按键照常传给当前应用，不会被占用。")
             ForEach(VideoControlAction.allCases, id: \.self) { action in
-                HotkeyRow(
-                    title: action.displayName, description: action.settingsDescription,
-                    rejection: viewModel.rejectionMessage(for: .videoControl(action))
-                ) {
-                    // Shows the binding in effect straight from the config, like the action
-                    // hotkeys above, so a refused recording snaps back to what is live.
-                    VideoControlRecorderView(
-                        trigger: viewModel.config.videoControlTrigger(for: action),
-                        accessibilityName: action.displayName,
-                        onRecordingStarted: viewModel.clearRowRejection,
-                        onCapture: { viewModel.updateVideoControlTrigger($0, for: action) },
-                        onClear: { viewModel.updateVideoControlTrigger(nil, for: action) }
-                    )
-                }
+                VideoControlRow(viewModel: viewModel, action: action)
             }
             HotkeyRow(title: "后退/前进步长") {
                 Stepper(
@@ -562,6 +550,60 @@ private struct VideoControlSection: View {
         .onAppear { viewModel.refreshAccessibilityStatus() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             viewModel.refreshAccessibilityStatus()
+        }
+    }
+}
+
+/// One 视频控制 key (#90): a dropdown for how it is pressed, then the recorder. The dropdown shows
+/// the kind of the binding in effect — 轻按 for an unbound row, the kind video keys default to —
+/// and picking another starts recording that kind straight away. Until a key is captured the
+/// old binding stays live, and leaving without one (Esc, a click elsewhere) puts the dropdown
+/// back: picking a kind is not an edit, recording a key is.
+private struct VideoControlRow: View {
+    @ObservedObject var viewModel: SettingsViewModel
+    let action: VideoControlAction
+    /// The kind being tried out while recording; `nil` otherwise.
+    @State private var pendingKind: TriggerKind?
+    @State private var recordingRequest = 0
+
+    private var boundKind: TriggerKind { viewModel.config.videoControlTrigger(for: action)?.kind ?? .tap }
+
+    var body: some View {
+        HotkeyRow(
+            title: action.displayName, description: action.settingsDescription,
+            rejection: viewModel.rejectionMessage(for: .videoControl(action))
+        ) {
+            HStack(spacing: 8) {
+                Picker(
+                    "\(action.displayName)的触发方式",
+                    selection: Binding(
+                        get: { pendingKind ?? boundKind },
+                        set: { kind in
+                            pendingKind = kind
+                            recordingRequest += 1
+                        }
+                    )
+                ) {
+                    ForEach(TriggerKind.allCases, id: \.self) { kind in
+                        Text(kind.displayName).tag(kind)
+                    }
+                }
+                .labelsHidden()
+                .fixedSize()
+                // Shows the binding in effect straight from the config, like the action
+                // hotkeys above, so a refused recording snaps back to what is live.
+                VideoControlRecorderView(
+                    trigger: viewModel.config.videoControlTrigger(for: action),
+                    kind: pendingKind ?? boundKind,
+                    accessibilityName: action.displayName,
+                    recordingRequest: recordingRequest,
+                    onRecordingStarted: viewModel.clearRowRejection,
+                    onRecordingStopped: { pendingKind = nil },
+                    onHint: { viewModel.showHint($0, on: .videoControl(action)) },
+                    onCapture: { viewModel.updateVideoControlTrigger($0, for: action) },
+                    onClear: { viewModel.updateVideoControlTrigger(nil, for: action) }
+                )
+            }
         }
     }
 }
@@ -605,10 +647,12 @@ private struct HotkeyForwardingSection: View {
                 HotkeyRecorderView(
                     hotkey: newTrigger, accessibilityName: "触发热键", width: HotkeyRecorderField.mappingWidth,
                     onRecordingStarted: viewModel.clearRowRejection,
+                    onHint: { viewModel.showHint($0, on: .newMapping) },
                     onCapture: { newTrigger = $0 }, onClear: { newTrigger = nil })
                 Image(systemName: "arrow.right")
                 HotkeyRecorderView(
                     hotkey: newPageKeystroke, accessibilityName: "页面按键", width: HotkeyRecorderField.mappingWidth,
+                    target: .pageKeystroke,
                     onRecordingStarted: viewModel.clearRowRejection,
                     onCapture: { newPageKeystroke = $0 }, onClear: { newPageKeystroke = nil })
                 Spacer()

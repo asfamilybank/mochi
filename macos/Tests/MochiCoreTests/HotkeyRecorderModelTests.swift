@@ -40,26 +40,50 @@ import Testing
 
     // MARK: - Keys pressed while recording
 
-    @Test(arguments: [
-        (keyCode: UInt32(0x35), outcome: RecorderKeyOutcome.cancel),  // Esc
-        (keyCode: UInt32(0x33), outcome: RecorderKeyOutcome.clear),  // ⌫
-        (keyCode: UInt32(0x75), outcome: RecorderKeyOutcome.clear),  // ⌦
-    ])
-    func aBareEscapeCancelsAndABareDeleteClears(_ c: (keyCode: UInt32, outcome: RecorderKeyOutcome)) {
-        #expect(HotkeyRecorderModel.outcome(ofKeyDown: c.keyCode, modifierFlags: 0) == c.outcome)
+    private static let everyTarget: [RecorderTarget] = [.trigger(.tap), .trigger(.combo), .pageKeystroke]
+
+    /// Esc and ⌫/⌦ mean the same whatever is being recorded.
+    @Test(arguments: everyTarget)
+    func aBareEscapeCancelsAndABareDeleteClears(_ target: RecorderTarget) {
+        #expect(HotkeyRecorderModel.outcome(ofKeyDown: 0x35, modifierFlags: 0, recording: target) == .cancel)
+        #expect(HotkeyRecorderModel.outcome(ofKeyDown: 0x33, modifierFlags: 0, recording: target) == .clear)
+        #expect(HotkeyRecorderModel.outcome(ofKeyDown: 0x75, modifierFlags: 0, recording: target) == .clear)
     }
 
     /// Only the bare keys are taken over — ⌥⌫ or ⌘Esc are still keys a user can bind.
     @Test(arguments: [UInt32(0x35), 0x33, 0x75])
     func theSameKeysWithAModifierAreRecorded(keyCode: UInt32) {
-        #expect(HotkeyRecorderModel.outcome(ofKeyDown: keyCode, modifierFlags: 0x0800)
+        #expect(HotkeyRecorderModel.outcome(ofKeyDown: keyCode, modifierFlags: 0x0800, recording: .trigger(.combo))
             == .capture(Hotkey(keyCode: keyCode, modifierFlags: 0x0800)))
     }
 
-    @Test func anyOtherKeyIsRecorded() {
-        #expect(HotkeyRecorderModel.outcome(ofKeyDown: 0x05, modifierFlags: 0)
-            == .capture(Hotkey(keyCode: 0x05, modifierFlags: 0)))
-        #expect(HotkeyRecorderModel.outcome(ofKeyDown: 0x05, modifierFlags: 0x0800)
-            == .capture(Hotkey(keyCode: 0x05, modifierFlags: 0x0800)))
+    /// #90 + #89: what a key pressed while recording means depends on what is being recorded.
+    @Test(arguments: [
+        (target: RecorderTarget.trigger(.combo), modifiers: UInt32(0x0800), outcome: RecorderKeyOutcome.capture(Hotkey(keyCode: 0x26, modifierFlags: 0x0800))),
+        (target: .trigger(.combo), modifiers: UInt32(0), outcome: .hint(.missingModifier)),
+        (target: .trigger(.combo), modifiers: UInt32(0x0200), outcome: .hint(.missingModifier)),
+        (target: .trigger(.tap), modifiers: UInt32(0), outcome: .hint(.needsModifierTap)),
+        (target: .trigger(.tap), modifiers: UInt32(0x0800), outcome: .hint(.needsModifierTap)),
+        (target: .pageKeystroke, modifiers: UInt32(0), outcome: .capture(Hotkey(keyCode: 0x26, modifierFlags: 0))),
+        (target: .pageKeystroke, modifiers: UInt32(0x0200), outcome: .capture(Hotkey(keyCode: 0x26, modifierFlags: 0x0200))),
+    ])
+    func aKeyIsRecordedOnlyWhenItFitsWhatIsBeingRecorded(_ c: (target: RecorderTarget, modifiers: UInt32, outcome: RecorderKeyOutcome)) {
+        #expect(HotkeyRecorderModel.outcome(ofKeyDown: 0x26, modifierFlags: c.modifiers, recording: c.target) == c.outcome)
+    }
+
+    /// A modifier tapped on its own records only when a tap is what is being recorded; while a
+    /// combo is, it is just the start of one the user changed their mind about.
+    @Test(arguments: [
+        (target: RecorderTarget.trigger(.tap), outcome: RecorderKeyOutcome?.some(.captureTap(.rightOption))),
+        (target: .trigger(.combo), outcome: nil),
+        (target: .pageKeystroke, outcome: nil),
+    ])
+    func aModifierTapIsRecordedOnlyAsATap(_ c: (target: RecorderTarget, outcome: RecorderKeyOutcome?)) {
+        #expect(HotkeyRecorderModel.outcome(ofModifierTap: .rightOption, recording: c.target) == c.outcome)
+    }
+
+    @Test func aVideoKeyIsOfTheKindItWasRecordedAs() {
+        #expect(VideoControlTrigger.modifierTap(.rightOption).kind == .tap)
+        #expect(VideoControlTrigger.keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x0800)).kind == .combo)
     }
 }

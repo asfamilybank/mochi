@@ -13,6 +13,8 @@ public enum HotkeyRejection: Equatable, Sendable {
     /// A combo with no ⌃/⌥/⌘ that still types a character (#89, ADR-0022) — see
     /// `Hotkey.keepsItsCharacter`.
     case missingModifier
+    /// An ordinary key pressed while a tap is being recorded (#90).
+    case needsModifierTap
 
     var isActionConflict: Bool {
         if case .conflictsWithAction = self { return true }
@@ -29,6 +31,7 @@ public enum HotkeyRejection: Equatable, Sendable {
         case .reservedMenuShortcut: "这是 Mochi 菜单里的快捷键"
         case .heldByAnotherApp: "已被其他应用占用"
         case .missingModifier: "组合键至少要有 ⌃ ⌥ ⌘ 之一"
+        case .needsModifierTap: "请轻按一颗修饰键"
         }
     }
 }
