@@ -114,8 +114,7 @@ import Testing
 
     @Test func seekingForwardWorksOnceTheUserBindsIt() {
         let fake = FakePlatformOps()
-        var config = WidgetConfig(url: nil)
-        config.setVideoControlTrigger(.modifierTap(.rightShift), for: .seekForward)
+        let config = WidgetConfig(url: nil).updatingVideoControlTrigger(.modifierTap(.rightShift), for: .seekForward)
         let orchestrator = startedInGhostMode(fake, config: config)
 
         withExtendedLifetime(orchestrator) {
@@ -123,6 +122,67 @@ import Testing
         }
 
         #expect(fake.videoCommands.map(\.command) == [.seek(seconds: 5)])
+    }
+
+    // MARK: Ordinary keys and live config (#78)
+
+    private static let backtick = Hotkey(keyCode: 0x32, modifierFlags: 0)
+    private static let optionJ = Hotkey(keyCode: 0x26, modifierFlags: 0x0800)
+
+    private static func keyDown(_ hotkey: Hotkey, isRepeat: Bool = false, at time: TimeInterval = 100) -> RawInputEvent {
+        .keyDown(keyCode: hotkey.keyCode, modifierFlags: hotkey.modifierFlags, isRepeat: isRepeat, timestamp: time)
+    }
+
+    /// A keystroke binding fires on key-down, only with exactly the bound modifiers, and once per
+    /// physical press however long the key is held.
+    @Test(arguments: [
+        (name: "the bound key", event: keyDown(backtick), togglesPlayback: true),
+        (name: "with shift (types ~)", event: keyDown(Hotkey(keyCode: 0x32, modifierFlags: 0x0200)), togglesPlayback: false),
+        (name: "auto-repeat", event: keyDown(backtick, isRepeat: true), togglesPlayback: false),
+        (name: "another key", event: keyDown(Hotkey(keyCode: 0x12, modifierFlags: 0)), togglesPlayback: false),
+    ])
+    func keystrokeBinding(_ scenario: (name: String, event: RawInputEvent, togglesPlayback: Bool)) {
+        let fake = FakePlatformOps()
+        let config = WidgetConfig(url: nil).updatingVideoControlTrigger(.keystroke(Self.backtick), for: .togglePlayback)
+        let orchestrator = startedInGhostMode(fake, config: config)
+
+        withExtendedLifetime(orchestrator) {
+            fake.simulateInput(scenario.event)
+        }
+
+        #expect(fake.videoCommands.map(\.command) == (scenario.togglesPlayback ? [.togglePlayback] : []), "\(scenario.name)")
+    }
+
+    @Test func aComboBindingNeedsItsModifiersExactly() {
+        let fake = FakePlatformOps()
+        let config = WidgetConfig(url: nil).updatingVideoControlTrigger(.keystroke(Self.optionJ), for: .seekForward)
+        let orchestrator = startedInGhostMode(fake, config: config)
+
+        withExtendedLifetime(orchestrator) {
+            fake.simulateInput(Self.keyDown(Hotkey(keyCode: 0x26, modifierFlags: 0x0800 | 0x0100)))
+            fake.simulateInput(Self.keyDown(Self.optionJ))
+        }
+
+        #expect(fake.videoCommands.map(\.command) == [.seek(seconds: 5)])
+    }
+
+    @Test func eachPressIsResolvedAgainstTheConfigAtThatMoment() {
+        let fake = FakePlatformOps()
+        let store = VideoConfigStore()
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { store.config })
+
+        withExtendedLifetime(orchestrator) {
+            orchestrator.start()
+            fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+            fake.simulateModifierTap(.rightCommand, at: 100)
+            store.config = store.config
+                .updatingVideoSeekStep(10)
+                .updatingVideoControlTrigger(.modifierTap(.leftCommand), for: .seekBackward)
+            fake.simulateModifierTap(.rightCommand, at: 101)
+            fake.simulateModifierTap(.leftCommand, at: 102)
+        }
+
+        #expect(fake.videoCommands.map(\.command) == [.seek(seconds: -5), .seek(seconds: -10)])
     }
 
     // MARK: When to listen
@@ -153,6 +213,55 @@ import Testing
 
         #expect(!fake.isObservingInput)
         #expect(fake.stopObservingInputCallCount == 1)
+    }
+
+    @Test func withNothingBoundGhostModeNeitherListensNorAsksForAccessibility() {
+        let fake = FakePlatformOps()
+        fake.stubbedAccessibilityTrusted = false
+        let config = VideoControlAction.allCases.reduce(WidgetConfig(url: nil)) {
+            $0.updatingVideoControlTrigger(nil, for: $1)
+        }
+        let orchestrator = startedInGhostMode(fake, config: config)
+
+        withExtendedLifetime(orchestrator) {}
+
+        #expect(fake.startObservingInputCallCount == 0)
+        #expect(fake.accessibilityPermissionRequestCount == 0)
+    }
+
+    @Test func clearingTheLastBindingInGhostModeStopsListeningAndBindingOneStartsAgain() {
+        let fake = FakePlatformOps()
+        let store = VideoConfigStore()
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { store.config })
+
+        withExtendedLifetime(orchestrator) {
+            orchestrator.start()
+            fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+            store.config = VideoControlAction.allCases.reduce(store.config) {
+                $0.updatingVideoControlTrigger(nil, for: $1)
+            }
+            orchestrator.reapplyConfiguration()
+            #expect(!fake.isObservingInput)
+
+            store.config = store.config.updatingVideoControlTrigger(.modifierTap(.rightOption), for: .togglePlayback)
+            orchestrator.reapplyConfiguration()
+            #expect(fake.isObservingInput)
+        }
+
+        #expect(fake.startObservingInputCallCount == 2)
+        #expect(fake.stopObservingInputCallCount == 1)
+    }
+
+    @Test func reapplyingConfigurationInNormalModeNeverStartsListening() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { WidgetConfig(url: nil) })
+
+        withExtendedLifetime(orchestrator) {
+            orchestrator.start()
+            orchestrator.reapplyConfiguration()
+        }
+
+        #expect(fake.startObservingInputCallCount == 0)
     }
 
     @Test func togglingHiddenNeitherStartsNorStopsListening() {
@@ -208,6 +317,11 @@ import Testing
 
         #expect(fake.accessibilityPermissionRequestCount == 0)
     }
+}
+
+/// Stands in for `AppDelegate`'s live config, so a test can change it between two key presses.
+private final class VideoConfigStore {
+    var config = WidgetConfig(url: nil)
 }
 
 /// Raw event sequences for the tap-recognition table. Times are seconds, as `NSEvent.timestamp`.

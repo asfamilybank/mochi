@@ -340,9 +340,10 @@ public final class Orchestrator {
     }
 
     /// Re-applies the settings that don't take effect by being re-read (#46): Snap has to be
-    /// pushed to the live window, and an opacity edit made *while in Ghost Mode* has to
-    /// be pushed down right now (see `GhostModeController.reapplyConfiguration`). Everything else
-    /// in the config is read at its point of use and needs no call here. `SettingsController`
+    /// pushed to the live window, an opacity edit made *while in Ghost Mode* has to be pushed
+    /// down right now (see `GhostModeController.reapplyConfiguration`), and 视频控制 has to start
+    /// or stop listening when an edit binds its first key or clears its last one (#78).
+    /// Everything else in the config is read at its point of use and needs no call here. `SettingsController`
     /// invokes this after every persisted edit; a no-op while the widget is closed.
     public func reapplyConfiguration() {
         guard let window else { return }
@@ -352,6 +353,7 @@ public final class Orchestrator {
         platformOps.setHTTPWarningEnabled(currentConfig().isHTTPWarningEnabled, in: window)
         platformOps.setPopupWindowsAllowed(currentConfig().popupWindowPolicy == .allow, in: window)
         ghostModeController?.reapplyConfiguration()
+        videoControl?.refreshObservation()
     }
 
     private func handleURLSubmitted(_ url: URL) {

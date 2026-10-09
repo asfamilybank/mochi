@@ -87,13 +87,13 @@ public struct WidgetConfig: Equatable {
     public var popupWindowPolicy: PopupWindowPolicy = .block
 
     /// 视频控制 (#74): the user's explicit bindings, keyed by action. Like `hotkeyOverrides`, only
-    /// what the user changed is stored and an absent key means the action's default — but here a
-    /// stored `nil` means the user *cleared* the action, kept apart from "default" so clearing
-    /// 播放/暂停 doesn't snap back to right ⌥ on the next launch. Read through
-    /// `videoControlTrigger(for:)`, written through `setVideoControlTrigger(_:for:)`.
+    /// what differs from the default is stored and an absent key means the action's default — but
+    /// here a stored `nil` means the user *cleared* the action, kept apart from "default" so
+    /// clearing 播放/暂停 doesn't snap back to right ⌥ on the next launch. Read through
+    /// `videoControlTrigger(for:)`, written through `updatingVideoControlTrigger(_:for:)`.
     public var videoControlOverrides: [VideoControlAction: VideoControlTrigger?] = [:]
 
-    /// How far 后退/前进 jump, in whole seconds (#74).
+    /// How far 后退/前进 jump, in whole seconds (#74), always within `videoSeekStepRange`.
     public var videoSeekStep: Int = WidgetConfig.defaultVideoSeekStep
     public static let defaultVideoSeekStep = 5
     public static let videoSeekStepRange = 1...60
@@ -136,12 +136,6 @@ public struct WidgetConfig: Equatable {
     public func videoControlTrigger(for action: VideoControlAction) -> VideoControlTrigger? {
         if let override = videoControlOverrides[action] { return override }
         return action.defaultTrigger
-    }
-
-    /// Binds `action` to `trigger`, or clears it with `nil` — an explicit choice either way,
-    /// remembered even when it happens to equal the default.
-    public mutating func setVideoControlTrigger(_ trigger: VideoControlTrigger?, for action: VideoControlAction) {
-        videoControlOverrides.updateValue(trigger, forKey: action)
     }
 }
 
@@ -197,7 +191,36 @@ extension WidgetConfig {
         config.cameraPermission = table["camera_permission"]?.string.flatMap(MediaCapturePermission.init(rawValue:)) ?? .ask
         config.microphonePermission =
             table["microphone_permission"]?.string.flatMap(MediaCapturePermission.init(rawValue:)) ?? .ask
+        if let videoControl = table["video_control"]?.table {
+            config.videoControlOverrides = parseVideoControlOverrides(from: videoControl)
+            config.videoSeekStep = videoControl["seek_step"]?.int.map(clampedVideoSeekStep) ?? defaultVideoSeekStep
+        }
         return config
+    }
+
+    /// `[video_control.<action>]` (#78), one sub-table per action that differs from its default:
+    /// `kind = "modifier_tap"` with a `modifier` (`ModifierKey.rawValue`), `kind = "keystroke"`
+    /// with `key_code`/`modifiers` like `[hotkeys]`, or `kind = "unbound"`. Anything malformed —
+    /// an unknown kind, modifier or action, a bad key code — falls back to that action's default,
+    /// with the same leniency as the rest of this hand-editable file.
+    private static func parseVideoControlOverrides(from table: TOMLTable) -> [VideoControlAction: VideoControlTrigger?] {
+        var overrides: [VideoControlAction: VideoControlTrigger?] = [:]
+        for action in VideoControlAction.allCases {
+            guard let entry = table[action.rawValue]?.table else { continue }
+            switch entry["kind"]?.string {
+            case "unbound":
+                overrides.updateValue(nil, forKey: action)
+            case "modifier_tap":
+                guard let key = entry["modifier"]?.string.flatMap(ModifierKey.init(rawValue:)) else { continue }
+                overrides[action] = .modifierTap(key)
+            case "keystroke":
+                guard let hotkey = parseKeystroke(keyCodeKey: "key_code", modifiersKey: "modifiers", in: entry) else { continue }
+                overrides[action] = .keystroke(hotkey)
+            default:
+                continue
+            }
+        }
+        return overrides
     }
 
     /// `nil` when the `url` key is absent (#16: a fresh install with no browsing history yet is
@@ -362,6 +385,29 @@ extension WidgetConfig {
             }
             table["hotkeys"] = hotkeysTable
         }
+        // #78 — nothing is written while every binding and the step are at their defaults.
+        if !videoControlOverrides.isEmpty || videoSeekStep != Self.defaultVideoSeekStep {
+            let videoTable = TOMLTable()
+            if videoSeekStep != Self.defaultVideoSeekStep {
+                videoTable["seek_step"] = videoSeekStep
+            }
+            for (action, trigger) in videoControlOverrides.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+                let entry = TOMLTable()
+                switch trigger {
+                case nil:
+                    entry["kind"] = "unbound"
+                case .modifierTap(let key)?:
+                    entry["kind"] = "modifier_tap"
+                    entry["modifier"] = key.rawValue
+                case .keystroke(let hotkey)?:
+                    entry["kind"] = "keystroke"
+                    entry["key_code"] = Int(hotkey.keyCode)
+                    entry["modifiers"] = Int(hotkey.modifierFlags)
+                }
+                videoTable[action.rawValue] = entry
+            }
+            table["video_control"] = videoTable
+        }
         // #70
         table["autoplay"] = autoplayPolicy.rawValue
         if let minimumFontSize {
@@ -514,5 +560,27 @@ extension WidgetConfig {
             copy.hotkeyOverrides[action] = hotkey
         }
         return copy
+    }
+
+    /// Binds a 视频控制 action to `trigger`, or clears it with `nil`. Like
+    /// `updatingHotkeyOverride`, choosing the default removes the entry instead of restating it.
+    public func updatingVideoControlTrigger(_ trigger: VideoControlTrigger?, for action: VideoControlAction) -> WidgetConfig {
+        var copy = self
+        if trigger == action.defaultTrigger {
+            copy.videoControlOverrides.removeValue(forKey: action)
+        } else {
+            copy.videoControlOverrides.updateValue(trigger, forKey: action)
+        }
+        return copy
+    }
+
+    public func updatingVideoSeekStep(_ seconds: Int) -> WidgetConfig {
+        var copy = self
+        copy.videoSeekStep = Self.clampedVideoSeekStep(seconds)
+        return copy
+    }
+
+    static func clampedVideoSeekStep(_ seconds: Int) -> Int {
+        min(max(seconds, videoSeekStepRange.lowerBound), videoSeekStepRange.upperBound)
     }
 }

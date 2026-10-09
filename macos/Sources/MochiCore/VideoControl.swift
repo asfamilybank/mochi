@@ -65,9 +65,14 @@ public final class VideoControl {
     }
 
     /// Starts or stops listening to match the current state: only in Ghost Mode, only with a
-    /// widget, only with at least one key bound. Idempotent, so every caller can just call it.
+    /// widget, only with at least one key bound — with nothing bound there is nothing to listen
+    /// for, and no reason to ask for Accessibility either. Idempotent, so every caller can just
+    /// call it: a mode change, a widget close, and every settings edit
+    /// (`Orchestrator.reapplyConfiguration()`).
     public func refreshObservation() {
-        let shouldObserve = isGhostModeActive() && currentWindow() != nil
+        let config = currentConfig()
+        let anythingBound = VideoControlAction.allCases.contains { config.videoControlTrigger(for: $0) != nil }
+        let shouldObserve = isGhostModeActive() && currentWindow() != nil && anythingBound
         if shouldObserve, !isObserving {
             if !platformOps.isAccessibilityTrusted(), !hasRequestedAccessibility {
                 hasRequestedAccessibility = true
@@ -86,11 +91,20 @@ public final class VideoControl {
 
     private func handle(_ event: RawInputEvent) {
         guard isGhostModeActive(), let window = currentWindow() else { return }
-        guard let tapped = tapRecognizer.handle(event) else { return }
+        // Every event goes through the recognizer, even one that is itself a match: a key going
+        // down is also what cancels a modifier tap in progress.
+        let tapped = tapRecognizer.handle(event)
+        let trigger: VideoControlTrigger
+        if let tapped {
+            trigger = .modifierTap(tapped)
+        } else if case .keyDown(let keyCode, let modifierFlags, isRepeat: false, _) = event {
+            trigger = .keystroke(Hotkey(keyCode: keyCode, modifierFlags: modifierFlags))
+        } else {
+            return
+        }
         let config = currentConfig()
-        guard let action = VideoControlAction.allCases.first(where: {
-            config.videoControlTrigger(for: $0) == .modifierTap(tapped)
-        }) else { return }
+        guard let action = VideoControlAction.allCases.first(where: { config.videoControlTrigger(for: $0) == trigger })
+        else { return }
         platformOps.performVideoCommand(command(for: action, step: Double(config.videoSeekStep)), in: window)
     }
 

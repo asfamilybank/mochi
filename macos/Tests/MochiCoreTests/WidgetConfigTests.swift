@@ -806,4 +806,114 @@ import Testing
         #expect(updated.popupWindowPolicy == .allow)
         #expect(updated.url == config.url && updated.isSnapEnabled == false)
     }
+    // MARK: 视频控制 (#78)
+
+    @Test func aConfigWithoutVideoControlUsesTheDefaults() throws {
+        let config = try WidgetConfig.parse("ghost_opacity = 0.3")
+
+        #expect(config.videoControlTrigger(for: .togglePlayback) == .modifierTap(.rightOption))
+        #expect(config.videoControlTrigger(for: .seekBackward) == .modifierTap(.rightCommand))
+        #expect(config.videoControlTrigger(for: .seekForward) == nil)
+        #expect(config.videoSeekStep == 5)
+    }
+
+    @Test func parsesEveryKindOfVideoControlBinding() throws {
+        let toml = """
+        [video_control]
+        seek_step = 10
+
+        [video_control.toggle_playback]
+        kind = "keystroke"
+        key_code = 50
+        modifiers = 0
+
+        [video_control.seek_backward]
+        kind = "unbound"
+
+        [video_control.seek_forward]
+        kind = "modifier_tap"
+        modifier = "right_shift"
+        """
+
+        let config = try WidgetConfig.parse(toml)
+
+        #expect(config.videoControlTrigger(for: .togglePlayback) == .keystroke(Hotkey(keyCode: 50, modifierFlags: 0)))
+        #expect(config.videoControlTrigger(for: .seekBackward) == nil)
+        #expect(config.videoControlTrigger(for: .seekForward) == .modifierTap(.rightShift))
+        #expect(config.videoSeekStep == 10)
+    }
+
+    @Test func aMalformedVideoControlBindingFallsBackToTheDefault() throws {
+        let toml = """
+        [video_control.toggle_playback]
+        kind = "modifier_tap"
+        modifier = "middle_option"
+
+        [video_control.seek_backward]
+        kind = "keystroke"
+        key_code = -3
+        modifiers = 0
+
+        [video_control.seek_forward]
+        kind = "chord"
+
+        [video_control.zoom_video]
+        kind = "unbound"
+        """
+
+        let config = try WidgetConfig.parse(toml)
+
+        #expect(config.videoControlOverrides.isEmpty)
+        #expect(config.videoControlTrigger(for: .togglePlayback) == .modifierTap(.rightOption))
+    }
+
+    @Test(arguments: [
+        (raw: "0", expected: 1),
+        (raw: "-4", expected: 1),
+        (raw: "60", expected: 60),
+        (raw: "300", expected: 60),
+        (raw: "2.5", expected: 5),
+        (raw: "\"ten\"", expected: 5),
+    ])
+    func clampsTheSeekStepIntoOneToSixtySeconds(_ testCase: (raw: String, expected: Int)) throws {
+        let config = try WidgetConfig.parse("[video_control]\nseek_step = \(testCase.raw)")
+
+        #expect(config.videoSeekStep == testCase.expected)
+    }
+
+    @Test func serializingThenReparsingRoundTripsVideoControl() throws {
+        let original = WidgetConfig()
+            .updatingVideoControlTrigger(.keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x0800)), for: .togglePlayback)
+            .updatingVideoControlTrigger(nil, for: .seekBackward)
+            .updatingVideoControlTrigger(.modifierTap(.leftControl), for: .seekForward)
+            .updatingVideoSeekStep(15)
+
+        let reparsed = try WidgetConfig.parse(original.serialized())
+
+        #expect(reparsed == original)
+        #expect(reparsed.videoControlTrigger(for: .seekBackward) == nil)
+    }
+
+    @Test func clearingADefaultBoundActionIsRememberedAcrossARestart() throws {
+        let cleared = WidgetConfig().updatingVideoControlTrigger(nil, for: .togglePlayback)
+
+        let reparsed = try WidgetConfig.parse(cleared.serialized())
+
+        #expect(reparsed.videoControlTrigger(for: .togglePlayback) == nil)
+    }
+
+    @Test func bindingAnActionBackToItsDefaultLeavesNothingInTheFile() {
+        let config = WidgetConfig()
+            .updatingVideoControlTrigger(.modifierTap(.leftOption), for: .togglePlayback)
+            .updatingVideoControlTrigger(.modifierTap(.rightOption), for: .togglePlayback)
+            .updatingVideoControlTrigger(nil, for: .seekForward)
+
+        #expect(config.videoControlOverrides.isEmpty)
+        #expect(config.serialized().contains("video_control") == false)
+    }
+
+    @Test func updatingTheSeekStepClampsIt() {
+        #expect(WidgetConfig().updatingVideoSeekStep(0).videoSeekStep == 1)
+        #expect(WidgetConfig().updatingVideoSeekStep(61).videoSeekStep == 60)
+    }
 }
