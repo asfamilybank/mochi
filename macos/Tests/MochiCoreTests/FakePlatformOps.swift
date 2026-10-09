@@ -478,6 +478,13 @@ final class FakePlatformOps: PlatformOps {
         videoCommands.append((command, (window as! FakeWidgetWindowHandle).id))
     }
 
+    // #79
+    private(set) var accessibilitySettingsOpenCount = 0
+
+    func openAccessibilitySettings() {
+        accessibilitySettingsOpenCount += 1
+    }
+
     // #76
     private(set) var mediaPausedWindowIDs: [Int] = []
 

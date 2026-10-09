@@ -22,11 +22,12 @@ struct HotkeyRecorderView: NSViewRepresentable {
     }
 }
 
-final class HotkeyRecorderButton: NSButton {
+final class HotkeyRecorderButton: NSButton, KeyCapturingResponder {
     var placeholder: String = "点击录制" { didSet { refreshTitle() } }
     var displayedHotkey: Hotkey? { didSet { refreshTitle() } }
     var onCapture: ((Hotkey) -> Void)?
     private var isRecording = false
+    var isCapturingKeys: Bool { isRecording }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -75,5 +76,102 @@ final class HotkeyRecorderButton: NSButton {
         if flags.contains(.option) { result |= 0x0800 }
         if flags.contains(.control) { result |= 0x1000 }
         return result
+    }
+}
+
+/// Records a 视频控制 key (#79): either a modifier tapped on its own — judged by the same
+/// `ModifierTapRecognizer` that listens in Ghost Mode, so what records is exactly what fires — or
+/// an ordinary key or combo, taken on key-down. Esc cancels.
+struct VideoControlRecorderView: NSViewRepresentable {
+    @Binding var trigger: VideoControlTrigger?
+    var placeholder: String
+
+    func makeNSView(context: Context) -> VideoControlRecorderButton {
+        let view = VideoControlRecorderButton()
+        view.onCapture = { trigger = $0 }
+        return view
+    }
+
+    func updateNSView(_ nsView: VideoControlRecorderButton, context: Context) {
+        nsView.placeholder = placeholder
+        nsView.displayedTrigger = trigger
+    }
+}
+
+final class VideoControlRecorderButton: NSButton, KeyCapturingResponder {
+    var placeholder: String = "未设置" { didSet { refreshTitle() } }
+    var displayedTrigger: VideoControlTrigger? { didSet { refreshTitle() } }
+    var onCapture: ((VideoControlTrigger) -> Void)?
+    private(set) var isCapturingKeys = false
+    private var tapRecognizer = ModifierTapRecognizer()
+
+    private static let escapeKeyCode: UInt32 = 0x35
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        bezelStyle = .rounded
+        target = self
+        action = #selector(startRecording)
+        refreshTitle()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var acceptsFirstResponder: Bool { true }
+
+    @objc private func startRecording() {
+        isCapturingKeys = true
+        tapRecognizer = ModifierTapRecognizer()
+        title = "按下按键，或单独轻按修饰键…"
+        window?.makeFirstResponder(self)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        guard isCapturingKeys, let raw = RawInputEvent(event),
+              case .keyDown(let keyCode, let modifierFlags, _, _) = raw
+        else {
+            super.keyDown(with: event)
+            return
+        }
+        _ = tapRecognizer.handle(raw)
+        if keyCode == Self.escapeKeyCode, modifierFlags == 0 {
+            stopRecording()
+            return
+        }
+        finish(with: .keystroke(Hotkey(keyCode: keyCode, modifierFlags: modifierFlags)))
+    }
+
+    override func flagsChanged(with event: NSEvent) {
+        guard isCapturingKeys, let raw = RawInputEvent(event) else {
+            super.flagsChanged(with: event)
+            return
+        }
+        if let tapped = tapRecognizer.handle(raw) {
+            finish(with: .modifierTap(tapped))
+        }
+    }
+
+    override func resignFirstResponder() -> Bool {
+        stopRecording()
+        return super.resignFirstResponder()
+    }
+
+    private func finish(with trigger: VideoControlTrigger) {
+        stopRecording()
+        displayedTrigger = trigger
+        onCapture?(trigger)
+    }
+
+    private func stopRecording() {
+        isCapturingKeys = false
+        refreshTitle()
+    }
+
+    private func refreshTitle() {
+        guard !isCapturingKeys else { return }
+        title = displayedTrigger.map(HotkeyDisplay.describe) ?? placeholder
     }
 }

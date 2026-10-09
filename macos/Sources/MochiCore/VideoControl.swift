@@ -17,6 +17,15 @@ public enum VideoControlAction: String, CaseIterable, Hashable, Sendable {
         case .seekForward: nil
         }
     }
+
+    /// The settings panel's label for the action (#79).
+    public var displayName: String {
+        switch self {
+        case .togglePlayback: "播放/暂停"
+        case .seekBackward: "后退"
+        case .seekForward: "前进"
+        }
+    }
 }
 
 /// A key 视频控制 listens for (#74): a side-specific modifier tapped on its own — the default,

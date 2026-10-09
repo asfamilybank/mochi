@@ -368,6 +368,10 @@ public protocol PlatformOps: AnyObject {
     /// recently played, else largest visible) and doing nothing when the page has none.
     func performVideoCommand(_ command: VideoCommand, in window: WidgetWindowHandle)
 
+    /// Opens System Settings at 隐私与安全性 → 辅助功能 (#79), for the user to grant what
+    /// `startObservingInput` needs to hear other apps' keys.
+    func openAccessibilitySettings()
+
     /// Pauses every `<video>`/`<audio>` that is playing, in every frame of the page — cross-origin
     /// iframes included (#76). Never resumes anything; there is no inverse.
     func pauseAllMedia(in window: WidgetWindowHandle)

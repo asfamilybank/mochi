@@ -752,4 +752,129 @@ import Testing
 
         #expect(fake.popupWindowsAllowedChanges.map(\.allowed) == [false, true, false])
     }
+    // MARK: 视频控制 (#79)
+
+    private static let backtick = Hotkey(keyCode: 0x32, modifierFlags: 0)
+
+    @Test func rebindingAVideoActionPersistsItAndNotifies() {
+        let store = PersistedStore(WidgetConfig())
+        var notified = 0
+        let controller = makeController(store: store, configDidChange: { notified += 1 })
+
+        let accepted = controller.updateVideoControlTrigger(.keystroke(Self.backtick), for: .togglePlayback)
+
+        #expect(accepted)
+        #expect(store.config.videoControlTrigger(for: .togglePlayback) == .keystroke(Self.backtick))
+        #expect(notified == 1)
+    }
+
+    @Test func rebindingAVideoActionNeverTouchesTheSystemHotkeyTable() {
+        let store = PersistedStore(WidgetConfig())
+        let fake = FakePlatformOps()
+        let controller = makeController(store: store, platformOps: fake)
+
+        controller.updateVideoControlTrigger(.keystroke(Self.backtick), for: .togglePlayback)
+        controller.updateVideoControlTrigger(nil, for: .togglePlayback)
+
+        #expect(fake.hotkeyCallOrder.isEmpty)
+    }
+
+    @Test func clearingAVideoActionUnbindsIt() {
+        let store = PersistedStore(WidgetConfig())
+        let controller = makeController(store: store)
+
+        controller.updateVideoControlTrigger(nil, for: .seekBackward)
+
+        #expect(store.config.videoControlTrigger(for: .seekBackward) == nil)
+    }
+
+    @Test func updatingTheSeekStepPersistsItClamped() {
+        let store = PersistedStore(WidgetConfig())
+        let controller = makeController(store: store)
+
+        controller.updateVideoSeekStep(90)
+
+        #expect(store.config.videoSeekStep == 60)
+    }
+
+    @Test func resettingVideoControlRestoresEveryDefaultAndTheStep() {
+        let store = PersistedStore(
+            WidgetConfig()
+                .updatingVideoControlTrigger(nil, for: .togglePlayback)
+                .updatingVideoControlTrigger(.modifierTap(.rightOption), for: .seekForward)
+                .updatingVideoSeekStep(12))
+        let controller = makeController(store: store)
+
+        controller.resetVideoControlToDefaults()
+
+        #expect(store.config.videoControlOverrides.isEmpty)
+        #expect(store.config.videoSeekStep == WidgetConfig.defaultVideoSeekStep)
+    }
+
+    /// Every way a video key can collide with something already in use, refused with the same
+    /// alert as any other hotkey conflict and leaving the config untouched.
+    @Test(arguments: [
+        (name: "an action hotkey", trigger: VideoControlTrigger.keystroke(DefaultHotkeys.toggleGhostMode)),
+        (name: "a local menu shortcut", trigger: .keystroke(DefaultHotkeys.openSettings)),
+        (name: "a mapping trigger", trigger: .keystroke(Hotkey(keyCode: 0x12, modifierFlags: 0x0800))),
+        (name: "another video action's tap", trigger: .modifierTap(.rightCommand)),
+        (name: "another video action's keystroke", trigger: .keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0))),
+    ])
+    func refusesAVideoKeyThatIsAlreadyInUse(_ scenario: (name: String, trigger: VideoControlTrigger)) {
+        let original = WidgetConfig(
+            hotkeyMappings: [HotkeyMapping(trigger: Hotkey(keyCode: 0x12, modifierFlags: 0x0800), pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0))]
+        ).updatingVideoControlTrigger(.keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0)), for: .seekForward)
+        let store = PersistedStore(original)
+        let fake = FakePlatformOps()
+        let controller = makeController(store: store, platformOps: fake)
+
+        let accepted = controller.updateVideoControlTrigger(scenario.trigger, for: .togglePlayback)
+
+        #expect(!accepted, "\(scenario.name)")
+        #expect(store.config == original, "\(scenario.name)")
+        #expect(fake.presentedAlerts.map(\.title) == ["热键已被占用"], "\(scenario.name)")
+    }
+
+    @Test func rebindingAVideoActionToItsOwnCurrentKeyIsNotAConflict() {
+        let store = PersistedStore(WidgetConfig())
+        let fake = FakePlatformOps()
+        let controller = makeController(store: store, platformOps: fake)
+
+        #expect(controller.updateVideoControlTrigger(.modifierTap(.rightOption), for: .togglePlayback))
+        #expect(fake.presentedAlerts.isEmpty)
+    }
+
+    @Test func anActionHotkeyCannotTakeAKeyAVideoActionHolds() {
+        let store = PersistedStore(WidgetConfig().updatingVideoControlTrigger(.keystroke(Self.backtick), for: .togglePlayback))
+        let fake = FakePlatformOps()
+        let controller = makeController(store: store, platformOps: fake)
+
+        let accepted = controller.updateActionHotkey(.hideWidget, to: Self.backtick)
+
+        #expect(!accepted)
+        #expect(store.config.hotkey(for: .hideWidget) == DefaultHotkeys.hideWidget)
+        #expect(fake.registeredHotkeys.isEmpty)
+    }
+
+    @Test func aMappingTriggerCannotTakeAKeyAVideoActionHolds() {
+        let store = PersistedStore(WidgetConfig().updatingVideoControlTrigger(.keystroke(Self.backtick), for: .seekForward))
+        let fake = FakePlatformOps()
+        let controller = makeController(store: store, platformOps: fake)
+
+        let accepted = controller.addHotkeyMapping(trigger: Self.backtick, pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0))
+
+        #expect(!accepted)
+        #expect(store.config.hotkeyMappings.isEmpty)
+    }
+
+    @Test func reportsAccessibilityAndOpensItsSettingsPane() {
+        let fake = FakePlatformOps()
+        fake.stubbedAccessibilityTrusted = false
+        let controller = makeController(store: PersistedStore(WidgetConfig()), platformOps: fake)
+
+        #expect(controller.isAccessibilityTrusted == false)
+        controller.openAccessibilitySettings()
+
+        #expect(fake.accessibilitySettingsOpenCount == 1)
+    }
 }

@@ -124,9 +124,37 @@ final class SettingsViewModel: ObservableObject {
         return succeeded
     }
 
-    func resetActionHotkeysToDefaults() {
+    /// The panel's one 恢复默认 button covers both the action hotkeys and 视频控制 (#79).
+    func resetHotkeysToDefaults() {
         controller.resetActionHotkeysToDefaults()
+        controller.resetVideoControlToDefaults()
         config = controller.config
+    }
+
+    // MARK: 视频控制 (#79)
+
+    /// Mirrors System Settings, which can change it behind Mochi's back — refreshed whenever the
+    /// hotkeys pane appears and whenever the app comes back to the front.
+    @Published private(set) var isAccessibilityTrusted = true
+
+    @discardableResult
+    func updateVideoControlTrigger(_ trigger: VideoControlTrigger?, for action: VideoControlAction) -> Bool {
+        let succeeded = controller.updateVideoControlTrigger(trigger, for: action)
+        config = controller.config
+        return succeeded
+    }
+
+    func updateVideoSeekStep(_ seconds: Int) {
+        controller.updateVideoSeekStep(seconds)
+        config = controller.config
+    }
+
+    func refreshAccessibilityStatus() {
+        isAccessibilityTrusted = controller.isAccessibilityTrusted
+    }
+
+    func openAccessibilitySettings() {
+        controller.openAccessibilitySettings()
     }
 
     @discardableResult

@@ -53,7 +53,7 @@ enum SettingsPane: CaseIterable {
             switch self {
             case .general: GeneralSettingsTab(viewModel: viewModel)
             case .window: WindowSettingsTab(viewModel: viewModel)
-            case .hotkeys: HotkeysTab(viewModel: viewModel).frame(height: 420)
+            case .hotkeys: HotkeysTab(viewModel: viewModel).frame(height: 660)
             case .webContent: WebContentSettingsTab(viewModel: viewModel)
             case .scripts: ScriptsTab(viewModel: viewModel).frame(height: 560)
             case .advanced: AdvancedSettingsTab(viewModel: viewModel)
@@ -422,10 +422,16 @@ struct HotkeysTab: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button("恢复默认") {
-                    viewModel.resetActionHotkeysToDefaults()
+                    viewModel.resetHotkeysToDefaults()
                 }
-                .disabled(viewModel.config.hotkeyOverrides.isEmpty)
+                .disabled(
+                    viewModel.config.hotkeyOverrides.isEmpty && viewModel.config.videoControlOverrides.isEmpty
+                        && viewModel.config.videoSeekStep == WidgetConfig.defaultVideoSeekStep)
             }
+
+            Divider()
+
+            VideoControlSection(viewModel: viewModel)
 
             Divider()
 
@@ -466,6 +472,79 @@ struct HotkeysTab: View {
             }
         }
         .padding(.vertical, 8)
+    }
+}
+
+/// 视频控制 (#79): the three video keys, the jump length, and whether Accessibility — without
+/// which keys pressed in other apps never reach Mochi — has been granted.
+private struct VideoControlSection: View {
+    @ObservedObject var viewModel: SettingsViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("视频控制").font(.headline)
+            Text("幽灵模式下按下即可控制页面视频。按键照常传给当前应用，不会被占用；修饰键要单独轻按一下。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ForEach(VideoControlAction.allCases, id: \.self) { action in
+                let trigger = viewModel.config.videoControlTrigger(for: action)
+                HStack {
+                    Text(action.displayName)
+                    Spacer()
+                    // Reads the binding in effect straight from the config, like the action
+                    // hotkeys above, so a refused recording snaps back to what is live.
+                    VideoControlRecorderView(
+                        trigger: Binding(
+                            get: { trigger },
+                            set: { newValue in
+                                guard let newValue else { return }
+                                viewModel.updateVideoControlTrigger(newValue, for: action)
+                            }
+                        ),
+                        placeholder: "未设置"
+                    )
+                    Button {
+                        viewModel.updateVideoControlTrigger(nil, for: action)
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(trigger == nil)
+                    .help("清除")
+                    .accessibilityLabel("清除\(action.displayName)按键")
+                }
+            }
+            HStack {
+                Text("后退/前进步长")
+                Spacer()
+                Stepper(
+                    "\(viewModel.config.videoSeekStep) 秒",
+                    value: Binding(
+                        get: { viewModel.config.videoSeekStep },
+                        set: { viewModel.updateVideoSeekStep($0) }
+                    ),
+                    in: WidgetConfig.videoSeekStepRange
+                )
+            }
+            HStack {
+                if viewModel.isAccessibilityTrusted {
+                    Label("已获得辅助功能权限", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Label("需要辅助功能权限，才能在其他应用里响应这些按键", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Spacer()
+                    Button("打开系统设置") {
+                        viewModel.openAccessibilitySettings()
+                    }
+                }
+            }
+            .font(.caption)
+        }
+        .onAppear { viewModel.refreshAccessibilityStatus() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            viewModel.refreshAccessibilityStatus()
+        }
     }
 }
 

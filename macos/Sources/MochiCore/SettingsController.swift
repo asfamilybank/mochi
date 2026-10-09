@@ -275,13 +275,71 @@ public final class SettingsController {
     ///   - ignoringAction: the action being rebound, excluded so it can't collide with itself.
     ///   - ignoringMappingAt: the mapping index being edited, excluded for the same reason — `nil`
     ///     when adding a brand new mapping, where every existing entry counts.
-    private func isReservedInProcess(_ candidate: Hotkey, ignoringAction editedAction: HotkeyAction?, ignoringMappingAt editedIndex: Int?) -> Bool {
+    ///   - ignoringVideoAction: the 视频控制 action being rebound (#79), excluded the same way.
+    private func isReservedInProcess(
+        _ candidate: Hotkey, ignoringAction editedAction: HotkeyAction?, ignoringMappingAt editedIndex: Int?,
+        ignoringVideoAction editedVideoAction: VideoControlAction? = nil
+    ) -> Bool {
         let config = currentConfig()
         if HotkeyAction.allCases.contains(where: { $0 != editedAction && config.hotkey(for: $0) == candidate }) { return true }
         if DefaultHotkeys.reservedLocalMenuShortcuts.contains(candidate) { return true }
+        // A video key is never registered with the OS — it only listens — so an in-process check
+        // is the only thing standing between it and a hotkey firing on the same press.
+        if VideoControlAction.allCases.contains(where: {
+            $0 != editedVideoAction && config.videoControlTrigger(for: $0) == .keystroke(candidate)
+        }) { return true }
         return config.hotkeyMappings.enumerated().contains { offset, mapping in
             offset != editedIndex && mapping.trigger == candidate
         }
+    }
+
+    // MARK: - #79: 视频控制
+
+    /// Binds a 视频控制 action to `trigger`, or clears it with `nil`. Nothing is registered with
+    /// the OS — Video Control only listens (ADR-0020) — so the only conflicts are in-process: the
+    /// action hotkeys, the local menu shortcuts, the mapping triggers, and the other video keys.
+    /// Listening starts or stops through `configDidChange` when this binds the first key or
+    /// clears the last.
+    @discardableResult
+    public func updateVideoControlTrigger(_ trigger: VideoControlTrigger?, for action: VideoControlAction) -> Bool {
+        let config = currentConfig()
+        if let trigger, trigger != config.videoControlTrigger(for: action) {
+            let takenByAnotherVideoAction = VideoControlAction.allCases.contains {
+                $0 != action && config.videoControlTrigger(for: $0) == trigger
+            }
+            let takenByAHotkey: Bool
+            if case .keystroke(let hotkey) = trigger {
+                takenByAHotkey = isReservedInProcess(hotkey, ignoringAction: nil, ignoringMappingAt: nil, ignoringVideoAction: action)
+            } else {
+                takenByAHotkey = false
+            }
+            guard !takenByAnotherVideoAction, !takenByAHotkey else {
+                presentConflictAlert()
+                return false
+            }
+        }
+        persistAndNotify { $0.updatingVideoControlTrigger(trigger, for: action) }
+        return true
+    }
+
+    public func updateVideoSeekStep(_ seconds: Int) {
+        persistAndNotify { $0.updatingVideoSeekStep(seconds) }
+    }
+
+    /// Every video key back on its default, and the jump length back to its default.
+    public func resetVideoControlToDefaults() {
+        persistAndNotify { config in
+            VideoControlAction.allCases
+                .reduce(config) { $0.updatingVideoControlTrigger($1.defaultTrigger, for: $1) }
+                .updatingVideoSeekStep(WidgetConfig.defaultVideoSeekStep)
+        }
+    }
+
+    /// Read fresh each time — the user grants it in System Settings, outside Mochi.
+    public var isAccessibilityTrusted: Bool { platformOps.isAccessibilityTrusted() }
+
+    public func openAccessibilitySettings() {
+        platformOps.openAccessibilitySettings()
     }
 
     private func presentConflictAlert() {

@@ -188,6 +188,50 @@ private struct VideoCandidateRank: Comparable {
     }
 }
 
+/// A control that is capturing keys for itself — the settings panel's recorders (#79). While it
+/// is, 视频控制 ignores Mochi's own input, so recording right ⌥ doesn't also pause the video.
+public protocol KeyCapturingResponder: AnyObject {
+    var isCapturingKeys: Bool { get }
+}
+
+extension RawInputEvent {
+    /// The device-dependent bits (`NX_DEVICE*KEYMASK` in IOKit's `IOLLEvent.h`) that tell the two
+    /// sides of a modifier apart; `NSEvent.ModifierFlags` only exposes the side-blind ones.
+    private static let sideSpecificModifierBits: [(ModifierKey, UInt)] = [
+        (.leftControl, 0x0001), (.leftShift, 0x0002), (.rightShift, 0x0004), (.leftCommand, 0x0008),
+        (.rightCommand, 0x0010), (.leftOption, 0x0020), (.rightOption, 0x0040), (.rightControl, 0x2000),
+    ]
+
+    /// The raw shape of an AppKit event, for 视频控制's listeners and the settings panel's
+    /// recorder alike; `nil` for event types neither cares about.
+    public init?(_ event: NSEvent) {
+        switch event.type {
+        case .flagsChanged:
+            let raw = event.modifierFlags.rawValue
+            let held = Set(Self.sideSpecificModifierBits.filter { raw & $0.1 != 0 }.map(\.0))
+            self = .modifierChanged(keyCode: event.keyCode, held: held, timestamp: event.timestamp)
+        case .keyDown:
+            self = .keyDown(
+                keyCode: UInt32(event.keyCode), modifierFlags: Self.carbonModifiers(from: event.modifierFlags),
+                isRepeat: event.isARepeat, timestamp: event.timestamp)
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+            self = .mouseDown(timestamp: event.timestamp)
+        default:
+            return nil
+        }
+    }
+
+    /// `Hotkey`'s Carbon bit values, from AppKit's flags.
+    private static func carbonModifiers(from flags: NSEvent.ModifierFlags) -> UInt32 {
+        var carbon: UInt32 = 0
+        if flags.contains(.command) { carbon |= 0x0100 }
+        if flags.contains(.shift) { carbon |= 0x0200 }
+        if flags.contains(.option) { carbon |= 0x0800 }
+        if flags.contains(.control) { carbon |= 0x1000 }
+        return carbon
+    }
+}
+
 /// Records each frame's 视频控制 controller as it announces itself (#76). A separate object for
 /// the same retain-cycle reason as `PageScrollReporter`.
 private final class MediaFrameRegistrar: NSObject, WKScriptMessageHandler {
@@ -2435,13 +2479,15 @@ public final class AppKitPlatformOps: PlatformOps {
         stopObservingInput()
         let mask: NSEvent.EventTypeMask = [.flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
         let report: (NSEvent) -> Void = { event in
-            if let raw = Self.rawInputEvent(from: event) { handler(raw) }
+            if let raw = RawInputEvent(event) { handler(raw) }
         }
         if let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: report) {
             inputMonitors.append(global)
         }
         if let local = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { event in
-            report(event)
+            // Recording a key in the settings panel must not also act on the video (#79).
+            let recorder = NSApp.keyWindow?.firstResponder as? KeyCapturingResponder
+            if recorder?.isCapturingKeys != true { report(event) }
             return event
         }) {
             inputMonitors.append(local)
@@ -2461,38 +2507,9 @@ public final class AppKitPlatformOps: PlatformOps {
         handle(for: window)?.pauseAllMedia()
     }
 
-    /// The device-dependent bits (`NX_DEVICE*KEYMASK` in IOKit's `IOLLEvent.h`) that tell the two
-    /// sides of a modifier apart; `NSEvent.ModifierFlags` only exposes the side-blind ones.
-    private static let sideSpecificModifierBits: [(ModifierKey, UInt)] = [
-        (.leftControl, 0x0001), (.leftShift, 0x0002), (.rightShift, 0x0004), (.leftCommand, 0x0008),
-        (.rightCommand, 0x0010), (.leftOption, 0x0020), (.rightOption, 0x0040), (.rightControl, 0x2000),
-    ]
-
-    private static func rawInputEvent(from event: NSEvent) -> RawInputEvent? {
-        switch event.type {
-        case .flagsChanged:
-            let raw = event.modifierFlags.rawValue
-            let held = Set(sideSpecificModifierBits.filter { raw & $0.1 != 0 }.map(\.0))
-            return .modifierChanged(keyCode: event.keyCode, held: held, timestamp: event.timestamp)
-        case .keyDown:
-            return .keyDown(
-                keyCode: UInt32(event.keyCode), modifierFlags: carbonModifiers(from: event.modifierFlags),
-                isRepeat: event.isARepeat, timestamp: event.timestamp)
-        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
-            return .mouseDown(timestamp: event.timestamp)
-        default:
-            return nil
-        }
-    }
-
-    /// `Hotkey`'s Carbon bit values, from AppKit's flags.
-    private static func carbonModifiers(from flags: NSEvent.ModifierFlags) -> UInt32 {
-        var carbon: UInt32 = 0
-        if flags.contains(.command) { carbon |= 0x0100 }
-        if flags.contains(.shift) { carbon |= 0x0200 }
-        if flags.contains(.option) { carbon |= 0x0800 }
-        if flags.contains(.control) { carbon |= 0x1000 }
-        return carbon
+    public func openAccessibilitySettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else { return }
+        NSWorkspace.shared.open(url)
     }
 
     private func handle(for window: WidgetWindowHandle) -> AppKitWidgetWindowHandle? {
