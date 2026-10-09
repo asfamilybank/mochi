@@ -182,6 +182,14 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 - 无障碍树里 SwiftUI 单选按钮的 `AXTitle` 是 nil，文字在 `AXDescription`；按标题匹配会静默落空（`AXPress` 本身可用）。另外 Popup Window 和 sheet 窗口用 `screencapture -l` 会报 "could not create image from window"，改读无障碍树验证（`AXSheet` 是否挂在对的窗口下）。
 - 界面验证要触发页面行为又不想动用户鼠标：测试 config 里写 `custom_script`（每次导航注入，可调 `alert`/`window.open`/`w.opener`）配合 `data:` 启动页；在设置面板里点控件会真实写入 config，所以一律先换测试 config。
 - 删 `WidgetConfig` 字段不需要写迁移：`parse` 遇到不认识的 TOML 键会直接忽略，app 退出时又会整份重写 `config.toml`，旧键自然消失。但要补一条测试钉住「带旧键的配置仍能解析、`serialized()` 里不再出现这个键」，免得以后有人把解析改成严格模式。
+- 从 Bash 工具启动的 `.build/debug/Mochi` 会继承 Claude.app 的「辅助功能」授权：`NSEvent` 全局监听真能收到按键，可以做真机端到端测试。具体做法：先 `osascript` 把 Finder 切到前台，再用 `CGEvent(...).post(tap: .cghidEventTap)` 发按键（修饰键单按要把 `type` 设成 `.flagsChanged`，flags 里带上设备位，例如右 ⌥ 是 `0x40`）；页面状态让测试页自己写进 `document.title`，再用 `CGWindowListCopyWindowInfo` 读 `kCGWindowName` 拿到。
+- Carbon 热键（Mochi 自己的 ⌥G/⌥H）和系统快捷键（⌘Tab）在 `NSEvent` 全局/本地监听看到之前就把 keyDown 吞掉了。凡是要判断"期间没按别的键"的逻辑，都要再查 `CGEventSource.secondsSinceLastEventType(.hidSystemState, ...)`，并且按事件时间比较，别用 `counterForEventType` 的两次读数相减：监听回调会滞后，中间那颗键会同时落在两次读数之前。
+- 安全输入（用辅助进程调 `EnableSecureEventInput()` 就能模拟）开启时，全局监听收不到 keyDown，但 `flagsChanged` 照常送达；合成事件在安全输入下不会更新 `secondsSinceLastEventType`，计数器却照常增加。
+- `WKWebView` 没有公开 API 能列出所有 frame：要对每个 frame（含跨域 iframe）执行 JS，就让 `forMainFrameOnly: false` 的 user script 通过 message handler 报到，用 `message.frameInfo` 加一个 token 登记，再 `evaluateJavaScript(_:in: frame, in: world)`。注意：进了往返缓存的旧页面，连同它的 iframe 都还活着，而且会用自己的 token 正常应答，必须靠 `pagehide`/`pageshow` 把它标成不活跃。
+- `evaluateJavaScript(_:in:in:)` 在 JS 返回 `undefined` 时，回调里拿到的值没法用：要同时区分"调用失败/过期"和"真的返回了 null"，就把结果包成 `{ value: x ?? null }`。
+- 不起 app 验证注入的媒体 JS：先 `ffmpeg -f lavfi -i testsrc=duration=60:size=320x240:rate=30 -pix_fmt yuv420p v.mp4` 生成测试视频；再在两个端口各起一个 `python3 -m http.server`（`localhost` 和 `127.0.0.1` 算两个源，正好构成跨域 iframe）；最后写个独立的 `WKWebView` harness，从源码里抠出脚本字符串来跑。
+- `Orchestrator` 注册给平台层的闭包都是 `[weak self]`：测试里写 `_ = Orchestrator(...)` 或者不再持有它，后续的 `simulate…` 会静默失效、没有任何调用。要用 `withExtendedLifetime(orchestrator) { ... }` 把它留住。
+- 设置窗口里「热键」「脚本」两个面板的高度是写死的（见 `SettingsView` 的 `content(viewModel:)` 里的 `.frame(height:)`）：往里加分组却不调高度，会出现顶部标题被裁掉、`List` 被挤到 0 高的情况，编译和测试都发现不了，只能截图看。
 
 ### 关闭 issue
 
