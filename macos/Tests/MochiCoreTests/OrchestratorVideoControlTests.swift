@@ -50,6 +50,8 @@ import Testing
         (name: "another modifier joined in", events: TapSequence.withSecondModifier, togglesPlayback: false),
         (name: "pressed while another modifier was held", events: TapSequence.whileOtherModifierHeld, togglesPlayback: false),
         (name: "fn pressed in between", events: TapSequence.withFnInBetween, togglesPlayback: false),
+        (name: "a key no listener saw in between", events: TapSequence.withKeyNoListenerSaw, togglesPlayback: false),
+        (name: "a key pressed just before", events: TapSequence.withAPressJustBeforeTheModifier, togglesPlayback: true),
     ])
     func tapRecognition(_ scenario: (name: String, events: [RawInputEvent], togglesPlayback: Bool)) {
         let fake = FakePlatformOps()
@@ -326,12 +328,17 @@ private final class VideoConfigStore {
 
 /// Raw event sequences for the tap-recognition table. Times are seconds, as `NSEvent.timestamp`.
 enum TapSequence {
-    private static func down(_ key: ModifierKey, held: Set<ModifierKey>? = nil, at time: TimeInterval) -> RawInputEvent {
-        .modifierChanged(keyCode: key.keyCode, held: held ?? [key], timestamp: time)
+    /// The last system-wide press defaults to well before the sequence starts.
+    private static func down(
+        _ key: ModifierKey, held: Set<ModifierKey>? = nil, lastPressAt: TimeInterval = 1, at time: TimeInterval
+    ) -> RawInputEvent {
+        .modifierChanged(keyCode: key.keyCode, held: held ?? [key], lastPressAt: lastPressAt, timestamp: time)
     }
 
-    private static func up(_ key: ModifierKey, stillHeld: Set<ModifierKey> = [], at time: TimeInterval) -> RawInputEvent {
-        .modifierChanged(keyCode: key.keyCode, held: stillHeld, timestamp: time)
+    private static func up(
+        _ key: ModifierKey, stillHeld: Set<ModifierKey> = [], lastPressAt: TimeInterval = 1, at time: TimeInterval
+    ) -> RawInputEvent {
+        .modifierChanged(keyCode: key.keyCode, held: stillHeld, lastPressAt: lastPressAt, timestamp: time)
     }
 
     static let plainTap = heldFor(0.1)
@@ -368,10 +375,23 @@ enum TapSequence {
         up(.rightOption, stillHeld: [.leftCommand], at: 10.1),
     ]
 
+    /// Right ⌥ + H — Hidden's own hotkey — where Carbon swallows the H before any listener sees
+    /// it; only the system's record of the last press gives it away. Without that, releasing
+    /// right ⌥ would resume the video Hidden had just paused.
+    static let withKeyNoListenerSaw: [RawInputEvent] = [
+        down(.rightOption, at: 10), up(.rightOption, lastPressAt: 10.05, at: 10.1),
+    ]
+
+    /// The listener can run late: by the time it handles the press, the system may already have
+    /// counted a key typed just *before* it — that one must not cancel the tap.
+    static let withAPressJustBeforeTheModifier: [RawInputEvent] = [
+        down(.rightOption, lastPressAt: 9.99, at: 10), up(.rightOption, lastPressAt: 9.99, at: 10.1),
+    ]
+
     /// fn (`kVK_Function`) is a modifier-type key no `ModifierKey` names.
     static let withFnInBetween: [RawInputEvent] = [
         down(.rightOption, at: 10),
-        .modifierChanged(keyCode: 0x3F, held: [.rightOption], timestamp: 10.05),
+        .modifierChanged(keyCode: 0x3F, held: [.rightOption], lastPressAt: 1, timestamp: 10.05),
         up(.rightOption, at: 10.1),
     ]
 }

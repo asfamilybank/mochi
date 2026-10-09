@@ -188,12 +188,6 @@ private struct VideoCandidateRank: Comparable {
     }
 }
 
-/// A control that is capturing keys for itself — the settings panel's recorders (#79). While it
-/// is, 视频控制 ignores Mochi's own input, so recording right ⌥ doesn't also pause the video.
-public protocol KeyCapturingResponder: AnyObject {
-    var isCapturingKeys: Bool { get }
-}
-
 extension RawInputEvent {
     /// The device-dependent bits (`NX_DEVICE*KEYMASK` in IOKit's `IOLLEvent.h`) that tell the two
     /// sides of a modifier apart; `NSEvent.ModifierFlags` only exposes the side-blind ones.
@@ -209,7 +203,8 @@ extension RawInputEvent {
         case .flagsChanged:
             let raw = event.modifierFlags.rawValue
             let held = Set(Self.sideSpecificModifierBits.filter { raw & $0.1 != 0 }.map(\.0))
-            self = .modifierChanged(keyCode: event.keyCode, held: held, timestamp: event.timestamp)
+            self = .modifierChanged(
+                keyCode: event.keyCode, held: held, lastPressAt: Self.lastSystemPressTime(), timestamp: event.timestamp)
         case .keyDown:
             self = .keyDown(
                 keyCode: UInt32(event.keyCode), modifierFlags: Self.carbonModifiers(from: event.modifierFlags),
@@ -219,6 +214,16 @@ extension RawInputEvent {
         default:
             return nil
         }
+    }
+
+    /// When the system last saw a key or mouse button go down, as seconds since boot — the clock
+    /// `NSEvent.timestamp` uses. Read from the hardware-level event state, so it moves even for
+    /// presses a hotkey, a system shortcut or Secure Input keeps from every listener.
+    private static func lastSystemPressTime() -> TimeInterval {
+        let sinceLastPress = [CGEventType.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+            .map { CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: $0) }
+            .min() ?? .infinity
+        return ProcessInfo.processInfo.systemUptime - sinceLastPress
     }
 
     /// `Hotkey`'s Carbon bit values, from AppKit's flags.
@@ -1007,8 +1012,9 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     }
 
     /// The target video is the one playing, else the one most recently played, else the largest
-    /// visible one (#74). Ties among playing videos go to the most recently started, then the
-    /// largest. A `play()` the page's autoplay policy refuses is dropped silently.
+    /// visible one (#74) — a video never played and not visible at all is never a target. Ties
+    /// among playing videos go to the most recently started, then the largest. A `play()` the
+    /// page's autoplay policy refuses is dropped silently.
     private static let videoControlScript = """
     (() => {
       if (window.__mochiVideo) return;
@@ -1040,6 +1046,8 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         let best = null;
         for (const video of document.querySelectorAll("video")) {
           const candidate = { video, rank: rank(video) };
+          // Never played and nowhere on screen — a hidden preview or ad, not what the user sees.
+          if (!candidate.rank.playing && candidate.rank.lastPlayed === 0 && candidate.rank.area === 0) continue;
           if (!best || outranks(candidate.rank, best.rank)) best = candidate;
         }
         return best;

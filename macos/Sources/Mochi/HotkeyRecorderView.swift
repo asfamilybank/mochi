@@ -51,12 +51,12 @@ final class HotkeyRecorderButton: NSButton, KeyCapturingResponder {
     }
 
     override func keyDown(with event: NSEvent) {
-        guard isRecording else {
+        guard isRecording, case .keyDown(let keyCode, let modifierFlags, _, _)? = RawInputEvent(event) else {
             super.keyDown(with: event)
             return
         }
         isRecording = false
-        let hotkey = Hotkey(keyCode: UInt32(event.keyCode), modifierFlags: Self.carbonModifiers(from: event.modifierFlags))
+        let hotkey = Hotkey(keyCode: keyCode, modifierFlags: modifierFlags)
         displayedHotkey = hotkey
         onCapture?(hotkey)
     }
@@ -64,18 +64,6 @@ final class HotkeyRecorderButton: NSButton, KeyCapturingResponder {
     private func refreshTitle() {
         guard !isRecording else { return }
         title = displayedHotkey.map(HotkeyDisplay.describe) ?? placeholder
-    }
-
-    /// Translates AppKit's `NSEvent.ModifierFlags` into the Carbon-style bitmask `Hotkey`/
-    /// `GlobalHotkeyRegistry` use everywhere else in the codebase (`0x0100`=cmd, `0x0200`=shift,
-    /// `0x0800`=option, `0x1000`=control — see `Hotkey.swift`'s `DefaultHotkeys.cmdOption`).
-    private static func carbonModifiers(from flags: NSEvent.ModifierFlags) -> UInt32 {
-        var result: UInt32 = 0
-        if flags.contains(.command) { result |= 0x0100 }
-        if flags.contains(.shift) { result |= 0x0200 }
-        if flags.contains(.option) { result |= 0x0800 }
-        if flags.contains(.control) { result |= 0x1000 }
-        return result
     }
 }
 

@@ -38,7 +38,10 @@ public enum ModifierKey: String, CaseIterable, Hashable, Sendable {
 public enum RawInputEvent: Equatable, Sendable {
     /// A modifier-type key went down or up. `keyCode` is the key that changed — also Caps Lock or
     /// fn, which no `ModifierKey` names; `held` is every side-specific modifier down *after* it.
-    case modifierChanged(keyCode: UInt16, held: Set<ModifierKey>, timestamp: TimeInterval)
+    /// `lastPressAt` is when the system last saw any key or mouse button go down, on the same
+    /// clock as `timestamp` — including presses no listener ever sees, because a hotkey (Mochi's
+    /// own ⌥H) or a system shortcut (⌘Tab) swallowed them, or Secure Input hid them.
+    case modifierChanged(keyCode: UInt16, held: Set<ModifierKey>, lastPressAt: TimeInterval, timestamp: TimeInterval)
     /// An ordinary key went down. `modifierFlags` uses `Hotkey`'s Carbon bit values.
     case keyDown(keyCode: UInt32, modifierFlags: UInt32, isRepeat: Bool, timestamp: TimeInterval)
     /// Any mouse button went down.
@@ -47,7 +50,8 @@ public enum RawInputEvent: Equatable, Sendable {
 
 /// Turns raw modifier changes into taps (#74): a side-specific modifier pressed on its own and
 /// released within `maxHoldDuration`, with no other key, mouse button or modifier in between. It
-/// fires on release — the only moment "nothing else joined in" is known.
+/// fires on release — the only moment "nothing else joined in" is known. A key in between that the
+/// listener never saw still counts: the system's last press is then later than the modifier's.
 public struct ModifierTapRecognizer {
     /// Holding longer than this is a held modifier the user changed their mind about, not a tap.
     public static let maxHoldDuration: TimeInterval = 0.5
@@ -58,7 +62,7 @@ public struct ModifierTapRecognizer {
 
     /// Feeds one event in; returns the tapped key when this event completes a tap.
     public mutating func handle(_ event: RawInputEvent) -> ModifierKey? {
-        guard case .modifierChanged(let keyCode, let held, let timestamp) = event,
+        guard case .modifierChanged(let keyCode, let held, let lastPressAt, let timestamp) = event,
               let key = ModifierKey(keyCode: keyCode)
         else {
             pending = nil
@@ -69,9 +73,18 @@ public struct ModifierTapRecognizer {
             return nil
         }
         defer { pending = nil }
-        guard let pending, pending.key == key, held.isEmpty,
+        // Compared as event times, not as counts read when each event is handled: the listener can
+        // lag, and by then a key typed in between may already be on both sides of the count.
+        guard let pending, pending.key == key, held.isEmpty, lastPressAt <= pending.pressedAt,
               timestamp - pending.pressedAt <= Self.maxHoldDuration
         else { return nil }
         return key
     }
+}
+
+/// A control that is capturing keys for itself — the settings panel's recorders (#79). While one
+/// is first responder and capturing, 视频控制 ignores Mochi's own input, so recording right ⌥
+/// doesn't also pause the video.
+public protocol KeyCapturingResponder: AnyObject {
+    var isCapturingKeys: Bool { get }
 }

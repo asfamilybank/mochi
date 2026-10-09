@@ -74,7 +74,7 @@ public final class Orchestrator {
     public func start() {
         hotkeyForwarder = HotkeyForwarder(
             platformOps: platformOps,
-            isGhostModeActive: { [weak self] in self?.ghostModeController?.mode == .ghost }
+            isGhostModeActive: { [weak self] in self?.isGhostModeActive ?? false }
         )
         videoControl = VideoControl(
             platformOps: platformOps,

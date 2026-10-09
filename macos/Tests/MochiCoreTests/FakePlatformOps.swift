@@ -500,7 +500,7 @@ final class FakePlatformOps: PlatformOps {
 
     /// Presses `key` alone at `time` and releases it `holdFor` seconds later.
     func simulateModifierTap(_ key: ModifierKey, at time: TimeInterval = 100, holdFor: TimeInterval = 0.1) {
-        simulateInput(.modifierChanged(keyCode: key.keyCode, held: [key], timestamp: time))
-        simulateInput(.modifierChanged(keyCode: key.keyCode, held: [], timestamp: time + holdFor))
+        simulateInput(.modifierChanged(keyCode: key.keyCode, held: [key], lastPressAt: 0, timestamp: time))
+        simulateInput(.modifierChanged(keyCode: key.keyCode, held: [], lastPressAt: 0, timestamp: time + holdFor))
     }
 }
