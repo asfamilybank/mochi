@@ -2,105 +2,103 @@ import AppKit
 import MochiCore
 import SwiftUI
 
-/// Records a single keystroke (key code + Carbon-style modifier flags) for the hotkey mapping
-/// editor (#14): click to focus, then press the desired combo. A raw `keyDown` capture rather
-/// than a text field, since typing a keyCode/modifier bitmask by hand isn't something a user
-/// should ever have to do.
+/// Records a single keystroke (key code + Carbon-style modifier flags): the action hotkeys and
+/// the forwarding mappings. A raw `keyDown` capture rather than a text field, since typing a
+/// keyCode/modifier bitmask by hand isn't something a user should ever have to do.
+///
+/// `onClear` is the field's ⓧ (and ⌫ while recording); `nil` leaves the binding unclearable.
 struct HotkeyRecorderView: NSViewRepresentable {
-    @Binding var hotkey: Hotkey?
-    var placeholder: String
+    var hotkey: Hotkey?
+    var accessibilityName: String
+    var onCapture: (Hotkey) -> Void
+    var onClear: (() -> Void)?
 
-    func makeNSView(context: Context) -> HotkeyRecorderButton {
-        let view = HotkeyRecorderButton()
-        view.onCapture = { hotkey = $0 }
-        return view
+    func makeNSView(context: Context) -> HotkeyRecorderField {
+        HotkeyRecorderField(recordsModifierTaps: false)
     }
 
-    func updateNSView(_ nsView: HotkeyRecorderButton, context: Context) {
-        nsView.placeholder = placeholder
-        nsView.displayedHotkey = hotkey
-    }
-}
-
-final class HotkeyRecorderButton: NSButton, KeyCapturingResponder {
-    var placeholder: String = "点击录制" { didSet { refreshTitle() } }
-    var displayedHotkey: Hotkey? { didSet { refreshTitle() } }
-    var onCapture: ((Hotkey) -> Void)?
-    private var isRecording = false
-    var isCapturingKeys: Bool { isRecording }
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        bezelStyle = .rounded
-        target = self
-        action = #selector(startRecording)
-        refreshTitle()
+    func updateNSView(_ field: HotkeyRecorderField, context: Context) {
+        field.accessibilityName = accessibilityName
+        field.face = HotkeyRecorderModel.face(of: hotkey)
+        field.isBound = hotkey != nil
+        field.onCapture = { if case .keystroke(let captured) = $0 { onCapture(captured) } }
+        field.onClear = onClear
     }
 
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override var acceptsFirstResponder: Bool { true }
-
-    @objc private func startRecording() {
-        isRecording = true
-        title = "按下组合键…"
-        window?.makeFirstResponder(self)
-    }
-
-    override func keyDown(with event: NSEvent) {
-        guard isRecording, case .keyDown(let keyCode, let modifierFlags, _, _)? = RawInputEvent(event) else {
-            super.keyDown(with: event)
-            return
-        }
-        isRecording = false
-        let hotkey = Hotkey(keyCode: keyCode, modifierFlags: modifierFlags)
-        displayedHotkey = hotkey
-        onCapture?(hotkey)
-    }
-
-    private func refreshTitle() {
-        guard !isRecording else { return }
-        title = displayedHotkey.map(HotkeyDisplay.describe) ?? placeholder
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: HotkeyRecorderField, context: Context) -> CGSize? {
+        nsView.intrinsicContentSize
     }
 }
 
 /// Records a 视频控制 key (#79): either a modifier tapped on its own — judged by the same
 /// `ModifierTapRecognizer` that listens in Ghost Mode, so what records is exactly what fires — or
-/// an ordinary key or combo, taken on key-down. Esc cancels.
+/// an ordinary key or combo, taken on key-down.
 struct VideoControlRecorderView: NSViewRepresentable {
-    @Binding var trigger: VideoControlTrigger?
-    var placeholder: String
+    var trigger: VideoControlTrigger?
+    var accessibilityName: String
+    var onCapture: (VideoControlTrigger) -> Void
+    var onClear: () -> Void
 
-    func makeNSView(context: Context) -> VideoControlRecorderButton {
-        let view = VideoControlRecorderButton()
-        view.onCapture = { trigger = $0 }
-        return view
+    func makeNSView(context: Context) -> HotkeyRecorderField {
+        HotkeyRecorderField(recordsModifierTaps: true)
     }
 
-    func updateNSView(_ nsView: VideoControlRecorderButton, context: Context) {
-        nsView.placeholder = placeholder
-        nsView.displayedTrigger = trigger
+    func updateNSView(_ field: HotkeyRecorderField, context: Context) {
+        field.accessibilityName = accessibilityName
+        field.face = HotkeyRecorderModel.face(of: trigger)
+        field.isBound = trigger != nil
+        field.onCapture = onCapture
+        field.onClear = onClear
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: HotkeyRecorderField, context: Context) -> CGSize? {
+        nsView.intrinsicContentSize
     }
 }
 
-final class VideoControlRecorderButton: NSButton, KeyCapturingResponder {
-    var placeholder: String = "未设置" { didSet { refreshTitle() } }
-    var displayedTrigger: VideoControlTrigger? { didSet { refreshTitle() } }
+/// The settings panel's one recorder control (#82): a fixed-width field that always draws the
+/// four modifier slots — dim when unused, accent when part of the combo — so an unbound field
+/// reads as empty at a glance and every row's combo lines up. Click to record; while recording,
+/// a bare Esc cancels and a bare ⌫/⌦ clears (`HotkeyRecorderModel`), as does leaving the field.
+///
+/// Colors are read in `draw(_:)`, not cached, so the field follows light/dark and accent changes.
+final class HotkeyRecorderField: NSView, KeyCapturingResponder {
+    static let width: CGFloat = 200
+    static let height: CGFloat = 24
+
+    var face: RecorderFace = .slots(lit: [], key: nil) { didSet { if face != oldValue { needsDisplay = true } } }
+    var isBound = false { didSet { refreshClearButton() } }
+    var accessibilityName = "" { didSet { refreshAccessibility() } }
     var onCapture: ((VideoControlTrigger) -> Void)?
+    var onClear: (() -> Void)? { didSet { refreshClearButton() } }
+
     private(set) var isCapturingKeys = false
+    private let recordsModifierTaps: Bool
     private var tapRecognizer = ModifierTapRecognizer()
+    private let clearButton = NSButton()
 
-    private static let escapeKeyCode: UInt32 = 0x35
+    private var prompt: String { recordsModifierTaps ? "按下按键，或单独轻按修饰键…" : "按下组合键…" }
 
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        bezelStyle = .rounded
-        target = self
-        action = #selector(startRecording)
-        refreshTitle()
+    init(recordsModifierTaps: Bool) {
+        self.recordsModifierTaps = recordsModifierTaps
+        super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: Self.height))
+        clearButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: nil)
+        clearButton.isBordered = false
+        clearButton.imagePosition = .imageOnly
+        clearButton.contentTintColor = .secondaryLabelColor
+        clearButton.target = self
+        clearButton.action = #selector(clearClicked)
+        clearButton.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(clearButton)
+        NSLayoutConstraint.activate([
+            clearButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -5),
+            clearButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            clearButton.widthAnchor.constraint(equalToConstant: 16),
+            clearButton.heightAnchor.constraint(equalToConstant: 16),
+        ])
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        refreshClearButton()
     }
 
     @available(*, unavailable)
@@ -108,13 +106,34 @@ final class VideoControlRecorderButton: NSButton, KeyCapturingResponder {
         fatalError("init(coder:) has not been implemented")
     }
 
+    override var intrinsicContentSize: NSSize { NSSize(width: Self.width, height: Self.height) }
     override var acceptsFirstResponder: Bool { true }
 
-    @objc private func startRecording() {
+    // MARK: Recording
+
+    override func mouseDown(with event: NSEvent) {
+        startRecording()
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        startRecording()
+        return true
+    }
+
+    private func startRecording() {
+        guard !isCapturingKeys else { return }
         isCapturingKeys = true
         tapRecognizer = ModifierTapRecognizer()
-        title = "按下按键，或单独轻按修饰键…"
         window?.makeFirstResponder(self)
+        refreshClearButton()
+        needsDisplay = true
+    }
+
+    private func stopRecording() {
+        guard isCapturingKeys else { return }
+        isCapturingKeys = false
+        refreshClearButton()
+        needsDisplay = true
     }
 
     override func keyDown(with event: NSEvent) {
@@ -125,20 +144,34 @@ final class VideoControlRecorderButton: NSButton, KeyCapturingResponder {
             return
         }
         _ = tapRecognizer.handle(raw)
-        if keyCode == Self.escapeKeyCode, modifierFlags == 0 {
+        switch HotkeyRecorderModel.outcome(ofKeyDown: keyCode, modifierFlags: modifierFlags) {
+        case .cancel:
             stopRecording()
-            return
+        case .clear:
+            stopRecording()
+            onClear?()
+        case .capture(let hotkey):
+            stopRecording()
+            onCapture?(.keystroke(hotkey))
         }
-        finish(with: .keystroke(Hotkey(keyCode: keyCode, modifierFlags: modifierFlags)))
+    }
+
+    /// ⌘-combos reach the window's key-equivalent pass (and the menu bar) before `keyDown` —
+    /// while recording they are the combo being recorded, not a menu command.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard isCapturingKeys, window?.firstResponder === self else { return super.performKeyEquivalent(with: event) }
+        keyDown(with: event)
+        return true
     }
 
     override func flagsChanged(with event: NSEvent) {
-        guard isCapturingKeys, let raw = RawInputEvent(event) else {
+        guard isCapturingKeys, recordsModifierTaps, let raw = RawInputEvent(event) else {
             super.flagsChanged(with: event)
             return
         }
         if let tapped = tapRecognizer.handle(raw) {
-            finish(with: .modifierTap(tapped))
+            stopRecording()
+            onCapture?(.modifierTap(tapped))
         }
     }
 
@@ -147,19 +180,68 @@ final class VideoControlRecorderButton: NSButton, KeyCapturingResponder {
         return super.resignFirstResponder()
     }
 
-    private func finish(with trigger: VideoControlTrigger) {
+    @objc private func clearClicked() {
         stopRecording()
-        displayedTrigger = trigger
-        onCapture?(trigger)
+        onClear?()
     }
 
-    private func stopRecording() {
-        isCapturingKeys = false
-        refreshTitle()
+    private func refreshClearButton() {
+        clearButton.isHidden = !isBound || onClear == nil || isCapturingKeys
+        clearButton.setAccessibilityLabel("清除\(accessibilityName)按键")
     }
 
-    private func refreshTitle() {
-        guard !isCapturingKeys else { return }
-        title = displayedTrigger.map(HotkeyDisplay.describe) ?? placeholder
+    private func refreshAccessibility() {
+        setAccessibilityLabel(accessibilityName)
+        refreshClearButton()
+    }
+
+    override func accessibilityValue() -> Any? {
+        switch face {
+        case .slots(_, nil): "未设置"
+        case .slots(let lit, let key?): ModifierSlot.allCases.filter(lit.contains).map(\.glyph).joined() + key
+        case .singleCap(let cap): cap
+        }
+    }
+
+    // MARK: Drawing
+
+    private static let horizontalInset: CGFloat = 9
+    private static let glyphFont = NSFont.systemFont(ofSize: 14, weight: .medium)
+
+    override func draw(_ dirtyRect: NSRect) {
+        let frame = bounds.insetBy(dx: 0.5, dy: 0.5)
+        let shape = NSBezierPath(roundedRect: frame, xRadius: 6, yRadius: 6)
+        NSColor.quaternarySystemFill.setFill()
+        shape.fill()
+        (isCapturingKeys ? NSColor.controlAccentColor : NSColor.separatorColor).setStroke()
+        shape.lineWidth = isCapturingKeys ? 2 : 1
+        shape.stroke()
+
+        if isCapturingKeys {
+            draw(prompt, font: .systemFont(ofSize: 12), color: .secondaryLabelColor, at: Self.horizontalInset)
+            return
+        }
+        switch face {
+        case .slots(let lit, let key):
+            var x = Self.horizontalInset
+            for slot in ModifierSlot.allCases {
+                let color: NSColor = lit.contains(slot) ? .controlAccentColor : .tertiaryLabelColor
+                x += draw(slot.glyph, font: Self.glyphFont, color: color, at: x) + 3
+            }
+            if let key {
+                draw(key, font: Self.glyphFont, color: .controlAccentColor, at: x + 6)
+            }
+        case .singleCap(let cap):
+            draw(cap, font: Self.glyphFont, color: .controlAccentColor, at: Self.horizontalInset)
+        }
+    }
+
+    /// Draws `text` vertically centered with its leading edge at `x`; returns its width.
+    @discardableResult
+    private func draw(_ text: String, font: NSFont, color: NSColor, at x: CGFloat) -> CGFloat {
+        let string = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: color])
+        let size = string.size()
+        string.draw(at: NSPoint(x: x, y: (bounds.height - size.height) / 2))
+        return size.width
     }
 }

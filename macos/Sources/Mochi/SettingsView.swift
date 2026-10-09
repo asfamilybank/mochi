@@ -401,18 +401,14 @@ struct HotkeysTab: View {
                 HStack {
                     Text(action.displayName)
                     Spacer()
-                    // The binding reads the combo currently in effect straight from the config, so
+                    // The field shows the combo currently in effect, read straight from the config, so
                     // a rejected recording (conflict, or held by another app) snaps the control
                     // back to the unchanged binding instead of displaying a combo that isn't live.
                     HotkeyRecorderView(
-                        hotkey: Binding(
-                            get: { viewModel.config.hotkey(for: action) },
-                            set: { newValue in
-                                guard let newValue else { return }
-                                viewModel.updateActionHotkey(action, to: newValue)
-                            }
-                        ),
-                        placeholder: "点击录制"
+                        hotkey: viewModel.config.hotkey(for: action),
+                        accessibilityName: action.displayName,
+                        onCapture: { viewModel.updateActionHotkey(action, to: $0) },
+                        onClear: nil
                     )
                 }
             }
@@ -458,9 +454,13 @@ struct HotkeysTab: View {
             }
 
             HStack {
-                HotkeyRecorderView(hotkey: $newTrigger, placeholder: "触发热键")
+                HotkeyRecorderView(
+                    hotkey: newTrigger, accessibilityName: "触发热键",
+                    onCapture: { newTrigger = $0 }, onClear: { newTrigger = nil })
                 Image(systemName: "arrow.right")
-                HotkeyRecorderView(hotkey: $newPageKeystroke, placeholder: "页面按键")
+                HotkeyRecorderView(
+                    hotkey: newPageKeystroke, accessibilityName: "页面按键",
+                    onCapture: { newPageKeystroke = $0 }, onClear: { newPageKeystroke = nil })
                 Button("添加") {
                     guard let trigger = newTrigger, let pageKeystroke = newPageKeystroke else { return }
                     if viewModel.addHotkeyMapping(trigger: trigger, pageKeystroke: pageKeystroke) {
@@ -491,27 +491,14 @@ private struct VideoControlSection: View {
                 HStack {
                     Text(action.displayName)
                     Spacer()
-                    // Reads the binding in effect straight from the config, like the action
+                    // Shows the binding in effect straight from the config, like the action
                     // hotkeys above, so a refused recording snaps back to what is live.
                     VideoControlRecorderView(
-                        trigger: Binding(
-                            get: { trigger },
-                            set: { newValue in
-                                guard let newValue else { return }
-                                viewModel.updateVideoControlTrigger(newValue, for: action)
-                            }
-                        ),
-                        placeholder: "未设置"
+                        trigger: trigger,
+                        accessibilityName: action.displayName,
+                        onCapture: { viewModel.updateVideoControlTrigger($0, for: action) },
+                        onClear: { viewModel.updateVideoControlTrigger(nil, for: action) }
                     )
-                    Button {
-                        viewModel.updateVideoControlTrigger(nil, for: action)
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(trigger == nil)
-                    .help("清除")
-                    .accessibilityLabel("清除\(action.displayName)按键")
                 }
             }
             HStack {

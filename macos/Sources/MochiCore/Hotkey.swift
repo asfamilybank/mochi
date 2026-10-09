@@ -3,7 +3,7 @@ import Foundation
 /// A global hotkey, expressed as a platform virtual keycode + modifier-flag bitmask rather than
 /// a semantic key name — deliberately thin, since registering it with the OS is `AppKitPlatformOps`'s
 /// job (via Carbon's `RegisterEventHotKey`), not this pure layer's.
-public struct Hotkey: Hashable {
+public struct Hotkey: Hashable, Sendable {
     public var keyCode: UInt32
     public var modifierFlags: UInt32
 
