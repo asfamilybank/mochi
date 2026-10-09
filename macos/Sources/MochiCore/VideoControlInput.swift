@@ -96,7 +96,7 @@ public enum ModifierTapEvent: Equatable, Sendable {
     case tap(ModifierKey)
     case doubleTap(ModifierKey)
 
-    public var trigger: VideoControlTrigger {
+    public var trigger: TriggerKey {
         switch self {
         case .tap(let key): .modifierTap(key)
         case .doubleTap(let key): .modifierDoubleTap(key)

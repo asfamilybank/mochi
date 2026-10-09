@@ -100,7 +100,7 @@ import Testing
     /// The quick reference draws the key once, as a keycap, and the "×2" beside it — not as a
     /// second keycap, which would read as two different keys.
     @Test func theQuickReferenceMarksADoubleTapRatherThanDrawingItsKeyTwice() {
-        let config = WidgetConfig().updatingVideoControlTrigger(.modifierDoubleTap(.rightOption), for: .seekForward)
+        let config = WidgetConfig().updatingTriggerKey(.modifierDoubleTap(.rightOption), for: .seekForward)
 
         let entries = HotkeyQuickReference.entries(for: config)
 

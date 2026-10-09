@@ -741,7 +741,7 @@ import Testing
     func restoringDefaultsLeavesAnActionWhoseDefaultSomethingElseNowHolds(heldByVideoKey: Bool) {
         var config = WidgetConfig(url: URL(string: "https://example.com")!, hotkeyOverrides: [.toggleGhostMode: nil])
         if heldByVideoKey {
-            config = config.updatingVideoControlTrigger(.keystroke(DefaultHotkeys.toggleGhostMode), for: .seekForward)
+            config = config.updatingTriggerKey(.keystroke(DefaultHotkeys.toggleGhostMode), for: .seekForward)
         } else {
             config = config.updatingHotkeyMappings([
                 HotkeyMapping(trigger: DefaultHotkeys.toggleGhostMode, pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0x1000)),
@@ -779,7 +779,7 @@ import Testing
         let controller = makeController(store: store, configDidChange: { notifications += 1 })
 
         #expect(controller.updateActionHotkey(.toggleGhostMode, to: DefaultHotkeys.hideWidget) == .conflictsWithAction(.hideWidget))
-        #expect(controller.updateVideoControlTrigger(.modifierTap(.rightCommand), for: .seekForward) == .conflictsWithVideoControl(.seekBackward))
+        #expect(controller.updateTriggerKey(.modifierTap(.rightCommand), for: .seekForward) == .conflictsWithVideoControl(.seekBackward))
         #expect(notifications == 0)
         #expect(store.writeCount == 0)
     }
@@ -792,7 +792,7 @@ import Testing
 
         #expect(controller.addHotkeyMapping(trigger: DefaultHotkeys.hideWidget, pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0x1000)) == nil)
         #expect(controller.updateActionHotkey(.toggleGhostMode, to: Hotkey(keyCode: 0x26, modifierFlags: 0x0800)) == nil)
-        #expect(controller.updateVideoControlTrigger(.keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x1000)), for: .seekForward) == nil)
+        #expect(controller.updateTriggerKey(.keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x1000)), for: .seekForward) == nil)
     }
 
     // #70
@@ -920,7 +920,7 @@ import Testing
         var notified = 0
         let controller = makeController(store: store, configDidChange: { notified += 1 })
 
-        let rejection = controller.updateVideoControlTrigger(.keystroke(Self.backtick), for: .togglePlayback)
+        let rejection = controller.updateTriggerKey(.keystroke(Self.backtick), for: .togglePlayback)
 
         #expect(rejection == nil)
         #expect(store.config.videoControlTrigger(for: .togglePlayback) == .keystroke(Self.backtick))
@@ -932,8 +932,8 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        controller.updateVideoControlTrigger(.keystroke(Self.backtick), for: .togglePlayback)
-        controller.updateVideoControlTrigger(nil, for: .togglePlayback)
+        controller.updateTriggerKey(.keystroke(Self.backtick), for: .togglePlayback)
+        controller.updateTriggerKey(nil, for: .togglePlayback)
 
         #expect(fake.hotkeyCallOrder.isEmpty)
     }
@@ -942,7 +942,7 @@ import Testing
         let store = PersistedStore(WidgetConfig())
         let controller = makeController(store: store)
 
-        controller.updateVideoControlTrigger(nil, for: .seekBackward)
+        controller.updateTriggerKey(nil, for: .seekBackward)
 
         #expect(store.config.videoControlTrigger(for: .seekBackward) == nil)
     }
@@ -959,8 +959,8 @@ import Testing
     @Test func resettingVideoControlRestoresEveryDefaultAndTheStep() {
         let store = PersistedStore(
             WidgetConfig()
-                .updatingVideoControlTrigger(nil, for: .togglePlayback)
-                .updatingVideoControlTrigger(.modifierTap(.rightOption), for: .seekForward)
+                .updatingTriggerKey(nil, for: .togglePlayback)
+                .updatingTriggerKey(.modifierTap(.rightOption), for: .seekForward)
                 .updatingVideoSeekStep(12))
         let controller = makeController(store: store)
 
@@ -973,7 +973,7 @@ import Testing
     /// Every way a video key can collide with something already in use, refused with the reason
     /// naming what holds it (#86) and leaving the config untouched.
     @Test(arguments: [
-        (name: "an action hotkey", trigger: VideoControlTrigger.keystroke(DefaultHotkeys.toggleGhostMode),
+        (name: "an action hotkey", trigger: TriggerKey.keystroke(DefaultHotkeys.toggleGhostMode),
          reason: HotkeyRejection.conflictsWithAction(.toggleGhostMode)),
         (name: "a local menu shortcut", trigger: .keystroke(DefaultHotkeys.openSettings), reason: .reservedMenuShortcut),
         (name: "a mapping trigger", trigger: .keystroke(Hotkey(keyCode: 0x12, modifierFlags: 0x0800)),
@@ -982,15 +982,15 @@ import Testing
         (name: "another video action's keystroke", trigger: .keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x1000)),
          reason: .conflictsWithVideoControl(.seekForward)),
     ])
-    func refusesAVideoKeyThatIsAlreadyInUse(_ scenario: (name: String, trigger: VideoControlTrigger, reason: HotkeyRejection)) {
+    func refusesAVideoKeyThatIsAlreadyInUse(_ scenario: (name: String, trigger: TriggerKey, reason: HotkeyRejection)) {
         let original = WidgetConfig(
             hotkeyMappings: [HotkeyMapping(trigger: Hotkey(keyCode: 0x12, modifierFlags: 0x0800), pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0x1000))]
-        ).updatingVideoControlTrigger(.keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x1000)), for: .seekForward)
+        ).updatingTriggerKey(.keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x1000)), for: .seekForward)
         let store = PersistedStore(original)
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        let rejection = controller.updateVideoControlTrigger(scenario.trigger, for: .togglePlayback)
+        let rejection = controller.updateTriggerKey(scenario.trigger, for: .togglePlayback)
 
         #expect(rejection == scenario.reason, "\(scenario.name)")
         #expect(store.config == original, "\(scenario.name)")
@@ -1002,12 +1002,12 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
-        #expect(controller.updateVideoControlTrigger(.modifierTap(.rightOption), for: .togglePlayback) == nil)
+        #expect(controller.updateTriggerKey(.modifierTap(.rightOption), for: .togglePlayback) == nil)
         #expect(fake.presentedAlerts.isEmpty)
     }
 
     @Test func anActionHotkeyCannotTakeAKeyAVideoActionHolds() {
-        let store = PersistedStore(WidgetConfig().updatingVideoControlTrigger(.keystroke(Self.backtick), for: .togglePlayback))
+        let store = PersistedStore(WidgetConfig().updatingTriggerKey(.keystroke(Self.backtick), for: .togglePlayback))
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
@@ -1019,7 +1019,7 @@ import Testing
     }
 
     @Test func aMappingTriggerCannotTakeAKeyAVideoActionHolds() {
-        let store = PersistedStore(WidgetConfig().updatingVideoControlTrigger(.keystroke(Self.backtick), for: .seekForward))
+        let store = PersistedStore(WidgetConfig().updatingTriggerKey(.keystroke(Self.backtick), for: .seekForward))
         let fake = FakePlatformOps()
         let controller = makeController(store: store, platformOps: fake)
 
@@ -1102,7 +1102,7 @@ import Testing
         let store = PersistedStore(WidgetConfig())
         let controller = makeController(store: store)
 
-        let rejection = controller.updateVideoControlTrigger(.keystroke(combo), for: .seekForward)
+        let rejection = controller.updateTriggerKey(.keystroke(combo), for: .seekForward)
 
         #expect(rejection == .missingModifier)
         #expect(store.config.videoControlTrigger(for: .seekForward) == nil)
@@ -1138,7 +1138,7 @@ import Testing
         let store = PersistedStore(WidgetConfig())
         let controller = makeController(store: store)
 
-        let rejection = controller.updateVideoControlTrigger(.modifierDoubleTap(.rightOption), for: .seekBackward)
+        let rejection = controller.updateTriggerKey(.modifierDoubleTap(.rightOption), for: .seekBackward)
 
         #expect(rejection == nil)
         #expect(store.config.videoControlTrigger(for: .togglePlayback) == .modifierTap(.rightOption))
@@ -1146,10 +1146,10 @@ import Testing
     }
 
     @Test func theSameDoubleTapCannotGoToTwoVideoActions() {
-        let store = PersistedStore(WidgetConfig().updatingVideoControlTrigger(.modifierDoubleTap(.rightOption), for: .seekBackward))
+        let store = PersistedStore(WidgetConfig().updatingTriggerKey(.modifierDoubleTap(.rightOption), for: .seekBackward))
         let controller = makeController(store: store)
 
-        let rejection = controller.updateVideoControlTrigger(.modifierDoubleTap(.rightOption), for: .seekForward)
+        let rejection = controller.updateTriggerKey(.modifierDoubleTap(.rightOption), for: .seekForward)
 
         #expect(rejection == .conflictsWithVideoControl(.seekBackward))
         #expect(store.config.videoControlTrigger(for: .seekForward) == nil)

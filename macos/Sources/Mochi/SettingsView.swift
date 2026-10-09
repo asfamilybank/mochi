@@ -592,7 +592,7 @@ private struct VideoControlRow: View {
                 .fixedSize()
                 // Shows the binding in effect straight from the config, like the action
                 // hotkeys above, so a refused recording snaps back to what is live.
-                VideoControlRecorderView(
+                TriggerKeyRecorderView(
                     trigger: viewModel.config.videoControlTrigger(for: action),
                     kind: pendingKind ?? boundKind,
                     accessibilityName: action.displayName,
@@ -600,8 +600,8 @@ private struct VideoControlRow: View {
                     onRecordingStarted: viewModel.clearRowRejection,
                     onRecordingStopped: { pendingKind = nil },
                     onHint: { viewModel.showHint($0, on: .videoControl(action)) },
-                    onCapture: { viewModel.updateVideoControlTrigger($0, for: action) },
-                    onClear: { viewModel.updateVideoControlTrigger(nil, for: action) }
+                    onCapture: { viewModel.updateTriggerKey($0, for: action) },
+                    onClear: { viewModel.updateTriggerKey(nil, for: action) }
                 )
             }
         }

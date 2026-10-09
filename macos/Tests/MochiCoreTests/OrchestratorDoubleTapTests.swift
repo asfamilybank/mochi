@@ -16,11 +16,11 @@ import Testing
 
     /// Right ⌥ both ways: its tap is 播放/暂停 (the default), its double tap 后退.
     private static let rightOptionBothWays = WidgetConfig()
-        .updatingVideoControlTrigger(.modifierDoubleTap(.rightOption), for: .seekBackward)
+        .updatingTriggerKey(.modifierDoubleTap(.rightOption), for: .seekBackward)
 
     @Test func doubleTappingABoundKeyRunsItsAction() {
         let fake = FakePlatformOps()
-        let config = WidgetConfig().updatingVideoControlTrigger(.modifierDoubleTap(.leftControl), for: .seekForward)
+        let config = WidgetConfig().updatingTriggerKey(.modifierDoubleTap(.leftControl), for: .seekForward)
         let orchestrator = startedInGhostMode(fake, config: config)
 
         withExtendedLifetime(orchestrator) {
@@ -33,7 +33,7 @@ import Testing
 
     @Test func aSingleTapOfAKeyBoundOnlyToADoubleTapDoesNothing() {
         let fake = FakePlatformOps()
-        let config = WidgetConfig().updatingVideoControlTrigger(.modifierDoubleTap(.leftControl), for: .seekForward)
+        let config = WidgetConfig().updatingTriggerKey(.modifierDoubleTap(.leftControl), for: .seekForward)
         let orchestrator = startedInGhostMode(fake, config: config)
 
         withExtendedLifetime(orchestrator) {
@@ -46,7 +46,7 @@ import Testing
 
     @Test func twoTapsTooFarApartAreNotADoubleTap() {
         let fake = FakePlatformOps()
-        let config = WidgetConfig().updatingVideoControlTrigger(.modifierDoubleTap(.leftControl), for: .seekForward)
+        let config = WidgetConfig().updatingTriggerKey(.modifierDoubleTap(.leftControl), for: .seekForward)
         let orchestrator = startedInGhostMode(fake, config: config)
 
         withExtendedLifetime(orchestrator) {
@@ -86,7 +86,7 @@ import Testing
     /// Only the key bound both ways waits: right ⌘ is 后退's tap alone, so it acts at once.
     @Test func aTapOnAKeyBoundOneWayStillActsAtOnce() {
         let fake = FakePlatformOps()
-        let config = WidgetConfig().updatingVideoControlTrigger(.modifierDoubleTap(.rightOption), for: .seekForward)
+        let config = WidgetConfig().updatingTriggerKey(.modifierDoubleTap(.rightOption), for: .seekForward)
         let orchestrator = startedInGhostMode(fake, config: config)
 
         withExtendedLifetime(orchestrator) {

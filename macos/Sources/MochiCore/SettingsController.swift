@@ -321,7 +321,7 @@ public final class SettingsController {
     ///
     /// Returns why it was refused (#86), or `nil` once the change is live.
     @discardableResult
-    public func updateVideoControlTrigger(_ trigger: VideoControlTrigger?, for action: VideoControlAction) -> HotkeyRejection? {
+    public func updateTriggerKey(_ trigger: TriggerKey?, for action: VideoControlAction) -> HotkeyRejection? {
         let config = currentConfig()
         if let trigger, trigger != config.videoControlTrigger(for: action) {
             if let other = VideoControlAction.allCases.first(where: { $0 != action && config.videoControlTrigger(for: $0) == trigger }) {
@@ -333,7 +333,7 @@ public final class SettingsController {
                 return conflict
             }
         }
-        persistAndNotify { $0.updatingVideoControlTrigger(trigger, for: action) }
+        persistAndNotify { $0.updatingTriggerKey(trigger, for: action) }
         return nil
     }
 
@@ -345,7 +345,7 @@ public final class SettingsController {
     public func resetVideoControlToDefaults() {
         persistAndNotify { config in
             VideoControlAction.allCases
-                .reduce(config) { $0.updatingVideoControlTrigger($1.defaultTrigger, for: $1) }
+                .reduce(config) { $0.updatingTriggerKey($1.defaultTrigger, for: $1) }
                 .updatingVideoSeekStep(WidgetConfig.defaultVideoSeekStep)
         }
     }

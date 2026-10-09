@@ -892,7 +892,7 @@ import Testing
     }
 
     @Test func aDoubleTapVideoKeyRoundTrips() throws {
-        let config = WidgetConfig().updatingVideoControlTrigger(.modifierDoubleTap(.leftControl), for: .seekForward)
+        let config = WidgetConfig().updatingTriggerKey(.modifierDoubleTap(.leftControl), for: .seekForward)
 
         let reparsed = try WidgetConfig.parse(config.serialized())
 
@@ -966,9 +966,9 @@ import Testing
 
     @Test func serializingThenReparsingRoundTripsVideoControl() throws {
         let original = WidgetConfig()
-            .updatingVideoControlTrigger(.keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x0800)), for: .togglePlayback)
-            .updatingVideoControlTrigger(nil, for: .seekBackward)
-            .updatingVideoControlTrigger(.modifierTap(.leftControl), for: .seekForward)
+            .updatingTriggerKey(.keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x0800)), for: .togglePlayback)
+            .updatingTriggerKey(nil, for: .seekBackward)
+            .updatingTriggerKey(.modifierTap(.leftControl), for: .seekForward)
             .updatingVideoSeekStep(15)
 
         let reparsed = try WidgetConfig.parse(original.serialized())
@@ -978,7 +978,7 @@ import Testing
     }
 
     @Test func clearingADefaultBoundActionIsRememberedAcrossARestart() throws {
-        let cleared = WidgetConfig().updatingVideoControlTrigger(nil, for: .togglePlayback)
+        let cleared = WidgetConfig().updatingTriggerKey(nil, for: .togglePlayback)
 
         let reparsed = try WidgetConfig.parse(cleared.serialized())
 
@@ -987,9 +987,9 @@ import Testing
 
     @Test func bindingAnActionBackToItsDefaultLeavesNothingInTheFile() {
         let config = WidgetConfig()
-            .updatingVideoControlTrigger(.modifierTap(.leftOption), for: .togglePlayback)
-            .updatingVideoControlTrigger(.modifierTap(.rightOption), for: .togglePlayback)
-            .updatingVideoControlTrigger(nil, for: .seekForward)
+            .updatingTriggerKey(.modifierTap(.leftOption), for: .togglePlayback)
+            .updatingTriggerKey(.modifierTap(.rightOption), for: .togglePlayback)
+            .updatingTriggerKey(nil, for: .seekForward)
 
         #expect(config.videoControlOverrides.isEmpty)
         #expect(config.serialized().contains("video_control") == false)

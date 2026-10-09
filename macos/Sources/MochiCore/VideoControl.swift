@@ -10,7 +10,7 @@ public enum VideoControlAction: String, CaseIterable, Hashable, Sendable {
     /// What the action is bound to until the user says otherwise; `nil` means unbound. Forward
     /// starts unbound: the modifiers left after right ⌥ and right ⌘ all have side effects
     /// (right ⇧ switches many Chinese input methods), so Mochi won't claim one on its own.
-    public var defaultTrigger: VideoControlTrigger? {
+    public var defaultTrigger: TriggerKey? {
         switch self {
         case .togglePlayback: .modifierTap(.rightOption)
         case .seekBackward: .modifierTap(.rightCommand)
@@ -24,43 +24,6 @@ public enum VideoControlAction: String, CaseIterable, Hashable, Sendable {
         case .togglePlayback: "播放/暂停"
         case .seekBackward: "后退"
         case .seekForward: "前进"
-        }
-    }
-}
-
-/// A key 视频控制 listens for (#74): a side-specific modifier tapped on its own — the default,
-/// because tapping a modifier types nothing and moves no cursor in any app — or an ordinary key
-/// or combo.
-public enum VideoControlTrigger: Hashable {
-    case modifierTap(ModifierKey)
-    /// The same modifier tapped twice in quick succession (#91, ADR-0022).
-    case modifierDoubleTap(ModifierKey)
-    case keystroke(Hotkey)
-
-    /// Which of the three kinds of trigger key this is (#90) — what the settings row's
-    /// dropdown shows.
-    public var kind: TriggerKind {
-        switch self {
-        case .modifierTap: .tap
-        case .modifierDoubleTap: .doubleTap
-        case .keystroke: .combo
-        }
-    }
-}
-
-/// How a trigger key is pressed (CONTEXT.md, ADR-0022): a modifier tapped on its own, the same
-/// modifier tapped twice, or a combo. The settings rows that can take more than one let the user
-/// pick first (#90).
-public enum TriggerKind: CaseIterable, Hashable, Sendable {
-    case tap
-    case doubleTap
-    case combo
-
-    public var displayName: String {
-        switch self {
-        case .tap: "轻按"
-        case .doubleTap: "连按两次"
-        case .combo: "组合键"
         }
     }
 }
@@ -167,7 +130,7 @@ public final class VideoControl {
         }
     }
 
-    private func perform(_ trigger: VideoControlTrigger) {
+    private func perform(_ trigger: TriggerKey) {
         guard let window = currentWindow() else { return }
         let config = currentConfig()
         guard let action = VideoControlAction.allCases.first(where: { config.videoControlTrigger(for: $0) == trigger })

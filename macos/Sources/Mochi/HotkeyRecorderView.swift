@@ -51,15 +51,15 @@ struct HotkeyRecorderView: NSViewRepresentable {
 /// Bumping `recordingRequest` starts recording, the way picking a kind in the dropdown does;
 /// `onRecordingStopped` fires however recording ends, captured or not, so the row can drop the
 /// kind it was only trying out.
-struct VideoControlRecorderView: NSViewRepresentable {
-    var trigger: VideoControlTrigger?
+struct TriggerKeyRecorderView: NSViewRepresentable {
+    var trigger: TriggerKey?
     var kind: TriggerKind
     var accessibilityName: String
     var recordingRequest = 0
     var onRecordingStarted: () -> Void = {}
     var onRecordingStopped: () -> Void = {}
     var onHint: (HotkeyRejection) -> Void = { _ in }
-    var onCapture: (VideoControlTrigger) -> Void
+    var onCapture: (TriggerKey) -> Void
     var onClear: () -> Void
 
     func makeNSView(context: Context) -> HotkeyRecorderField {
@@ -102,7 +102,7 @@ final class HotkeyRecorderField: NSView, KeyCapturingResponder {
     var onRecordingStarted: (() -> Void)?
     var onRecordingStopped: (() -> Void)?
     var onHint: ((HotkeyRejection) -> Void)?
-    var onCapture: ((VideoControlTrigger) -> Void)?
+    var onCapture: ((TriggerKey) -> Void)?
     var onClear: (() -> Void)? { didSet { refreshClearButton() } }
     /// `false` for the read-only form: no recording, no ⓧ.
     var isRecordable = true { didSet { refreshClearButton() } }

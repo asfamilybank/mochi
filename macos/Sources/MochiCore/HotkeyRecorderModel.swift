@@ -68,7 +68,7 @@ public enum HotkeyRecorderModel {
         return .slots(lit: lit, key: HotkeyDisplay.keys(of: Hotkey(keyCode: hotkey.keyCode, modifierFlags: 0)).last)
     }
 
-    public static func face(of trigger: VideoControlTrigger?) -> RecorderFace {
+    public static func face(of trigger: TriggerKey?) -> RecorderFace {
         switch trigger {
         case nil: face(of: nil as Hotkey?)
         case .modifierTap(let key)?: .singleCap(HotkeyDisplay.describe(.modifierTap(key)))

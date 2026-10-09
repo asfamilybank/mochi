@@ -175,8 +175,8 @@ final class SettingsViewModel: ObservableObject {
     /// hotkeys pane appears and whenever the app comes back to the front.
     @Published private(set) var isAccessibilityTrusted = true
 
-    func updateVideoControlTrigger(_ trigger: VideoControlTrigger?, for action: VideoControlAction) {
-        let rejection = controller.updateVideoControlTrigger(trigger, for: action)
+    func updateTriggerKey(_ trigger: TriggerKey?, for action: VideoControlAction) {
+        let rejection = controller.updateTriggerKey(trigger, for: action)
         config = controller.config
         show(rejection, on: .videoControl(action))
     }

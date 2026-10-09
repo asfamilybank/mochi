@@ -1464,8 +1464,8 @@ enum TrayScenario: Sendable {
         orchestrator.start()
 
         config = config
-            .updatingVideoControlTrigger(nil, for: .togglePlayback)
-            .updatingVideoControlTrigger(.keystroke(Hotkey(keyCode: 0x7C, modifierFlags: 0x0100)), for: .seekForward)
+            .updatingTriggerKey(nil, for: .togglePlayback)
+            .updatingTriggerKey(.keystroke(Hotkey(keyCode: 0x7C, modifierFlags: 0x0100)), for: .seekForward)
         orchestrator.reapplyConfiguration()
 
         #expect(fake.hotkeyQuickReferences.count == 2)

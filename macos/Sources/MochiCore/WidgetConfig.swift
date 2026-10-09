@@ -91,8 +91,8 @@ public struct WidgetConfig: Equatable {
     /// what differs from the default is stored and an absent key means the action's default — but
     /// here a stored `nil` means the user *cleared* the action, kept apart from "default" so
     /// clearing 播放/暂停 doesn't snap back to right ⌥ on the next launch. Read through
-    /// `videoControlTrigger(for:)`, written through `updatingVideoControlTrigger(_:for:)`.
-    public var videoControlOverrides: [VideoControlAction: VideoControlTrigger?] = [:]
+    /// `videoControlTrigger(for:)`, written through `updatingTriggerKey(_:for:)`.
+    public var videoControlOverrides: [VideoControlAction: TriggerKey?] = [:]
 
     /// How far 后退/前进 jump, in whole seconds (#74), always within `videoSeekStepRange`.
     public var videoSeekStep: Int = WidgetConfig.defaultVideoSeekStep
@@ -135,7 +135,7 @@ public struct WidgetConfig: Equatable {
     }
 
     /// The key currently bound to a 视频控制 action (#74); `nil` when the action is unbound.
-    public func videoControlTrigger(for action: VideoControlAction) -> VideoControlTrigger? {
+    public func videoControlTrigger(for action: VideoControlAction) -> TriggerKey? {
         if let override = videoControlOverrides[action] { return override }
         return action.defaultTrigger
     }
@@ -206,8 +206,8 @@ extension WidgetConfig {
     /// with `key_code`/`modifiers` like `[hotkeys]`, or `kind = "unbound"`. Anything malformed —
     /// an unknown kind, modifier or action, a bad key code — falls back to that action's default,
     /// with the same leniency as the rest of this hand-editable file.
-    private static func parseVideoControlOverrides(from table: TOMLTable) -> [VideoControlAction: VideoControlTrigger?] {
-        var overrides: [VideoControlAction: VideoControlTrigger?] = [:]
+    private static func parseVideoControlOverrides(from table: TOMLTable) -> [VideoControlAction: TriggerKey?] {
+        var overrides: [VideoControlAction: TriggerKey?] = [:]
         for action in VideoControlAction.allCases {
             guard let entry = table[action.rawValue]?.table else { continue }
             switch entry["kind"]?.string {
@@ -583,7 +583,7 @@ extension WidgetConfig {
 
     /// Binds a 视频控制 action to `trigger`, or clears it with `nil`. Like
     /// `updatingHotkeyOverride`, choosing the default removes the entry instead of restating it.
-    public func updatingVideoControlTrigger(_ trigger: VideoControlTrigger?, for action: VideoControlAction) -> WidgetConfig {
+    public func updatingTriggerKey(_ trigger: TriggerKey?, for action: VideoControlAction) -> WidgetConfig {
         var copy = self
         if trigger == action.defaultTrigger {
             copy.videoControlOverrides.removeValue(forKey: action)

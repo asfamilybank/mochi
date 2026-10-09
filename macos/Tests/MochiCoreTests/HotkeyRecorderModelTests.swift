@@ -21,7 +21,7 @@ import Testing
 
     @Test func nothingBoundShowsEveryModifierSlotDimAndNoKey() {
         #expect(HotkeyRecorderModel.face(of: nil as Hotkey?) == .slots(lit: [], key: nil))
-        #expect(HotkeyRecorderModel.face(of: nil as VideoControlTrigger?) == .slots(lit: [], key: nil))
+        #expect(HotkeyRecorderModel.face(of: nil as TriggerKey?) == .slots(lit: [], key: nil))
     }
 
     @Test func theSlotsReadInTheFixedControlOptionShiftCommandOrder() {
@@ -30,13 +30,13 @@ import Testing
 
     /// A tapped modifier is pressed on its own — lighting the ⌥ slot would read as "⌥ plus some key".
     @Test func aModifierTapIsOneCapNamingItsSide() {
-        #expect(HotkeyRecorderModel.face(of: VideoControlTrigger.modifierTap(.rightOption) as VideoControlTrigger?)
+        #expect(HotkeyRecorderModel.face(of: TriggerKey.modifierTap(.rightOption) as TriggerKey?)
             == .singleCap("右 ⌥"))
     }
 
     @Test func aVideoKeystrokeReadsLikeAnyOtherCombo() {
-        let trigger = VideoControlTrigger.keystroke(Hotkey(keyCode: 0x7B, modifierFlags: 0x0100))
-        #expect(HotkeyRecorderModel.face(of: trigger as VideoControlTrigger?) == .slots(lit: [.command], key: "←"))
+        let trigger = TriggerKey.keystroke(Hotkey(keyCode: 0x7B, modifierFlags: 0x0100))
+        #expect(HotkeyRecorderModel.face(of: trigger as TriggerKey?) == .slots(lit: [.command], key: "←"))
     }
 
     // MARK: - Keys pressed while recording
@@ -105,13 +105,13 @@ import Testing
     }
 
     @Test func aDoubleTapIsOneCapMarkedTimesTwo() {
-        #expect(HotkeyRecorderModel.face(of: VideoControlTrigger.modifierDoubleTap(.rightOption) as VideoControlTrigger?)
+        #expect(HotkeyRecorderModel.face(of: TriggerKey.modifierDoubleTap(.rightOption) as TriggerKey?)
             == .singleCap("右 ⌥ ×2"))
     }
 
     @Test func aVideoKeyIsOfTheKindItWasRecordedAs() {
-        #expect(VideoControlTrigger.modifierTap(.rightOption).kind == .tap)
-        #expect(VideoControlTrigger.modifierDoubleTap(.rightOption).kind == .doubleTap)
-        #expect(VideoControlTrigger.keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x0800)).kind == .combo)
+        #expect(TriggerKey.modifierTap(.rightOption).kind == .tap)
+        #expect(TriggerKey.modifierDoubleTap(.rightOption).kind == .doubleTap)
+        #expect(TriggerKey.keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x0800)).kind == .combo)
     }
 }
