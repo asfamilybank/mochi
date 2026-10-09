@@ -39,6 +39,7 @@ public final class Orchestrator {
     private var ghostModeController: GhostModeController?
     private var addressBarController: AddressBarController?
     private var hotkeyForwarder: HotkeyForwarder?
+    private var videoControl: VideoControl?
     private var currentZoom: Double = 1.0
 
     /// Whether a widget window currently exists (#42). The main menu asks `canPerform(_:)`
@@ -74,6 +75,12 @@ public final class Orchestrator {
         hotkeyForwarder = HotkeyForwarder(
             platformOps: platformOps,
             isGhostModeActive: { [weak self] in self?.ghostModeController?.mode == .ghost }
+        )
+        videoControl = VideoControl(
+            platformOps: platformOps,
+            currentConfig: currentConfig,
+            isGhostModeActive: { [weak self] in self?.isGhostModeActive ?? false },
+            currentWindow: { [weak self] in self?.window }
         )
         registerGlobalHotkeys()
         platformOps.createTrayIcon(items: trayMenuItems())
@@ -202,6 +209,9 @@ public final class Orchestrator {
 
         let ghostModeController = GhostModeController(platformOps: platformOps, window: window, currentConfig: currentConfig)
         self.ghostModeController = ghostModeController
+        ghostModeController.onModeChanged = { [weak self] in
+            self?.videoControl?.refreshObservation()
+        }
         // The toolbar button (#44) calls the exact same entry point as the hotkey and tray paths —
         // no shortcut path of its own — plus one thing only this path needs: giving up focus,
         // since a toolbar click is the one Ghost Mode entry route where Mochi is guaranteed to
@@ -239,6 +249,7 @@ public final class Orchestrator {
         window = nil
         ghostModeController = nil
         addressBarController = nil
+        videoControl?.refreshObservation()
     }
 
     /// Registers every global hotkey Mochi holds — the two action hotkeys at their currently

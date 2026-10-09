@@ -351,6 +351,22 @@ public protocol PlatformOps: AnyObject {
     /// view — `false` (阻止) lets WebKit itself drop a `window.open` with no user gesture. Pushed on
     /// open and on every `reapplyConfiguration()`; WebKit honours the change on the live page.
     func setPopupWindowsAllowed(_ allowed: Bool, in window: WidgetWindowHandle)
+
+    // MARK: 视频控制 (#74, ADR-0020)
+
+    /// Starts reporting raw keyboard and mouse input to `handler` — from every app, and from
+    /// Mochi's own windows too — strictly listen-only: no event is ever consumed or altered, so
+    /// every app still gets every key exactly as if Mochi weren't running. Needs Accessibility to
+    /// see other apps' input; without it only Mochi's own input arrives. App-global; a second
+    /// start without a stop in between is a caller bug.
+    func startObservingInput(perform handler: @escaping (RawInputEvent) -> Void)
+
+    /// Stops what `startObservingInput` started. A no-op when not observing.
+    func stopObservingInput()
+
+    /// Carries `command` out on the page's target video — choosing it (playing, else most
+    /// recently played, else largest visible) and doing nothing when the page has none.
+    func performVideoCommand(_ command: VideoCommand, in window: WidgetWindowHandle)
 }
 
 // #70

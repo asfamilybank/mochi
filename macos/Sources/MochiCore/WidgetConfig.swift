@@ -119,6 +119,11 @@ public struct WidgetConfig: Equatable {
     public func hotkey(for action: HotkeyAction) -> Hotkey {
         hotkeyOverrides[action] ?? action.defaultHotkey
     }
+
+    /// The key currently bound to a 视频控制 action (#74); `nil` when the action is unbound.
+    public func videoControlTrigger(for action: VideoControlAction) -> VideoControlTrigger? {
+        action.defaultTrigger
+    }
 }
 
 public enum WidgetConfigError: Error, Equatable {

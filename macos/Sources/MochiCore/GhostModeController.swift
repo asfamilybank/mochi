@@ -39,6 +39,9 @@ public final class GhostModeController {
     /// (or until Ghost Mode is left), and never decays on its own. Readable so the tray's
     /// 隐藏窗口 (#63) can show a checkmark; only `toggleHidden()` and leaving Ghost Mode write it.
     public private(set) var isHidden = false
+    /// Told after every Normal ↔ Ghost transition, once the transition is complete — how
+    /// 视频控制 (#74) knows to start or stop listening without a second mode of its own.
+    public var onModeChanged: (() -> Void)?
 
     public init(platformOps: PlatformOps, window: WidgetWindowHandle, currentConfig: @escaping () -> WidgetConfig) {
         self.platformOps = platformOps
@@ -99,6 +102,7 @@ public final class GhostModeController {
         applyEffectiveOpacity()
         platformOps.setMousePassthrough(true, in: window)
         platformOps.setPinned(true, in: window)
+        onModeChanged?()
     }
 
     private func leaveGhostMode() {
@@ -113,5 +117,6 @@ public final class GhostModeController {
         // to interact with it. Entering or staying in Ghost Mode never fronts the window, so it
         // can't steal focus from whatever app the user is actually working in.
         platformOps.showWindow(window)
+        onModeChanged?()
     }
 }

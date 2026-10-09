@@ -693,6 +693,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
             self?.updateProgressBarColor()
         }
         installPageScrollReporting()
+        installVideoControlScript()
         contentLayoutObservation = window.observe(\.contentLayoutRect, options: [.new]) { [weak self] _, _ in
             self?.updateTitlebarMetrics()
             self?.layoutToolbarItems()
@@ -835,6 +836,77 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         controller.addUserScript(
             WKUserScript(source: Self.scrollReportScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
     }
+
+    // MARK: 视频控制 (#74)
+
+    /// The isolated script world 视频控制 runs in: it shares the page's DOM — so it sees the
+    /// page's `<video>` elements and their `play` events — but not its globals, so no page script
+    /// can see, replace or call the controller.
+    private static let videoControlWorld = WKContentWorld.world(name: "mochiVideoControl")
+
+    /// Installed once, injected into every document at its start, so the controller is already
+    /// recording `play` events before any page script can start a video.
+    private func installVideoControlScript() {
+        webView.configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: Self.videoControlScript, injectionTime: .atDocumentStart, forMainFrameOnly: true,
+                in: Self.videoControlWorld))
+    }
+
+    func performVideoCommand(_ command: VideoCommand) {
+        let argument: String
+        switch command {
+        case .togglePlayback: argument = "{ kind: 'toggle' }"
+        }
+        webView.evaluateJavaScript(
+            "window.__mochiVideo && window.__mochiVideo.perform(\(argument)); true",
+            in: nil, in: Self.videoControlWorld, completionHandler: nil)
+    }
+
+    /// The target video is the one playing, else the one most recently played, else the largest
+    /// visible one (#74). Ties among playing videos go to the most recently started, then the
+    /// largest. A `play()` the page's autoplay policy refuses is dropped silently.
+    private static let videoControlScript = """
+    (() => {
+      if (window.__mochiVideo) return;
+      const lastPlayed = new WeakMap();
+      let clock = 0;
+      document.addEventListener("play", (event) => {
+        if (event.target instanceof HTMLMediaElement) lastPlayed.set(event.target, ++clock);
+      }, true);
+      const visibleArea = (video) => {
+        const r = video.getBoundingClientRect();
+        const width = Math.max(0, Math.min(r.right, window.innerWidth) - Math.max(r.left, 0));
+        const height = Math.max(0, Math.min(r.bottom, window.innerHeight) - Math.max(r.top, 0));
+        return width * height;
+      };
+      const isPlaying = (video) => !video.paused && !video.ended;
+      const byRecencyThenArea = (a, b) =>
+        ((lastPlayed.get(b) || 0) - (lastPlayed.get(a) || 0)) || (visibleArea(b) - visibleArea(a));
+      const target = () => {
+        const videos = Array.from(document.querySelectorAll("video"));
+        const playing = videos.filter(isPlaying);
+        if (playing.length > 0) return playing.sort(byRecencyThenArea)[0];
+        const played = videos.filter((video) => lastPlayed.has(video));
+        if (played.length > 0) return played.sort(byRecencyThenArea)[0];
+        return videos.sort((a, b) => visibleArea(b) - visibleArea(a))[0] || null;
+      };
+      window.__mochiVideo = {
+        perform(command) {
+          const video = target();
+          if (!video) return;
+          if (command.kind === "toggle") {
+            if (video.paused || video.ended) {
+              const playing = video.play();
+              if (playing && playing.catch) playing.catch(() => {});
+            } else {
+              video.pause();
+            }
+          }
+        },
+      };
+    })();
+    """
 
     fileprivate static let scrollReportName = "mochiPageScroll"
     /// Only posts on a change, so an inertial scroll doesn't flood the bridge.
@@ -2216,6 +2288,73 @@ public final class AppKitPlatformOps: PlatformOps {
         if carbonFlags & 0x0800 != 0 { flags.insert(.maskAlternate) }
         if carbonFlags & 0x1000 != 0 { flags.insert(.maskControl) }
         return flags
+    }
+
+    // MARK: 视频控制 (#74)
+
+    /// Both listeners: the global one sees every other app's input (with Accessibility), the local
+    /// one sees Mochi's own — a global monitor never receives events meant for its own app. The
+    /// local one hands every event back untouched; neither can consume anything.
+    private var inputMonitors: [Any] = []
+
+    public func startObservingInput(perform handler: @escaping (RawInputEvent) -> Void) {
+        stopObservingInput()
+        let mask: NSEvent.EventTypeMask = [.flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+        let report: (NSEvent) -> Void = { event in
+            if let raw = Self.rawInputEvent(from: event) { handler(raw) }
+        }
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: report) {
+            inputMonitors.append(global)
+        }
+        if let local = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { event in
+            report(event)
+            return event
+        }) {
+            inputMonitors.append(local)
+        }
+    }
+
+    public func stopObservingInput() {
+        inputMonitors.forEach(NSEvent.removeMonitor)
+        inputMonitors = []
+    }
+
+    public func performVideoCommand(_ command: VideoCommand, in window: WidgetWindowHandle) {
+        handle(for: window)?.performVideoCommand(command)
+    }
+
+    /// The device-dependent bits (`NX_DEVICE*KEYMASK` in IOKit's `IOLLEvent.h`) that tell the two
+    /// sides of a modifier apart; `NSEvent.ModifierFlags` only exposes the side-blind ones.
+    private static let sideSpecificModifierBits: [(ModifierKey, UInt)] = [
+        (.leftControl, 0x0001), (.leftShift, 0x0002), (.rightShift, 0x0004), (.leftCommand, 0x0008),
+        (.rightCommand, 0x0010), (.leftOption, 0x0020), (.rightOption, 0x0040), (.rightControl, 0x2000),
+    ]
+
+    private static func rawInputEvent(from event: NSEvent) -> RawInputEvent? {
+        switch event.type {
+        case .flagsChanged:
+            let raw = event.modifierFlags.rawValue
+            let held = Set(sideSpecificModifierBits.filter { raw & $0.1 != 0 }.map(\.0))
+            return .modifierChanged(keyCode: event.keyCode, held: held, timestamp: event.timestamp)
+        case .keyDown:
+            return .keyDown(
+                keyCode: UInt32(event.keyCode), modifierFlags: carbonModifiers(from: event.modifierFlags),
+                isRepeat: event.isARepeat, timestamp: event.timestamp)
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+            return .mouseDown(timestamp: event.timestamp)
+        default:
+            return nil
+        }
+    }
+
+    /// `Hotkey`'s Carbon bit values, from AppKit's flags.
+    private static func carbonModifiers(from flags: NSEvent.ModifierFlags) -> UInt32 {
+        var carbon: UInt32 = 0
+        if flags.contains(.command) { carbon |= 0x0100 }
+        if flags.contains(.shift) { carbon |= 0x0200 }
+        if flags.contains(.option) { carbon |= 0x0800 }
+        if flags.contains(.control) { carbon |= 0x1000 }
+        return carbon
     }
 
     private func handle(for window: WidgetWindowHandle) -> AppKitWidgetWindowHandle? {

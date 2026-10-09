@@ -455,4 +455,38 @@ final class FakePlatformOps: PlatformOps {
     func setPopupWindowsAllowed(_ allowed: Bool, in window: WidgetWindowHandle) {
         popupWindowsAllowedChanges.append((allowed, (window as! FakeWidgetWindowHandle).id))
     }
+    // MARK: 视频控制 (#74)
+
+    private var inputHandler: ((RawInputEvent) -> Void)?
+    private(set) var startObservingInputCallCount = 0
+    private(set) var stopObservingInputCallCount = 0
+    private(set) var videoCommands: [(command: VideoCommand, windowID: Int)] = []
+
+    var isObservingInput: Bool { inputHandler != nil }
+
+    func startObservingInput(perform handler: @escaping (RawInputEvent) -> Void) {
+        startObservingInputCallCount += 1
+        inputHandler = handler
+    }
+
+    func stopObservingInput() {
+        stopObservingInputCallCount += 1
+        inputHandler = nil
+    }
+
+    func performVideoCommand(_ command: VideoCommand, in window: WidgetWindowHandle) {
+        videoCommands.append((command, (window as! FakeWidgetWindowHandle).id))
+    }
+
+    /// Delivers one raw event, as the platform's listener would. Dropped while not observing —
+    /// exactly what a real listener that was never installed (or was removed) does.
+    func simulateInput(_ event: RawInputEvent) {
+        inputHandler?(event)
+    }
+
+    /// Presses `key` alone at `time` and releases it `holdFor` seconds later.
+    func simulateModifierTap(_ key: ModifierKey, at time: TimeInterval = 100, holdFor: TimeInterval = 0.1) {
+        simulateInput(.modifierChanged(keyCode: key.keyCode, held: [key], timestamp: time))
+        simulateInput(.modifierChanged(keyCode: key.keyCode, held: [], timestamp: time + holdFor))
+    }
 }

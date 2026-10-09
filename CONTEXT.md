@@ -56,4 +56,8 @@ _Avoid_: 新窗口、第二个 Widget、标签页
 _Avoid_: 网站设置、按站点设置
 
 **Hotkey Forwarding（热键传递）**:
-Ghost Mode 下，把全局热键按用户配置的映射表转发成一次页面按键，用于控制标准网页播放器（播放/暂停/快进等），不需要为每个网站写专属脚本。通过 `CGEventPostToPid` 直接投递给目标进程实现（见 [ADR-0003](docs/adr/0003-hotkey-forwarding-platform-split.md)）。
+Ghost Mode 下，把全局热键按用户配置的映射表转发成一次页面按键，用于控制标准网页播放器（播放/暂停/快进等），不需要为每个网站写专属脚本。通过 `CGEventPostToPid` 直接投递给目标进程实现（见 [ADR-0003](docs/adr/0003-hotkey-forwarding-platform-split.md)）。触发键走 Carbon 全局热键，会从所有 app 手里拿走这个组合；不想占键、只想控制视频，用视频控制。
+
+**Video Control（视频控制）**:
+Ghost Mode（含 Hidden）下的内置视频按键：默认单独轻按右 ⌥ 播放/暂停、轻按右 ⌘ 后退，直接操作页面里的目标视频（正在播放的 → 最近播放过的 → 可见面积最大的），不依赖站点的键盘快捷键。它和 Hotkey Forwarding 的区别在于：只监听、从不拦截——每颗键照常到达前台 app，Mochi 只是旁听（见 [ADR-0020](docs/adr/0020-video-control-listens-never-intercepts.md)）。
+_Avoid_: 媒体键（专指键盘自带的 fn + 播放键）；热键传递（那是把全局热键翻译成页面按键的另一个功能）
