@@ -86,7 +86,7 @@ import Testing
     /// Only the key bound both ways waits: right ⌘ is 后退's tap alone, so it acts at once.
     @Test func aTapOnAKeyBoundOneWayStillActsAtOnce() {
         let fake = FakePlatformOps()
-        let config = WidgetConfig().updatingVideoControlTrigger(.modifierDoubleTap(.rightOption), for: .seekForward)
+        let config = WidgetConfig.tapsOnlyVideoKeys.updatingVideoControlTrigger(.modifierDoubleTap(.rightOption), for: .seekForward)
         let orchestrator = startedInGhostMode(fake, config: config)
 
         withExtendedLifetime(orchestrator) {
@@ -126,5 +126,49 @@ import Testing
         }
 
         #expect(fake.pendingScheduledWorkCount == 0)
+    }
+
+    // MARK: Defaults (ADR-0024)
+
+    @Test func byDefaultDoubleTappingRightCommandSeeksBackAndRightOptionSeeksForward() {
+        let fake = FakePlatformOps()
+        let orchestrator = startedInGhostMode(fake, config: WidgetConfig())
+
+        withExtendedLifetime(orchestrator) {
+            fake.simulateModifierTap(.rightCommand, at: 10, holdFor: 0.05)
+            fake.simulateModifierTap(.rightCommand, at: 10.2, holdFor: 0.05)
+            fake.simulateModifierTap(.rightOption, at: 20, holdFor: 0.05)
+            fake.simulateModifierTap(.rightOption, at: 20.2, holdFor: 0.05)
+            fake.runScheduledWork()
+        }
+
+        #expect(fake.videoCommands.map(\.command) == [.seek(seconds: -5), .seek(seconds: 5)])
+    }
+
+    /// Right ⌥ is bound both ways by default, so its tap — 播放/暂停 — waits out the interval.
+    @Test func byDefaultTappingRightOptionTogglesPlaybackOnceTheIntervalPasses() {
+        let fake = FakePlatformOps()
+        let orchestrator = startedInGhostMode(fake, config: WidgetConfig())
+
+        withExtendedLifetime(orchestrator) {
+            fake.simulateModifierTap(.rightOption, at: 10)
+            #expect(fake.videoCommands.isEmpty)
+            fake.runScheduledWork()
+        }
+
+        #expect(fake.videoCommands.map(\.command) == [.togglePlayback])
+    }
+
+    /// A single tap of right ⌘ is no longer bound to anything.
+    @Test func byDefaultASingleTapOfRightCommandDoesNothing() {
+        let fake = FakePlatformOps()
+        let orchestrator = startedInGhostMode(fake, config: WidgetConfig())
+
+        withExtendedLifetime(orchestrator) {
+            fake.simulateModifierTap(.rightCommand, at: 10)
+            fake.runScheduledWork()
+        }
+
+        #expect(fake.videoCommands.isEmpty)
     }
 }

@@ -858,8 +858,8 @@ import Testing
         let config = try WidgetConfig.parse("ghost_opacity = 0.3")
 
         #expect(config.videoControlTrigger(for: .togglePlayback) == .modifierTap(.rightOption))
-        #expect(config.videoControlTrigger(for: .seekBackward) == .modifierTap(.rightCommand))
-        #expect(config.videoControlTrigger(for: .seekForward) == nil)
+        #expect(config.videoControlTrigger(for: .seekBackward) == .modifierDoubleTap(.rightCommand))
+        #expect(config.videoControlTrigger(for: .seekForward) == .modifierDoubleTap(.rightOption))
         #expect(config.videoSeekStep == 5)
     }
 
@@ -1034,6 +1034,7 @@ import Testing
             .updatingVideoControlTrigger(.modifierTap(.leftOption), for: .togglePlayback)
             .updatingVideoControlTrigger(.modifierTap(.rightOption), for: .togglePlayback)
             .updatingVideoControlTrigger(nil, for: .seekForward)
+            .updatingVideoControlTrigger(.modifierDoubleTap(.rightOption), for: .seekForward)
 
         #expect(config.videoControlOverrides.isEmpty)
         #expect(config.serialized().contains("video_control") == false)

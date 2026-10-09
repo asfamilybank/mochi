@@ -7,14 +7,15 @@ public enum VideoControlAction: String, CaseIterable, Hashable, Sendable {
     case seekBackward = "seek_backward"
     case seekForward = "seek_forward"
 
-    /// What the action is bound to until the user says otherwise; `nil` means unbound. Forward
-    /// starts unbound: the modifiers left after right ⌥ and right ⌘ all have side effects
-    /// (right ⇧ switches many Chinese input methods), so Mochi won't claim one on its own.
+    /// What the action is bound to until the user says otherwise; `nil` means unbound. All three
+    /// live on right ⌥ and right ⌘ (ADR-0024): the other modifiers have side effects (right ⇧
+    /// switches many Chinese input methods), so 后退/前进 are their double taps — at the price of
+    /// right ⌥'s tap, 播放/暂停, waiting out the double-tap interval.
     public var defaultTrigger: TriggerKey? {
         switch self {
         case .togglePlayback: .modifierTap(.rightOption)
-        case .seekBackward: .modifierTap(.rightCommand)
-        case .seekForward: nil
+        case .seekBackward: .modifierDoubleTap(.rightCommand)
+        case .seekForward: .modifierDoubleTap(.rightOption)
         }
     }
 

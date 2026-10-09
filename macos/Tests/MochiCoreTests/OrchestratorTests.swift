@@ -304,7 +304,7 @@ enum TrayScenario: Sendable {
         #expect(fake.presentedAlerts.isEmpty)
         #expect(fake.trayItem("隐藏窗口").hotkeyHint() == nil)
         #expect(fake.hotkeyQuickReferences.last?.entries.map(\.label) == [
-            "切换幽灵模式", "播放/暂停（幽灵模式下）", "后退 5 秒（幽灵模式下）", "打开设置",
+            "切换幽灵模式", "播放/暂停（幽灵模式下）", "后退 5 秒（幽灵模式下）", "前进 5 秒（幽灵模式下）", "打开设置",
         ])
     }
 
@@ -1452,7 +1452,8 @@ enum TrayScenario: Sendable {
             HotkeyQuickReferenceEntry(label: "切换幽灵模式", keys: ["⌘", "J"]),
             HotkeyQuickReferenceEntry(label: "隐藏窗口（幽灵模式下）", keys: ["⌥", "H"]),
             HotkeyQuickReferenceEntry(label: "播放/暂停（幽灵模式下）", keys: ["右 ⌥"]),
-            HotkeyQuickReferenceEntry(label: "后退 10 秒（幽灵模式下）", keys: ["右 ⌘"]),
+            HotkeyQuickReferenceEntry(label: "后退 10 秒（幽灵模式下）", keys: ["右 ⌘"], mark: "×2"),
+            HotkeyQuickReferenceEntry(label: "前进 10 秒（幽灵模式下）", keys: ["右 ⌥"], mark: "×2"),
             HotkeyQuickReferenceEntry(label: "打开设置", keys: ["⌘", ","]),
         ])
     }
@@ -1472,7 +1473,7 @@ enum TrayScenario: Sendable {
         #expect(fake.hotkeyQuickReferences.last?.entries == [
             HotkeyQuickReferenceEntry(label: "切换幽灵模式", keys: ["⌥", "G"]),
             HotkeyQuickReferenceEntry(label: "隐藏窗口（幽灵模式下）", keys: ["⌥", "H"]),
-            HotkeyQuickReferenceEntry(label: "后退 5 秒（幽灵模式下）", keys: ["右 ⌘"]),
+            HotkeyQuickReferenceEntry(label: "后退 5 秒（幽灵模式下）", keys: ["右 ⌘"], mark: "×2"),
             HotkeyQuickReferenceEntry(label: "前进 5 秒（幽灵模式下）", keys: ["⌘", "→"]),
             HotkeyQuickReferenceEntry(label: "打开设置", keys: ["⌘", ","]),
         ])

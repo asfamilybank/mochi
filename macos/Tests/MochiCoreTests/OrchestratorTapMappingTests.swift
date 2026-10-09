@@ -16,8 +16,11 @@ import Testing
         return orchestrator
     }
 
+    /// On `tapsOnlyVideoKeys`, so no default double tap stands in a mapping's way.
     private static func mapping(_ trigger: TriggerKey) -> WidgetConfig {
-        WidgetConfig(hotkeyMappings: [HotkeyMapping(trigger: trigger, pageKeystroke: space)])
+        var config = WidgetConfig.tapsOnlyVideoKeys
+        config.hotkeyMappings = [HotkeyMapping(trigger: trigger, pageKeystroke: space)]
+        return config
     }
 
     @Test func tappingAMappingsTriggerInGhostModeForwardsItsPageKey() {

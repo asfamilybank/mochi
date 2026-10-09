@@ -555,7 +555,7 @@ private struct VideoControlSection: View {
 }
 
 /// One 视频控制 key (#90): a dropdown for how it is pressed, then the recorder. The dropdown shows
-/// the kind of the binding in effect — 轻按 for an unbound row, the kind video keys default to —
+/// the kind of the binding in effect — 轻按 for an unbound row —
 /// and picking another starts recording that kind straight away. Until a key is captured the
 /// old binding stays live, and leaving without one (Esc, a click elsewhere) puts the dropdown
 /// back: picking a kind is not an edit, recording a key is.

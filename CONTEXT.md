@@ -60,7 +60,7 @@ Ghost Mode 下，把全局热键按用户配置的映射表转发成一次页面
 _Avoid_: 热键映射（作为功能名；"映射"只指其中的条目）
 
 **Video Control（视频控制）**:
-Ghost Mode（含 Hidden）下的内置视频按键：默认单独轻按右 ⌥ 播放/暂停、轻按右 ⌘ 后退，直接操作页面里的目标视频（正在播放的 → 最近播放过的 → 可见面积最大的），不依赖站点的键盘快捷键。它和 Hotkey Forwarding 的区别在于：只监听、从不拦截——每颗键照常到达前台 app，Mochi 只是旁听（见 [ADR-0020](docs/adr/0020-video-control-listens-never-intercepts.md)）。
+Ghost Mode（含 Hidden）下的内置视频按键：默认轻按右 ⌥ 播放/暂停、连按两次右 ⌘ 后退、连按两次右 ⌥ 前进（见 [ADR-0024](docs/adr/0024-video-control-defaults-use-double-taps.md)），直接操作页面里的目标视频（正在播放的 → 最近播放过的 → 可见面积最大的），不依赖站点的键盘快捷键。它和 Hotkey Forwarding 的区别在于：只监听、从不拦截——每颗键照常到达前台 app，Mochi 只是旁听（见 [ADR-0020](docs/adr/0020-video-control-listens-never-intercepts.md)）。
 _Avoid_: 媒体键（专指键盘自带的 fn + 播放键）；热键传递（那是把全局热键翻译成页面按键的另一个功能）
 
 **Trigger Key（触发键）**:

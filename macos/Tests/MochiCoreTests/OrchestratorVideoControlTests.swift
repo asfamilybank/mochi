@@ -5,9 +5,13 @@ import Testing
 
 /// 视频控制 (#74): Ghost Mode's listen-only video keys, observed at the `Orchestrator` seam — raw
 /// input goes in through `FakePlatformOps`, video commands come out.
+///
+/// These are about taps themselves, so they run on `WidgetConfig.tapsOnlyVideoKeys` — no double
+/// tap bound, so no tap is held back. The defaults, which do bind double taps (ADR-0024), are
+/// covered by `OrchestratorDoubleTapTests`.
 @Suite struct OrchestratorVideoControlTests {
     private func startedInGhostMode(
-        _ fake: FakePlatformOps, config: WidgetConfig = WidgetConfig(url: nil)
+        _ fake: FakePlatformOps, config: WidgetConfig = .tapsOnlyVideoKeys
     ) -> Orchestrator {
         let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
         orchestrator.start()
@@ -28,7 +32,7 @@ import Testing
     }
     @Test func normalModeNeitherListensNorTogglesPlayback() {
         let fake = FakePlatformOps()
-        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { WidgetConfig(url: nil) })
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { .tapsOnlyVideoKeys })
 
         withExtendedLifetime(orchestrator) {
             orchestrator.start()
@@ -101,7 +105,7 @@ import Testing
         #expect(fake.videoCommands.map(\.command) == [.seek(seconds: -5)])
     }
 
-    @Test func outOfTheBoxOnlyRightOptionAndRightCommandDoAnything() {
+    @Test func onlyTheBoundKeysDoAnything() {
         let fake = FakePlatformOps()
         let orchestrator = startedInGhostMode(fake)
 
@@ -116,7 +120,7 @@ import Testing
 
     @Test func seekingForwardWorksOnceTheUserBindsIt() {
         let fake = FakePlatformOps()
-        let config = WidgetConfig(url: nil).updatingVideoControlTrigger(.modifierTap(.rightShift), for: .seekForward)
+        let config = WidgetConfig.tapsOnlyVideoKeys.updatingVideoControlTrigger(.modifierTap(.rightShift), for: .seekForward)
         let orchestrator = startedInGhostMode(fake, config: config)
 
         withExtendedLifetime(orchestrator) {
@@ -323,7 +327,15 @@ import Testing
 
 /// Stands in for `AppDelegate`'s live config, so a test can change it between two key presses.
 private final class VideoConfigStore {
-    var config = WidgetConfig(url: nil)
+    var config = WidgetConfig.tapsOnlyVideoKeys
+}
+
+extension WidgetConfig {
+    /// 视频控制's keys as they were before ADR-0024 — tap right ⌥ for 播放/暂停, tap right ⌘ for
+    /// 后退, 前进 unbound — for tests about taps that mustn't be held back for a double tap.
+    static let tapsOnlyVideoKeys = WidgetConfig(url: nil)
+        .updatingVideoControlTrigger(.modifierTap(.rightCommand), for: .seekBackward)
+        .updatingVideoControlTrigger(nil, for: .seekForward)
 }
 
 /// Raw event sequences for the tap-recognition table. Times are seconds, as `NSEvent.timestamp`.

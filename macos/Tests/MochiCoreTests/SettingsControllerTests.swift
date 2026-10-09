@@ -779,7 +779,7 @@ import Testing
         let controller = makeController(store: store, configDidChange: { notifications += 1 })
 
         #expect(controller.updateActionHotkey(.toggleGhostMode, to: DefaultHotkeys.hideWidget) == .conflictsWithAction(.hideWidget))
-        #expect(controller.updateVideoControlTrigger(.modifierTap(.rightCommand), for: .seekForward) == .conflictsWithVideoControl(.seekBackward))
+        #expect(controller.updateVideoControlTrigger(.modifierDoubleTap(.rightCommand), for: .seekForward) == .conflictsWithVideoControl(.seekBackward))
         #expect(notifications == 0)
         #expect(store.writeCount == 0)
     }
@@ -978,7 +978,7 @@ import Testing
         (name: "a local menu shortcut", trigger: .keystroke(DefaultHotkeys.openSettings), reason: .reservedMenuShortcut),
         (name: "a mapping trigger", trigger: .keystroke(Hotkey(keyCode: 0x12, modifierFlags: 0x0800)),
          reason: .conflictsWithMapping(HotkeyMapping(trigger: Hotkey(keyCode: 0x12, modifierFlags: 0x0800), pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0x1000)))),
-        (name: "another video action's tap", trigger: .modifierTap(.rightCommand), reason: .conflictsWithVideoControl(.seekBackward)),
+        (name: "another video action's double tap", trigger: .modifierDoubleTap(.rightCommand), reason: .conflictsWithVideoControl(.seekBackward)),
         (name: "another video action's keystroke", trigger: .keystroke(Hotkey(keyCode: 0x26, modifierFlags: 0x1000)),
          reason: .conflictsWithVideoControl(.seekForward)),
     ])
@@ -1105,7 +1105,7 @@ import Testing
         let rejection = controller.updateVideoControlTrigger(.keystroke(combo), for: .seekForward)
 
         #expect(rejection == .missingModifier)
-        #expect(store.config.videoControlTrigger(for: .seekForward) == nil)
+        #expect(store.config.videoControlTrigger(for: .seekForward) == VideoControlAction.seekForward.defaultTrigger)
     }
 
     @Test(arguments: combosWithAModifier)
@@ -1188,7 +1188,7 @@ import Testing
 
     /// One key, two actions: a tap and a double tap of right ⌥ are different trigger keys.
     @Test func aKeysTapAndItsDoubleTapMayGoToDifferentVideoActions() {
-        let store = PersistedStore(WidgetConfig())
+        let store = PersistedStore(.tapsOnlyVideoKeys)
         let controller = makeController(store: store)
 
         let rejection = controller.updateVideoControlTrigger(.modifierDoubleTap(.rightOption), for: .seekBackward)
@@ -1199,7 +1199,7 @@ import Testing
     }
 
     @Test func theSameDoubleTapCannotGoToTwoVideoActions() {
-        let store = PersistedStore(WidgetConfig().updatingVideoControlTrigger(.modifierDoubleTap(.rightOption), for: .seekBackward))
+        let store = PersistedStore(WidgetConfig.tapsOnlyVideoKeys.updatingVideoControlTrigger(.modifierDoubleTap(.rightOption), for: .seekBackward))
         let controller = makeController(store: store)
 
         let rejection = controller.updateVideoControlTrigger(.modifierDoubleTap(.rightOption), for: .seekForward)
@@ -1236,7 +1236,9 @@ import Testing
 
     @Test func aVideoKeyCannotTakeAMappingsDoubleTap() {
         let mapping = HotkeyMapping(trigger: .modifierDoubleTap(.rightOption), pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0))
-        let store = PersistedStore(WidgetConfig(hotkeyMappings: [mapping]))
+        var config = WidgetConfig.tapsOnlyVideoKeys
+        config.hotkeyMappings = [mapping]
+        let store = PersistedStore(config)
         let controller = makeController(store: store)
 
         let rejection = controller.updateVideoControlTrigger(.modifierDoubleTap(.rightOption), for: .seekForward)
@@ -1247,7 +1249,7 @@ import Testing
 
     /// The same key both ways across the two features is allowed, like within 视频控制 (#91).
     @Test func aMappingMayTakeTheDoubleTapOfAVideoKeysTap() {
-        let store = PersistedStore(WidgetConfig())
+        let store = PersistedStore(.tapsOnlyVideoKeys)
         let controller = makeController(store: store)
 
         #expect(controller.addHotkeyMapping(trigger: .modifierDoubleTap(.rightOption), pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0)) == nil)
