@@ -510,14 +510,45 @@ enum TrayScenario: Sendable {
         #expect(fake.deactivateAppCallCount == 1)
     }
 
-    @Test func theHotkeyAndTrayGhostModeEntriesDoNotGiveUpFocus() {
+    /// Every way into Ghost Mode gives the widget's focus away, so the menu bar stops being
+    /// Mochi's — not just the toolbar button: the hotkey can be pressed with the widget in front.
+    @Test func everyGhostModeEntryGivesUpFocus() {
         let fake = FakePlatformOps()
         let config = WidgetConfig(url: URL(string: "https://example.com")!)
         let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
         orchestrator.start()
 
         fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
         fake.trayItem("幽灵模式").action()
+
+        #expect(fake.deactivateAppCallCount == 2)
+    }
+
+    @Test func goingHiddenGivesUpFocusAndComingBackDoesNot() {
+        let fake = FakePlatformOps()
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+        orchestrator.start()
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.hideWidget)
+        fake.simulateHotkeyPressed(DefaultHotkeys.hideWidget)
+
+        #expect(fake.deactivateAppCallCount == 2)
+    }
+
+    /// The settings window is an ordinary window: with it in front — say, to tune the opacity
+    /// while watching Ghost Mode — neither Ghost Mode nor Hidden takes its focus.
+    @Test func anotherMochiWindowInFrontKeepsItsFocus() {
+        let fake = FakePlatformOps()
+        fake.stubbedAnotherWindowIsKey = true
+        let config = WidgetConfig(url: URL(string: "https://example.com")!)
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+        orchestrator.start()
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+        fake.simulateHotkeyPressed(DefaultHotkeys.hideWidget)
 
         #expect(fake.deactivateAppCallCount == 0)
     }

@@ -1887,8 +1887,22 @@ public final class AppKitPlatformOps: PlatformOps {
     /// `NSMenuItem.target` don't retain theirs either.
     private var tray: (statusItem: NSStatusItem, menu: TrayMenu)?
     private var reopenRequestedHandler: (() -> Void)?
+    /// The app that was active before Mochi last became active — whom `deactivateApp()` hands
+    /// focus back to. Held strongly: the instance a workspace notification carries is retained by
+    /// nothing else, so a weak reference reads back `nil` straight away.
+    private var appActiveBeforeMochi: NSRunningApplication?
+    private var appActivationObserver: NSObjectProtocol?
 
-    public init() {}
+    public init() {
+        appActivationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didDeactivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app != NSRunningApplication.current
+            else { return }
+            self?.appActiveBeforeMochi = app
+        }
+    }
 
     /// The app target points this at its live config (#71): the Smart Address Field reads the
     /// search engine at the moment of each submit, never a snapshot.
@@ -2255,12 +2269,26 @@ public final class AppKitPlatformOps: PlatformOps {
         handle.setGhostModeToggleRequestedHandler(handler)
     }
 
+    /// Hands activation straight to the app that was active before Mochi rather than relying on
+    /// `NSApp.deactivate()` alone: measured on macOS 26, `deactivate()` is silently ignored right
+    /// after Mochi activated itself (leaving Ghost Mode calls `NSApp.activate()`), so toggling
+    /// Ghost Mode off and back on left Mochi's menus in the menu bar. `deactivate()` stays as
+    /// the fallback for when no earlier app is known — at launch, or once it has quit.
     public func deactivateApp() {
+        guard NSApp.isActive else { return }
+        if let previous = appActiveBeforeMochi, !previous.isTerminated, previous.activate(from: .current, options: []) {
+            return
+        }
         NSApp.deactivate()
     }
 
     public func activateApp() {
         NSApp.activate()
+    }
+
+    public func isAnotherWindowKey(than window: WidgetWindowHandle) -> Bool {
+        guard let keyWindow = NSApp.keyWindow else { return false }
+        return keyWindow !== handle(for: window)?.window
     }
 
     public func injectScript(_ source: String, in window: WidgetWindowHandle) {

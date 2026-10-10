@@ -162,6 +162,13 @@ final class FakePlatformOps: PlatformOps {
         deactivateAppCallCount += 1
     }
 
+    /// Stands in for the settings window (or any non-widget window) being in front.
+    var stubbedAnotherWindowIsKey = false
+
+    func isAnotherWindowKey(than window: WidgetWindowHandle) -> Bool {
+        stubbedAnotherWindowIsKey
+    }
+
     func activateApp() {
         activateAppCallCount += 1
     }

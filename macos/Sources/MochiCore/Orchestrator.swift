@@ -215,12 +215,9 @@ public final class Orchestrator {
             self?.videoControl?.refreshObservation()
         }
         // The toolbar button (#44) calls the exact same entry point as the hotkey and tray paths —
-        // no shortcut path of its own — plus one thing only this path needs: giving up focus,
-        // since a toolbar click is the one Ghost Mode entry route where Mochi is guaranteed to
-        // already be active.
-        platformOps.onGhostModeToggleRequested(window) { [weak self, weak ghostModeController] in
+        // no shortcut path of its own; giving up focus happens inside it, on every path.
+        platformOps.onGhostModeToggleRequested(window) { [weak ghostModeController] in
             ghostModeController?.toggle()
-            self?.platformOps.deactivateApp()
         }
     }
 

@@ -139,12 +139,16 @@ public protocol PlatformOps: AnyObject {
     /// currently active" to reflect.
     func onGhostModeToggleRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void)
 
-    /// Hands focus back to whatever app was active before Mochi. Needed only on the one Ghost
-    /// Mode entry path (#44) where Mochi is guaranteed to already be active — the toolbar button,
-    /// unlike the default hotkey and the tray icon, requires Mochi to be frontmost just to have
-    /// been clicked at all — so `Orchestrator` calls this from its `onGhostModeToggleRequested`
-    /// handler specifically, mirroring how `showWindow` is the one call site that takes focus.
+    /// Hands focus back to whatever app was active before Mochi, taking the menu bar with it — a
+    /// no-op when Mochi isn't active. `GhostModeController` calls it on entering Ghost Mode or
+    /// Hidden from any path (hotkey, tray, toolbar button), unless `isAnotherWindowKey` says
+    /// focus is on a window other than the widget.
     func deactivateApp()
+
+    /// Whether one of Mochi's windows other than `window` — the settings window, the About panel,
+    /// a Popup Window — is the key window. Those are ordinary windows, so going into Ghost Mode
+    /// or Hidden leaves their focus alone.
+    func isAnotherWindowKey(than window: WidgetWindowHandle) -> Bool
 
     /// Makes Mochi the active app *without* fronting or keying the widget — for a panel that has
     /// just been put up (the About panel, #62) and must not sit behind whatever app was frontmost.

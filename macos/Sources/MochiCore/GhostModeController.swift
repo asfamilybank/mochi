@@ -86,6 +86,7 @@ public final class GhostModeController {
         applyEffectiveOpacity()
         if isHidden {
             platformOps.pauseAllMedia(in: window)
+            giveUpFocusUnlessAnotherWindowHasIt()
         }
     }
 
@@ -101,13 +102,23 @@ public final class GhostModeController {
     }
 
     private func enterGhostMode() {
+        // Asked before the chrome comes off: losing its title bar takes the widget out of key.
+        let anotherWindowIsKey = platformOps.isAnotherWindowKey(than: window)
         mode = .ghost
         platformOps.setNativeChromeVisible(false, in: window)
         platformOps.setToolbarVisible(false, in: window)
         applyEffectiveOpacity()
         platformOps.setMousePassthrough(true, in: window)
         platformOps.setPinned(true, in: window)
+        if !anotherWindowIsKey { platformOps.deactivateApp() }
         onModeChanged?()
+    }
+
+    /// Going Ghost or Hidden means getting out of the way, menu bar included: whatever app was
+    /// active before Mochi gets focus back — unless focus is on another Mochi window, such as the
+    /// settings window someone is tuning the opacity in, which is an ordinary window.
+    private func giveUpFocusUnlessAnotherWindowHasIt() {
+        if !platformOps.isAnotherWindowKey(than: window) { platformOps.deactivateApp() }
     }
 
     private func leaveGhostMode() {
