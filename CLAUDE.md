@@ -183,21 +183,24 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 - 界面验证要触发页面行为又不想动用户鼠标：测试 config 里写 `custom_script`（每次导航注入，可调 `alert`/`window.open`/`w.opener`）配合 `data:` 启动页；在设置面板里点控件会真实写入 config，所以一律先换测试 config。
 - 删 `WidgetConfig` 字段不需要写迁移：`parse` 遇到不认识的 TOML 键会直接忽略，app 退出时又会整份重写 `config.toml`，旧键自然消失。但要补一条测试钉住「带旧键的配置仍能解析、`serialized()` 里不再出现这个键」，免得以后有人把解析改成严格模式。
 - 从 Bash 工具启动的 `.build/debug/Mochi` 会继承 Claude.app 的「辅助功能」授权：`NSEvent` 全局监听真能收到按键，可以做真机端到端测试。具体做法：先 `osascript` 把 Finder 切到前台，再用 `CGEvent(...).post(tap: .cghidEventTap)` 发按键（修饰键单按要把 `type` 设成 `.flagsChanged`，flags 里带上设备位，例如右 ⌥ 是 `0x40`）；页面状态让测试页自己写进 `document.title`，再用 `CGWindowListCopyWindowInfo` 读 `kCGWindowName` 拿到。
+- 端到端测试判断前台 app 用 bundle id（`com.apple.finder`），别用 `localizedName`（Finder 叫「访达」）。只发修饰键单按（`flagsChanged`）时可以不查前台：它不产生字符，打不进别的 app；普通按键仍然每一下都要查。用户正在用 Claude.app 时它会反复抢回前台，依赖前台的步骤会随机跳过，别当成功能坏了。
 - Carbon 热键（Mochi 自己的 ⌥G/⌥H）和系统快捷键（⌘Tab）在 `NSEvent` 全局/本地监听看到之前就把 keyDown 吞掉了。凡是要判断"期间没按别的键"的逻辑，都要再查 `CGEventSource.secondsSinceLastEventType(.hidSystemState, ...)`，并且按事件时间比较，别用 `counterForEventType` 的两次读数相减：监听回调会滞后，中间那颗键会同时落在两次读数之前。
 - 安全输入（用辅助进程调 `EnableSecureEventInput()` 就能模拟）开启时，全局监听收不到 keyDown，但 `flagsChanged` 照常送达；合成事件在安全输入下不会更新 `secondsSinceLastEventType`，计数器却照常增加。
 - **`CGEvent.postToPid(自己)` 送不进 `canBecomeKey == false` 的窗口**：事件到得了进程（`NSApp` local monitor 看得见），但 AppKit 只把按键分发给能成为 key 的窗口，Ghost Mode 去掉 `.titled` 之后的无边框窗口正好不能——热键传递就是这样从上线起一直没生效，单元测试只测到 `forwardKeystroke` 被调用为止，发现不了（[ADR-0025](docs/adr/0025-hotkey-forwarding-dispatches-into-the-web-view.md)）。要给不获得焦点的窗口里的 web view 送按键，直接调 `webView.keyDown(with:)`：`isTrusted` 为 true，跨域 iframe 也收得到。`NSEvent` 要带上窗口的 `windowNumber`，否则输入框打不进字。页面没处理的按键，WebKit 会把**同一个对象**经 `NSApp.sendEvent` 交回来，主菜单快捷键和 local monitor 都会撞上它，要按对象身份 `===` 过滤掉。验证"按键到没到页面"别只看 `Fake` 的调用记录，要用真机：`data:` 测试页把 `e.key` 写进 `document.title`。
 - `WKWebView` 没有公开 API 能列出所有 frame：要对每个 frame（含跨域 iframe）执行 JS，就让 `forMainFrameOnly: false` 的 user script 通过 message handler 报到，用 `message.frameInfo` 加一个 token 登记，再 `evaluateJavaScript(_:in: frame, in: world)`。注意：进了往返缓存的旧页面，连同它的 iframe 都还活着，而且会用自己的 token 正常应答，必须靠 `pagehide`/`pageshow` 把它标成不活跃。
 - `evaluateJavaScript(_:in:in:)` 在 JS 返回 `undefined` 时，回调里拿到的值没法用：要同时区分"调用失败/过期"和"真的返回了 null"，就把结果包成 `{ value: x ?? null }`。
 - 不起 app 验证注入的媒体 JS：先 `ffmpeg -f lavfi -i testsrc=duration=60:size=320x240:rate=30 -pix_fmt yuv420p v.mp4` 生成测试视频；再在两个端口各起一个 `python3 -m http.server`（`localhost` 和 `127.0.0.1` 算两个源，正好构成跨域 iframe）；最后写个独立的 `WKWebView` harness，从源码里抠出脚本字符串来跑。
+- `python3 -m http.server --bind 127.0.0.1` 时启动 URL 也写 `http://127.0.0.1:端口`，写 `localhost` 可能解析到 `::1` 连不上；配置里加 `http_warning_enabled = false` 免得被 HTTP 警告页拦住。
 - `Orchestrator` 注册给平台层的闭包都是 `[weak self]`：测试里写 `_ = Orchestrator(...)` 或者不再持有它，后续的 `simulate…` 会静默失效、没有任何调用。要用 `withExtendedLifetime(orchestrator) { ... }` 把它留住。
-- 设置窗口里「热键」「脚本」两个面板的高度是写死的（见 `SettingsView` 的 `content(viewModel:)` 里的 `.frame(height:)`）：往里加分组却不调高度，会出现顶部标题被裁掉、`List` 被挤到 0 高的情况，编译和测试都发现不了，只能截图看。
+- 测轻按识别本身的测试用 `WidgetConfig.tapsOnlyVideoKeys`（只有轻按、不会延迟），别用默认配置：自 ADR-0024 起右 ⌥ 默认两用，轻按要等 `runScheduledWork()`。需要定时的逻辑走 `PlatformOps.schedule(after:)`，测试里用 `FakePlatformOps.runScheduledWork()` 代替时间流逝。
+- 设置窗口里「幽灵模式」「脚本」两个面板的高度是写死的（见 `SettingsView` 的 `content(viewModel:)` 里的 `.frame(height:)`）：往里加分组却不调高度，会出现顶部标题被裁掉、`List` 被挤到 0 高的情况，编译和测试都发现不了，只能截图看。
 - 打开设置、切面板、点按钮一律用 AX 动作（`AXUIElementPerformAction` + `kAXPressAction`，菜单项走 `kAXMenuBarAttribute` 找「设置…」），不发合成按键：AX 不需要 Mochi 在前台，也不会误打进用户正在用的应用。确需按键时，每一下之前都查一次 frontmost，不是 Mochi 就跳过，不能只在开头 `set frontmost` 一次——用户在用电脑时它会静默失败。
 - 设置窗口里的 SwiftUI 控件，System Events 的 `entire contents`/`whose description` 读不到（返回空或 -1719）：写个小 swift 工具用 `AXUIElementCopyAttributeValue` 递归 `kAXChildrenAttribute` 遍历，按 `AXDescription`/`AXTitle` 匹配。
 - 起探针实例时 `pkill -f '\.build/debug/Mochi$'` 匹配不到带参数启动的进程（如 `-NSRequiresAquaSystemAppearance YES`），用 `'\.build/debug/Mochi( |$)'`。
 - 验证浅色外观不用改系统设置：启动参数加 `-NSRequiresAquaSystemAppearance YES`。截图裁剪没有 PIL，用 `sips -c <h> <w> --cropOffset <y> <x> in.png --out out.png`。
 - Mochi 自己注册着的 Carbon 全局热键（⌥G/⌥H 及映射触发键），在设置面板录制时也会先被 Carbon 吞掉、到不了录制框——这类组合没法在真机上「录」出冲突。测就地冲突提示要用 ⌘,（保留的菜单快捷键，录制框靠 `performKeyEquivalent` 截住）；合成的右 ⌥ 轻按（`flagsChanged`）也录不进录制框，新旧代码都一样，这一项只能请用户手按。
 - `NSViewRepresentable` 不会尊重 `intrinsicContentSize`，会被拉满可用宽度：要固定尺寸就实现 `sizeThatFits(_:nsView:context:)` 返回它。macOS 上 `List` 的行默认有左缩进，要跟外面的控件对齐用 `.listStyle(.plain)` + `.listRowInsets(...)`。
-- 设置面板的录制控件只有一个：`HotkeyRecorderField`（`HotkeyRecorderView`/`TriggerKeyRecorderView` 两层薄包装），显示和录制中的按键判定都在 MochiCore 的 `HotkeyRecorderModel` 里；`SettingsController` 拒绝修改时返回 `HotkeyRejection`（不弹框），由 view model 显示在出错那一行。新增热键类设置照此接，别再造录制按钮或 alert。
+- 设置面板的录制控件只有一个：`HotkeyRecorderField`（`HotkeyRecorderView`/`TriggerKeyRecorderView` 两层薄包装），显示和录制中的按键判定都在 MochiCore 的 `HotkeyRecorderModel` 里；`SettingsController` 拒绝修改时返回 `HotkeyRejection`（不弹框），由 view model 显示在出错那一行。新增热键类设置照此接，别再造录制按钮或 alert。带触发方式下拉框的行照 `VideoControlRow` 写：`pendingKind` 加 `recordingRequest` 计数，`onRecordingStopped` 里清空 `pendingKind`。选一种方式只是先试，录到新键才算修改。
 
 ### 关闭 issue
 
