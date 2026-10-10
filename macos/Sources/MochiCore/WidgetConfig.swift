@@ -293,7 +293,7 @@ extension WidgetConfig {
     }
 
     /// `keyCode` must additionally fit `CGKeyCode` (`UInt16`) — the width `AppKitPlatformOps.
-    /// forwardKeystroke` narrows it to when injecting via `CGEventPostToPid` — checked here
+    /// forwardKeystroke` narrows it to when building the forwarded `CGEvent` — checked here
     /// instead, since this parsing boundary is where a bad hand-edited value should be rejected,
     /// not at the point of use.
     private static func parseKeystroke(keyCodeKey: String, modifiersKey: String, in table: TOMLTable) -> Hotkey? {

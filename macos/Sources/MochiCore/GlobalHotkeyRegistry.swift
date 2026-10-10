@@ -2,8 +2,7 @@ import Carbon.HIToolbox
 import Foundation
 
 /// Wraps Carbon's `RegisterEventHotKey` — still the standard way to claim a system-wide hotkey on
-/// macOS without needing Accessibility permission (unlike the `CGEventPostToPid` key *injection*
-/// used by Hotkey Forwarding, ADR-0003, which is a separate concern). A singleton because Carbon's
+/// macOS without needing Accessibility permission. A singleton because Carbon's
 /// event handler is a single C callback shared process-wide, dispatching by the numeric hotkey ID
 /// it was registered under.
 final class GlobalHotkeyRegistry {

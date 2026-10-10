@@ -300,22 +300,22 @@ public protocol PlatformOps: AnyObject {
     func focusAddressBar(in window: WidgetWindowHandle)
 
     /// Whether the process currently holds Accessibility permission — required for
-    /// `forwardKeystroke` to have any effect (ADR-0003). Checked before every forwarding attempt
-    /// so a later revocation (the user turning it off in System Settings) is caught immediately,
-    /// not just once at launch.
+    /// `startObservingInput` to hear keys pressed in other apps (视频控制, and Hotkey Forwarding
+    /// mappings set off by a tap or double tap). Read fresh at every use so a later revocation
+    /// (the user turning it off in System Settings) is caught immediately, not just at launch.
     func isAccessibilityTrusted() -> Bool
 
     /// Prompts the user, via the system's own Accessibility permission dialog, to grant Mochi
-    /// Accessibility access — the one-time onboarding step ADR-0003 requires for
-    /// `forwardKeystroke` to work. Callers are responsible for only invoking this once per app
-    /// run (see `HotkeyForwarder`) since the system dialog itself has no such throttling.
+    /// Accessibility access. Callers are responsible for only invoking this once per app run
+    /// (see `VideoControl`) since the system dialog itself has no such throttling.
     func requestAccessibilityPermission()
 
-    /// Injects `keystroke` into the widget's own page via `CGEventPostToPid`, targeted at this
-    /// process's own PID so the OS delivers a real, `isTrusted: true` key event without stealing
-    /// focus from whatever app the user is actually looking at (ADR-0003). Callers are expected
-    /// to only invoke this once `isAccessibilityTrusted()` is `true`.
-    func forwardKeystroke(_ keystroke: Hotkey)
+    /// Hands `keystroke` to `window`'s web view as a real key event (#93, ADR-0025): the page sees
+    /// an `isTrusted: true` keydown/keyup at whatever element has focus inside it, iframes
+    /// included, while the window stays non-key and Mochi stays in the background — Ghost Mode's
+    /// never-focus rule holds. Needs no Accessibility permission. Whatever the page leaves
+    /// unhandled goes no further: no menu key equivalent, no 视频控制 listener ever sees it.
+    func forwardKeystroke(_ keystroke: Hotkey, in window: WidgetWindowHandle)
 
     // MARK: 网页交互请求 (#66) — see `WebInteractionRequests.swift` for the seam's shape. Each kind
     // gets its own hook; the handler's return value is the decision the platform must execute.

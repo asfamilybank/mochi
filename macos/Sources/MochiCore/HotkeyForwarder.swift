@@ -1,9 +1,11 @@
 import Foundation
 
-/// Drives Hotkey Forwarding (#11, ADR-0003): on every press of a configured mapping's trigger,
-/// either forwards its `pageKeystroke` into the widget's page (only while Ghost Mode is active,
-/// per the domain doc) or guides the user through the one-time Accessibility permission
-/// onboarding — never failing silently, per #11's AC.
+/// Drives Hotkey Forwarding (#11): on every press of a configured mapping's trigger, forwards its
+/// `pageKeystroke` into the widget's page — only while Ghost Mode is active, per the domain doc.
+/// Since #93 (ADR-0025) the keystroke is handed straight to the widget's web view rather than
+/// posted through the system, so there is no Accessibility permission to check or ask for here;
+/// a mapping set off by a tap or double tap still needs it, but for *hearing* the trigger, which
+/// is `VideoControl`'s to ask for.
 ///
 /// Since #46 this type no longer registers the triggers itself: every global hotkey Mochi holds —
 /// the two action hotkeys and every mapping trigger — is registered by `Orchestrator` at launch
@@ -13,33 +15,29 @@ import Foundation
 /// lets an edited mapping take effect without a restart.
 ///
 /// A pure orchestration class exactly like `GhostModeController`: it only talks to `PlatformOps`,
-/// never AppKit/CGEvent directly, so it can be exercised against `FakePlatformOps` in tests.
+/// never AppKit directly, so it can be exercised against `FakePlatformOps` in tests.
 public final class HotkeyForwarder {
     private let platformOps: PlatformOps
     private let isGhostModeActive: () -> Bool
-    private var hasPromptedForAccessibility = false
+    private let currentWindow: () -> WidgetWindowHandle?
 
-    /// - Parameter isGhostModeActive: queried on every trigger — Hotkey Forwarding only takes
-    ///   effect in Ghost Mode (CONTEXT.md), so this stays a closure rather than a one-time
-    ///   snapshot to reflect the live mode at press time.
-    public init(platformOps: PlatformOps, isGhostModeActive: @escaping () -> Bool) {
+    /// - Parameters:
+    ///   - isGhostModeActive: queried on every trigger — Hotkey Forwarding only takes effect in
+    ///     Ghost Mode (CONTEXT.md), so this stays a closure rather than a one-time snapshot to
+    ///     reflect the live mode at press time.
+    ///   - currentWindow: the widget whose page receives the keystroke, read at press time too.
+    public init(
+        platformOps: PlatformOps,
+        isGhostModeActive: @escaping () -> Bool,
+        currentWindow: @escaping () -> WidgetWindowHandle?
+    ) {
         self.platformOps = platformOps
         self.isGhostModeActive = isGhostModeActive
+        self.currentWindow = currentWindow
     }
 
     public func forward(_ pageKeystroke: Hotkey) {
-        guard isGhostModeActive() else { return }
-        guard platformOps.isAccessibilityTrusted() else {
-            if !hasPromptedForAccessibility {
-                hasPromptedForAccessibility = true
-                platformOps.requestAccessibilityPermission()
-            }
-            platformOps.presentAlert(
-                title: "需要辅助功能权限",
-                message: "热键传递功能需要辅助功能权限才能工作，请前往系统设置 → 隐私与安全性 → 辅助功能，允许 Mochi 使用该功能。"
-            )
-            return
-        }
-        platformOps.forwardKeystroke(pageKeystroke)
+        guard isGhostModeActive(), let window = currentWindow() else { return }
+        platformOps.forwardKeystroke(pageKeystroke, in: window)
     }
 }

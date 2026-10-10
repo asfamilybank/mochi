@@ -16,8 +16,8 @@ public struct BuiltInScript: Equatable {
 }
 
 public enum BuiltInScripts {
-    /// Focuses the page's `<video>` element after load, so a hotkey forwarded via
-    /// `CGEventPostToPid` (ADR-0003) lands on the player instead of being swallowed by whatever
+    /// Focuses the page's `<video>` element after load, so a keystroke forwarded into the web view
+    /// (ADR-0025) lands on the player instead of being swallowed by whatever
     /// element happened to hold focus (e.g. a search box or an ad iframe).
     public static let genericVideoFocus = BuiltInScript(
         id: "generic-video-focus",
