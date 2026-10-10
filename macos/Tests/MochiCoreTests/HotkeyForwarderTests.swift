@@ -5,25 +5,25 @@ import Testing
 
 /// Registration of mapping triggers moved to `Orchestrator` (#46) — see `OrchestratorTests` for
 /// launch-time registration and press-time dispatch. What's left here is the forwarding decision
-/// itself: mode gate, Accessibility onboarding, and the actual keystroke.
+/// itself: mode gate, the widget it goes to, and the actual keystroke.
 @Suite struct HotkeyForwarderTests {
     private let pageKeystroke = Hotkey(keyCode: 0x31, modifierFlags: 0)
+    private let window = FakeWidgetWindowHandle(id: 7)
 
-    @Test func forwardsThePageKeystrokeWhileInGhostModeAndTrusted() {
+    @Test func forwardsThePageKeystrokeIntoTheWidgetWhileInGhostMode() {
         let fake = FakePlatformOps()
-        fake.stubbedAccessibilityTrusted = true
-        let forwarder = HotkeyForwarder(platformOps: fake, isGhostModeActive: { true })
+        let forwarder = HotkeyForwarder(platformOps: fake, isGhostModeActive: { true }, currentWindow: { window })
 
         forwarder.forward(pageKeystroke)
 
         #expect(fake.forwardedKeystrokes == [pageKeystroke])
+        #expect(fake.forwardedKeystrokeWindowIDs == [7])
         #expect(fake.presentedAlerts.isEmpty)
     }
 
     @Test func doesNothingOutsideGhostMode() {
         let fake = FakePlatformOps()
-        fake.stubbedAccessibilityTrusted = true
-        let forwarder = HotkeyForwarder(platformOps: fake, isGhostModeActive: { false })
+        let forwarder = HotkeyForwarder(platformOps: fake, isGhostModeActive: { false }, currentWindow: { window })
 
         forwarder.forward(pageKeystroke)
 
@@ -31,24 +31,35 @@ import Testing
         #expect(fake.presentedAlerts.isEmpty)
     }
 
-    @Test func requestsAccessibilityPermissionOnceOnFirstUntrustedForwardAndAlertsEveryTime() {
+    @Test func doesNothingWithoutAWidget() {
+        let fake = FakePlatformOps()
+        let forwarder = HotkeyForwarder(platformOps: fake, isGhostModeActive: { true }, currentWindow: { nil })
+
+        forwarder.forward(pageKeystroke)
+
+        #expect(fake.forwardedKeystrokes.isEmpty)
+    }
+
+    /// The keystroke is handed straight to the widget's web view (#93, ADR-0025), not posted
+    /// through the system — nothing about that needs Accessibility, so its absence neither blocks
+    /// the keystroke nor brings up the permission dialog or an alert.
+    @Test func forwardsWithoutAccessibilityPermission() {
         let fake = FakePlatformOps()
         fake.stubbedAccessibilityTrusted = false
-        let forwarder = HotkeyForwarder(platformOps: fake, isGhostModeActive: { true })
+        let forwarder = HotkeyForwarder(platformOps: fake, isGhostModeActive: { true }, currentWindow: { window })
 
         forwarder.forward(pageKeystroke)
         forwarder.forward(pageKeystroke)
 
-        #expect(fake.accessibilityPermissionRequestCount == 1)
-        #expect(fake.presentedAlerts.count == 2)
-        #expect(fake.forwardedKeystrokes.isEmpty)
+        #expect(fake.forwardedKeystrokes == [pageKeystroke, pageKeystroke])
+        #expect(fake.accessibilityPermissionRequestCount == 0)
+        #expect(fake.presentedAlerts.isEmpty)
     }
 
     @Test func readsTheModeAtForwardTimeNotAtConstruction() {
         let fake = FakePlatformOps()
-        fake.stubbedAccessibilityTrusted = true
         var isGhost = false
-        let forwarder = HotkeyForwarder(platformOps: fake, isGhostModeActive: { isGhost })
+        let forwarder = HotkeyForwarder(platformOps: fake, isGhostModeActive: { isGhost }, currentWindow: { window })
 
         forwarder.forward(pageKeystroke)
         isGhost = true

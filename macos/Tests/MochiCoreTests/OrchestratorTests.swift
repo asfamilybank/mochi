@@ -790,6 +790,8 @@ enum TrayScenario: Sendable {
         fake.simulateHotkeyPressed(mapping.registeredHotkey!)
 
         #expect(fake.forwardedKeystrokes == [mapping.pageKeystroke])
+        // Into the widget's own page (#93) — the only window there is.
+        #expect(fake.forwardedKeystrokeWindowIDs == [1])
     }
 
     @Test func pressingAMappingsTriggerInNormalModeForwardsNothing() {

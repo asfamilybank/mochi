@@ -43,6 +43,7 @@ final class FakePlatformOps: PlatformOps {
     private(set) var stoppedLoadingWindowIDs: [Int] = []
     private(set) var accessibilityPermissionRequestCount = 0
     private(set) var forwardedKeystrokes: [Hotkey] = []
+    private(set) var forwardedKeystrokeWindowIDs: [Int] = []
     private(set) var windowTitleChanges: [(title: String, windowID: Int)] = []
     private(set) var errorPagesShown: [(message: String, windowID: Int)] = []
     private var willCloseHandlers: [Int: () -> Void] = [:]
@@ -346,8 +347,9 @@ final class FakePlatformOps: PlatformOps {
         accessibilityPermissionRequestCount += 1
     }
 
-    func forwardKeystroke(_ keystroke: Hotkey) {
+    func forwardKeystroke(_ keystroke: Hotkey, in window: WidgetWindowHandle) {
         forwardedKeystrokes.append(keystroke)
+        forwardedKeystrokeWindowIDs.append((window as! FakeWidgetWindowHandle).id)
     }
 
     func onPageTitleChanged(_ window: WidgetWindowHandle, perform handler: @escaping (String?) -> Void) {

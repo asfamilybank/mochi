@@ -2500,20 +2500,63 @@ public final class AppKitPlatformOps: PlatformOps {
         AXIsProcessTrustedWithOptions(options)
     }
 
-    /// `CGEventPostToPid` targeted at this process's own PID (ADR-0003) — the widget's page has
-    /// no keyboard focus while the user is working in another app, so the event is delivered
-    /// directly to this process rather than relying on window key-status/first-responder.
-    public func forwardKeystroke(_ keystroke: Hotkey) {
-        let pid = ProcessInfo.processInfo.processIdentifier
+    // MARK: 热键传递 (#93, ADR-0025)
+
+    /// The key events `forwardKeystroke` has handed a web view and not yet seen come back. WebKit
+    /// re-sends a key event its page left unhandled through `NSApp.sendEvent` — the very same
+    /// object — where the main menu would take it as a key equivalent (a forwarded ⌘H would hide
+    /// Mochi) and 视频控制's local listener would hear it as a key the user pressed. A page that
+    /// handles the event never sends it back, so entries also expire.
+    private var forwardedKeyEvents: [NSEvent] = []
+    private var forwardedKeyEchoMonitor: Any?
+    private static let forwardedKeyEventLifetime: TimeInterval = 5
+
+    /// Straight into the web view, not `CGEventPostToPid` (ADR-0003, superseded): a posted event
+    /// reaches Mochi but AppKit only routes key events to a window that *can* become key, and
+    /// Ghost Mode's borderless window cannot (measured: posted keys never reached the page). The
+    /// event is still built as a `CGEvent` so the current keyboard layout supplies its
+    /// characters, then re-made with the widget's window number — without one the page gets the
+    /// keydown but a focused text field types nothing.
+    public func forwardKeystroke(_ keystroke: Hotkey, in window: WidgetWindowHandle) {
+        guard let handle = handle(for: window) else { return }
+        installForwardedKeyEchoMonitorIfNeeded()
+        let now = ProcessInfo.processInfo.systemUptime
+        forwardedKeyEvents.removeAll { now - $0.timestamp > Self.forwardedKeyEventLifetime }
+        let source = CGEventSource(stateID: .hidSystemState)
         let flags = Self.cgEventFlags(fromCarbonModifiers: keystroke.modifierFlags)
-        guard let source = CGEventSource(stateID: .hidSystemState) else { return }
-        if let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(keystroke.keyCode), keyDown: true) {
-            keyDown.flags = flags
-            keyDown.postToPid(pid)
+        for isDown in [true, false] {
+            guard let cgEvent = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(keystroke.keyCode), keyDown: isDown)
+            else { continue }
+            // Only the mapping's own modifiers — never the trigger's, which may still be held.
+            cgEvent.flags = flags
+            guard let translated = NSEvent(cgEvent: cgEvent),
+                let event = NSEvent.keyEvent(
+                    with: translated.type, location: .zero, modifierFlags: translated.modifierFlags, timestamp: now,
+                    windowNumber: handle.window.windowNumber, context: nil,
+                    characters: translated.characters ?? "",
+                    charactersIgnoringModifiers: translated.charactersIgnoringModifiers ?? "",
+                    isARepeat: false, keyCode: translated.keyCode)
+            else { continue }
+            forwardedKeyEvents.append(event)
+            if isDown {
+                handle.webView.keyDown(with: event)
+            } else {
+                handle.webView.keyUp(with: event)
+            }
         }
-        if let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(keystroke.keyCode), keyDown: false) {
-            keyUp.flags = flags
-            keyUp.postToPid(pid)
+    }
+
+    private func isForwardedKeyEvent(_ event: NSEvent) -> Bool {
+        forwardedKeyEvents.contains { $0 === event }
+    }
+
+    /// Drops a forwarded event coming back unhandled before anything else in Mochi acts on it.
+    private func installForwardedKeyEchoMonitorIfNeeded() {
+        guard forwardedKeyEchoMonitor == nil else { return }
+        forwardedKeyEchoMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
+            guard let self, isForwardedKeyEvent(event) else { return event }
+            forwardedKeyEvents.removeAll { $0 === event }
+            return nil
         }
     }
 
@@ -2545,10 +2588,12 @@ public final class AppKitPlatformOps: PlatformOps {
         if let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: report) {
             inputMonitors.append(global)
         }
-        if let local = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { event in
+        if let local = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] event in
             // Recording a key in the settings panel must not also act on the video (#79).
             let recorder = NSApp.keyWindow?.firstResponder as? KeyCapturingResponder
-            if recorder?.isCapturingKeys != true { report(event) }
+            // Nor is a forwarded keystroke coming back unhandled one the user pressed (#93) —
+            // checked here too, since which local monitor runs first isn't ours to decide.
+            if recorder?.isCapturingKeys != true, self?.isForwardedKeyEvent(event) != true { report(event) }
             return event
         }) {
             inputMonitors.append(local)

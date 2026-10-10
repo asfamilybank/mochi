@@ -1,5 +1,7 @@
 # 热键传递采用 macOS 原生按键注入（CGEventPostToPid）
 
+> 2026-10-10 更新：本 ADR 的实现方式（`CGEventPostToPid` 投递给本进程）已被 [ADR-0025](0025-hotkey-forwarding-dispatches-into-the-web-view.md) 取代——Ghost Mode 的无边框窗口成不了 key window，投递过来的按键到不了页面；改为直接交给 widget 的 web view，也不再需要辅助功能权限。保留下文作为历史记录。
+
 调研发现 macOS 有 `CGEventPostToPid`，可以把合成按键事件直接投递给指定进程、不需要目标 App 处于前台/有焦点，也不会抢占用户当前焦点，效果等同真实按键（`isTrusted: true`）。既然 v1 只做 macOS 原生开发（见 [ADR-0007](0007-native-per-platform-no-shared-code.md)），热键传递直接采用这条原生路径，不需要考虑"JS 合成事件"这种跨平台兼容方案。
 
 代价是需要用户在"系统设置 → 隐私与安全性 → 辅助功能"里手动授权一次（跟 Keyboard Maestro、BetterTouchTool 这类工具的权限模型一样）。

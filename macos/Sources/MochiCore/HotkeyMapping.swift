@@ -1,10 +1,10 @@
 import Foundation
 
 /// One user-configured "trigger key → page keystroke" pairing driving Hotkey Forwarding (#11,
-/// ADR-0003): pressing `trigger` while Ghost Mode is active injects `pageKeystroke` into the
-/// widget's page via `CGEventPostToPid`, indistinguishable from the user having pressed
-/// `pageKeystroke` themselves. `AppKitPlatformOps` re-interprets `pageKeystroke`'s flags as
-/// `CGEventFlags` instead of Carbon's bit values when actually injecting it.
+/// ADR-0025): pressing `trigger` while Ghost Mode is active hands `pageKeystroke` to the widget's
+/// web view, indistinguishable from the user having pressed `pageKeystroke` themselves.
+/// `AppKitPlatformOps` re-interprets `pageKeystroke`'s flags as `CGEventFlags` instead of
+/// Carbon's bit values when actually building the event.
 ///
 /// A combo trigger is a Carbon global hotkey, taken from every app; a tap or double tap (#92,
 /// ADR-0022) is only listened for, alongside 视频控制, and takes nothing.

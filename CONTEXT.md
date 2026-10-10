@@ -56,7 +56,7 @@ _Avoid_: 新窗口、第二个 Widget、标签页
 _Avoid_: 网站设置、按站点设置
 
 **Hotkey Forwarding（热键传递）**:
-Ghost Mode 下，把全局热键按用户配置的映射表转发成一次页面按键，用于控制标准网页播放器（播放/暂停/快进等），不需要为每个网站写专属脚本。通过 `CGEventPostToPid` 直接投递给目标进程实现（见 [ADR-0003](docs/adr/0003-hotkey-forwarding-platform-split.md)）。触发键是组合键时走 Carbon 全局热键，会从所有 app 手里拿走这个组合；是轻按或连按两次时只监听、不拦截。只想控制视频，用视频控制。用户配置的每一条"触发热键 → 页面按键"叫一条**映射**，映射是热键传递的条目，不是功能名。
+Ghost Mode 下，把全局热键按用户配置的映射表转发成一次页面按键，用于控制标准网页播放器（播放/暂停/快进等），不需要为每个网站写专属脚本。按键直接交给 Widget 的 web view，页面收到的是真实按键（`isTrusted` 为 true），窗口不会获得焦点（见 [ADR-0025](docs/adr/0025-hotkey-forwarding-dispatches-into-the-web-view.md)，它取代了 [ADR-0003](docs/adr/0003-hotkey-forwarding-platform-split.md) 的 `CGEventPostToPid` 方案）。触发键是组合键时走 Carbon 全局热键，会从所有 app 手里拿走这个组合；是轻按或连按两次时只监听、不拦截。只想控制视频，用视频控制。用户配置的每一条"触发热键 → 页面按键"叫一条**映射**，映射是热键传递的条目，不是功能名。
 _Avoid_: 热键映射（作为功能名；"映射"只指其中的条目）
 
 **Video Control（视频控制）**:
