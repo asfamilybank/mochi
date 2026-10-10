@@ -1927,8 +1927,7 @@ public final class AppKitPlatformOps: PlatformOps {
         webViewConfiguration.preferences.isElementFullscreenEnabled = true
         // Report as Safari, or version-gated sites (bilibili.com) turn the page away — see
         // `WebUserAgent`. Popup Windows inherit it: WebKit derives their configuration from this one.
-        webViewConfiguration.applicationNameForUserAgent = WebUserAgent.applicationName(
-            fromSafariInfoDictionary: NSDictionary(contentsOf: WebUserAgent.safariInfoPlistURL) as? [String: Any])
+        webViewConfiguration.applicationNameForUserAgent = WebUserAgent.current
         // 自动播放 (#70): Safari's three options, as the public creation-time switch.
         switch autoplayPolicy {
         case .allowAll: webViewConfiguration.mediaTypesRequiringUserActionForPlayback = []
@@ -2451,6 +2450,24 @@ public final class AppKitPlatformOps: PlatformOps {
         ) {}
         for handle in liveHandles.allObjects {
             handle.clearFaviconCache()
+        }
+    }
+
+    /// Drops the HTTP cache when the User-Agent suffix changed since the last run, then calls
+    /// `completion` — on the main thread, before which no web view may load (ADR-0025). Only the
+    /// cache goes: cookies, local storage and logins stay. Calls straight through when nothing
+    /// changed, so an ordinary launch waits on nothing.
+    public func dropHTTPCacheIfUserAgentChanged(then completion: @escaping () -> Void) {
+        let defaults = UserDefaults.standard
+        let current = WebUserAgent.current
+        guard WebUserAgent.httpCacheIsStale(
+            lastReported: defaults.string(forKey: WebUserAgent.lastReportedDefaultsKey), current: current)
+        else { return completion() }
+        WKWebsiteDataStore.default().removeData(
+            ofTypes: [WKWebsiteDataTypeDiskCache, WKWebsiteDataTypeMemoryCache], modifiedSince: .distantPast
+        ) {
+            defaults.set(current, forKey: WebUserAgent.lastReportedDefaultsKey)
+            completion()
         }
     }
 

@@ -21,4 +21,14 @@ import Testing
     @Test func suffixFallsBackWithNoInfoDictionary() {
         #expect(WebUserAgent.applicationName(fromSafariInfoDictionary: nil) == "Version/26.0 Safari/605.1.15")
     }
+
+    /// The cache is stale whenever the suffix moved — a Safari update, or no record at all (every
+    /// install from before the check, whose cache may hold redirects under the bare User-Agent).
+    @Test(arguments: [(lastReported: String?("Version/26.5 Safari/605.1.15"), stale: false),
+                      (lastReported: String?("Version/26.4 Safari/605.1.15"), stale: true),
+                      (lastReported: String?(nil), stale: true)])
+    func httpCacheIsStaleWhenTheSuffixChanged(argument: (lastReported: String?, stale: Bool)) {
+        #expect(WebUserAgent.httpCacheIsStale(
+            lastReported: argument.lastReported, current: "Version/26.5 Safari/605.1.15") == argument.stale)
+    }
 }

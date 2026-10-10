@@ -14,9 +14,9 @@ import Foundation
 /// The version is the installed Safari's. On macOS, Safari and the system WebKit ship together,
 /// so it names exactly the engine this web view is running — claiming a hard-coded version would
 /// drift out of date with every OS update, and too old a number is the very thing that trips
-/// version gates.
+/// version gates. Why changing it also drops the HTTP cache: ADR-0025.
 public enum WebUserAgent {
-    /// Where the installed Safari's bundle lives; read at web view creation.
+    /// Where the installed Safari's bundle lives; read once per launch, for `current`.
     public static let safariInfoPlistURL = URL(fileURLWithPath: "/Applications/Safari.app/Contents/Info.plist")
 
     /// Used when the installed Safari's version can't be read — the macOS baseline (ADR-0008),
@@ -35,6 +35,24 @@ public enum WebUserAgent {
     /// first two components; anything unusable falls back to `fallbackSafariVersion`.
     public static func applicationName(fromSafariInfoDictionary info: [String: Any]?) -> String {
         "Version/\(safariVersion(from: info)) \(safariToken)"
+    }
+
+    /// The suffix for the Safari installed now — what every web view this run reports.
+    public static let current = applicationName(
+        fromSafariInfoDictionary: NSDictionary(contentsOf: safariInfoPlistURL) as? [String: Any])
+
+    /// Where the suffix the previous run reported is remembered — app bookkeeping, not a setting,
+    /// so it stays out of `config.toml`.
+    public static let lastReportedDefaultsKey = "lastReportedUserAgentApplicationName"
+
+    /// Whether the HTTP cache has to go before any web view loads (ADR-0025). WebKit caches a
+    /// redirect together with the request it leads to, User-Agent header included, and replays
+    /// that request as recorded: once `https://bilibili.com/`'s 301 was cached under the bare
+    /// User-Agent, every later visit sent the bare one to `www.bilibili.com` and got turned away,
+    /// suffix or no suffix. So whenever the suffix differs from the last run's — `nil`, never
+    /// recorded, included: that is every install that predates this check — the cache is stale.
+    public static func httpCacheIsStale(lastReported: String?, current: String) -> Bool {
+        lastReported != current
     }
 
     private static func safariVersion(from info: [String: Any]?) -> String {

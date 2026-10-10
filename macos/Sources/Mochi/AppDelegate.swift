@@ -71,7 +71,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.mainMenuBuilder = mainMenuBuilder
         NSApp.mainMenu = mainMenuBuilder.build(orchestrator: orchestrator)
 
-        orchestrator.start()
+        // A stale HTTP cache replays requests under an old User-Agent (ADR-0025), so it goes
+        // before the widget's first load.
+        platformOps.dropHTTPCacheIfUserAgentChanged { orchestrator.start() }
     }
 
     /// `false` since #42: closing the widget leaves Mochi running in the tray, exactly as the
