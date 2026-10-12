@@ -53,6 +53,8 @@ public struct SystemPermissionPrompt: Equatable, Sendable {
         case trayMenu
         /// Top of 网站 → 摄像头 / 麦克风 (#104): the page of the prompt's own `permission`.
         case websitesPermissionPage
+        /// Beside 通用 → 文件下载位置 (#105).
+        case downloadLocation
     }
 
     /// What its button does.
@@ -83,8 +85,14 @@ public enum SystemPermissionPrompts {
     /// Accessibility (#103): whenever it is not granted and `VideoControl` has something to listen
     /// for, at the top of the 幽灵模式 panel and in the tray. The system answers nothing finer than
     /// "trusted or not" for it, so the button is always 打开系统设置.
+    ///
+    /// #105: `downloadsFolderWriteDenied` is the most recent write into the Downloads folder having
+    /// been refused (`SystemPermissionMarker.downloadsFolderWriteDenied`) — that folder's only
+    /// status. It prompts beside 文件下载位置 while that location is 下载; 每次询问 and a chosen
+    /// folder don't rely on the permission. Always 打开系统设置: there is no request to make.
     public static func prompts(
-        for config: WidgetConfig, status: (SystemPermission) -> SystemPermissionStatus
+        for config: WidgetConfig, status: (SystemPermission) -> SystemPermissionStatus,
+        downloadsFolderWriteDenied: Bool = false
     ) -> [SystemPermissionPrompt] {
         var prompts: [SystemPermissionPrompt] = []
         if VideoControl.needsAccessibility(for: config), status(.accessibility) != .authorized {
@@ -105,6 +113,10 @@ public enum SystemPermissionPrompts {
             case .authorized, .unqueryable: continue
             }
             prompts.append(SystemPermissionPrompt(permission: device, placement: .websitesPermissionPage, action: action))
+        }
+        if downloadsFolderWriteDenied, config.downloadLocation == .downloadsFolder {
+            prompts.append(SystemPermissionPrompt(
+                permission: .downloadsFolder, placement: .downloadLocation, action: .openSystemSettings))
         }
         return prompts
     }

@@ -577,6 +577,13 @@ public final class Orchestrator {
                 fileSystem: self?.downloadFileSystem ?? .live,
                 completion: completion)
         }
+        // #105: how each download's write went, and the answer to 「无法存到下载文件夹」.
+        platformOps.onDownloadEnded(window) { [weak self] outcome in
+            self?.decideDownloadEnded(outcome) ?? .none
+        }
+        platformOps.onDownloadsFolderDeniedAnswered(window) { [weak self] answer in
+            self?.followUpDownloadsFolderDenied(answer) ?? .none
+        }
 
         // #69/#101 — settings, exceptions and the mode are read at request time; a fresh
         // controller per window, so a reopened widget has no 「仅这次允许」 left over.
@@ -622,6 +629,42 @@ public final class Orchestrator {
     /// #101: stamps the 网页权限 exceptions remembered from Mochi's prompt. Tests swap in a fixed date.
     public var currentDate: () -> Date = { Date() }
     private var mediaCapturePermissions: MediaCapturePermissionController?
+
+    /// #105 (ADR-0026): a write into the Downloads folder is the only reading of its permission
+    /// there is. Refused → remembered, and offered another place — in Normal Mode only, Ghost Mode
+    /// just remembers; succeeded → forgotten. A write anywhere else, or to a place picked in a Save
+    /// panel, says nothing about it. Comparing paths reads no disk, so this is safe on the main
+    /// thread (#99).
+    private func decideDownloadEnded(_ outcome: DownloadOutcome) -> DownloadOutcomeDecision {
+        let folder = outcome.destination.deletingLastPathComponent().standardizedFileURL.path
+        guard !outcome.chosenInSavePanel, folder == downloadFileSystem.downloadsFolder.standardizedFileURL.path
+        else { return .none }
+        switch outcome.result {
+        case .succeeded:
+            platformOps.setSystemPermissionMarker(.downloadsFolderWriteDenied, false)
+            return .none
+        case .deniedPermission:
+            platformOps.setSystemPermissionMarker(.downloadsFolderWriteDenied, true)
+            return isGhostModeActive ? .none : .offerAnotherLocation
+        case .failed:
+            return .none
+        }
+    }
+
+    /// #105: the answer to 「无法存到下载文件夹」, with Ghost Mode read again — nothing may show by
+    /// then if the user has gone invisible in the meantime.
+    private func followUpDownloadsFolderDenied(_ answer: DownloadsFolderDeniedAnswer) -> DownloadsFolderDeniedFollowUp {
+        guard !isGhostModeActive else { return .none }
+        switch answer {
+        case .openSystemSettings:
+            platformOps.openSystemSettings(for: .downloadsFolder)
+            return .none
+        case .saveElsewhere:
+            return .saveElsewhereWithSavePanel
+        case .cancel:
+            return .none
+        }
+    }
 
     private var isGhostModeActive: Bool { ghostModeController?.mode == .ghost }
 

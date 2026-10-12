@@ -147,3 +147,33 @@ private extension TriggerKey {
 private extension Hotkey {
     static let space = Hotkey(keyCode: 0x31, modifierFlags: 0)
 }
+
+// MARK: Downloads folder (#105)
+
+/// The Downloads folder has no status to read: its prompt hangs on the most recent write into it
+/// (`SystemPermissionMarker.downloadsFolderWriteDenied`), and only where that folder is the
+/// download location — 每次询问 and a chosen folder don't depend on its permission.
+extension SystemPermissionPromptsTests {
+    static let chosenFolder = URL(fileURLWithPath: "/fake/Chosen", isDirectory: true)
+
+    @Test(arguments: [
+        (location: DownloadLocation.downloadsFolder, writeDenied: true, expected: [SystemPermissionPrompt.downloadsFolderBesideDownloadLocation]),
+        (location: .downloadsFolder, writeDenied: false, expected: []),
+        (location: .askEachTime, writeDenied: true, expected: []),
+        (location: .askEachTime, writeDenied: false, expected: []),
+        (location: .folder(chosenFolder), writeDenied: true, expected: []),
+        (location: .folder(chosenFolder), writeDenied: false, expected: []),
+    ])
+    func downloadsFolder(_ row: (location: DownloadLocation, writeDenied: Bool, expected: [SystemPermissionPrompt])) {
+        let prompts = SystemPermissionPrompts.prompts(
+            for: WidgetConfig().updatingDownloadLocation(row.location), status: { _ in .authorized },
+            downloadsFolderWriteDenied: row.writeDenied)
+
+        #expect(prompts == row.expected)
+    }
+}
+
+private extension SystemPermissionPrompt {
+    static let downloadsFolderBesideDownloadLocation = SystemPermissionPrompt(
+        permission: .downloadsFolder, placement: .downloadLocation, action: .openSystemSettings)
+}

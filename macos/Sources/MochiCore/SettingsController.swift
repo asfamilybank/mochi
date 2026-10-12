@@ -395,7 +395,9 @@ public final class SettingsController {
     /// The panel's 系统权限 prompts — read fresh each time, since the user grants permissions in
     /// System Settings, outside Mochi.
     public var systemPermissionPrompts: [SystemPermissionPrompt] {
-        SystemPermissionPrompts.prompts(for: config, status: platformOps.systemPermissionStatus)
+        SystemPermissionPrompts.prompts(
+            for: config, status: platformOps.systemPermissionStatus,
+            downloadsFolderWriteDenied: platformOps.isSystemPermissionMarkerSet(.downloadsFolderWriteDenied))
     }
 
     /// What a prompt's button does; a prompt without one does nothing.

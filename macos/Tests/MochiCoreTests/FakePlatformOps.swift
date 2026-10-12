@@ -476,6 +476,34 @@ final class FakePlatformOps: PlatformOps {
         downloadRequestedHandlers[windowID]?(request, completion)
     }
 
+    // #105
+    private var downloadEndedHandlers: [Int: (DownloadOutcome) -> DownloadOutcomeDecision] = [:]
+    private var downloadsFolderDeniedAnsweredHandlers: [Int: (DownloadsFolderDeniedAnswer) -> DownloadsFolderDeniedFollowUp] = [:]
+
+    func onDownloadEnded(_ window: WidgetWindowHandle, perform handler: @escaping (DownloadOutcome) -> DownloadOutcomeDecision) {
+        let handle = window as! FakeWidgetWindowHandle
+        downloadEndedHandlers[handle.id] = handler
+    }
+
+    @discardableResult
+    func simulateDownloadEnded(_ outcome: DownloadOutcome, windowID: Int = 1) -> DownloadOutcomeDecision? {
+        downloadEndedHandlers[windowID]?(outcome)
+    }
+
+    func onDownloadsFolderDeniedAnswered(
+        _ window: WidgetWindowHandle,
+        perform handler: @escaping (DownloadsFolderDeniedAnswer) -> DownloadsFolderDeniedFollowUp
+    ) {
+        let handle = window as! FakeWidgetWindowHandle
+        downloadsFolderDeniedAnsweredHandlers[handle.id] = handler
+    }
+
+    func simulateDownloadsFolderDeniedAnswered(
+        _ answer: DownloadsFolderDeniedAnswer, windowID: Int = 1
+    ) -> DownloadsFolderDeniedFollowUp? {
+        downloadsFolderDeniedAnsweredHandlers[windowID]?(answer)
+    }
+
     // #69
     private var mediaCaptureRequestedHandlers: [Int: (MediaCaptureRequest) -> MediaCaptureDecision] = [:]
 

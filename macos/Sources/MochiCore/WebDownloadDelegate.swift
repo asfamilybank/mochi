@@ -35,6 +35,12 @@ extension AppKitWidgetWindowHandle: WKDownloadDelegate {
         _ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String,
         completionHandler: @escaping (URL?) -> Void
     ) {
+        // #105: a download restarted by 存到其他位置… already has its place, from the Save panel.
+        if let url = restartedDownloadDestinations.removeValue(forKey: ObjectIdentifier(download)) {
+            downloadDestinations[ObjectIdentifier(download)] = url
+            downloadsChosenInSavePanel.insert(ObjectIdentifier(download))
+            return completionHandler(url)
+        }
         // No decider registered means nobody may choose a place on disk: cancel.
         guard let decide = downloadRequestedHandler else { return completionHandler(nil) }
         // The answer may come later (#99): deciding reads the disk off the main thread, and the
@@ -68,6 +74,7 @@ extension AppKitWidgetWindowHandle: WKDownloadDelegate {
                     try? FileManager.default.trashItem(at: url, resultingItemURL: nil)
                 }
                 self?.downloadDestinations[ObjectIdentifier(download)] = url
+                self?.downloadsChosenInSavePanel.insert(ObjectIdentifier(download))  // #105
                 completionHandler(url)
             }
         }
@@ -76,10 +83,72 @@ extension AppKitWidgetWindowHandle: WKDownloadDelegate {
     func downloadDidFinish(_ download: WKDownload) {
         guard let url = downloadDestinations.removeValue(forKey: ObjectIdentifier(download)) else { return }
         Self.bounceDownloadsStack(for: url)
+        reportEnd(of: download, at: url, error: nil)
     }
 
     func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
-        downloadDestinations.removeValue(forKey: ObjectIdentifier(download))
+        restartedDownloadDestinations.removeValue(forKey: ObjectIdentifier(download))
+        // A download that failed before it had a destination wrote nothing: nothing to report.
+        guard let url = downloadDestinations.removeValue(forKey: ObjectIdentifier(download)) else { return }
+        reportEnd(of: download, at: url, error: error)
+    }
+
+    // MARK: When the Downloads folder refuses the write (#105, ADR-0026)
+
+    /// Tells MochiCore how the write went — the only reading of the Downloads folder's permission
+    /// there is — and carries out its answer.
+    private func reportEnd(of download: WKDownload, at destination: URL, error: Error?) {
+        let chosenInSavePanel = downloadsChosenInSavePanel.remove(ObjectIdentifier(download)) != nil
+        let outcome = DownloadOutcome(
+            destination: destination, chosenInSavePanel: chosenInSavePanel, result: .classifying(error))
+        guard downloadEndedHandler?(outcome) == .offerAnotherLocation else { return }
+        offerAnotherLocation(for: download.originalRequest, filename: destination.lastPathComponent)
+    }
+
+    /// 「无法存到下载文件夹」 as a sheet on the widget; the answer goes back to MochiCore, which
+    /// opens System Settings itself or has this code save the file elsewhere.
+    private func offerAnotherLocation(for request: URLRequest?, filename: String) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "无法存到下载文件夹"
+        alert.informativeText =
+            "Mochi 没有访问「下载」文件夹的权限，“\(filename)”没能存下来。可以在系统设置的「文件和文件夹」里允许 Mochi 访问，或者这次存到其他位置。"
+        // The default button finishes what the user set out to do.
+        alert.addButton(withTitle: "存到其他位置…")
+        alert.addButton(withTitle: "打开系统设置")
+        alert.addButton(withTitle: "取消")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            let answer: DownloadsFolderDeniedAnswer =
+                switch response {
+                case .alertFirstButtonReturn: .saveElsewhere
+                case .alertSecondButtonReturn: .openSystemSettings
+                default: .cancel
+                }
+            guard let self, downloadsFolderDeniedAnsweredHandler?(answer) == .saveElsewhereWithSavePanel, let request
+            else { return }
+            // After the alert's sheet has fully gone, so the Save panel can take its place.
+            DispatchQueue.main.async { [weak self] in self?.saveElsewhere(request, filename: filename) }
+        }
+    }
+
+    /// A Save panel, then the same request again, landing where the user picked — a place the
+    /// Downloads folder's permission doesn't govern (the panel grants it).
+    private func saveElsewhere(_ request: URLRequest, filename: String) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = filename
+        panel.canCreateDirectories = true
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
+            // As for 每次询问: the panel already asked "replace?", and WebKit won't write over a file.
+            if FileManager.default.fileExists(atPath: url.path) {
+                try? FileManager.default.trashItem(at: url, resultingItemURL: nil)
+            }
+            webView.startDownload(using: request) { [weak self] download in
+                guard let self else { return download.cancel() }
+                restartedDownloadDestinations[ObjectIdentifier(download)] = url
+                download.delegate = self
+            }
+        }
     }
 
     // MARK: Helpers

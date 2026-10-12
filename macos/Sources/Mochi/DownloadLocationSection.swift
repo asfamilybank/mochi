@@ -30,7 +30,22 @@ struct DownloadLocationSection: View {
             }
             .pickerStyle(.menu)
             .fixedSize()
+            // #105: the most recent write into 下载 was refused — shown only while that is the
+            // location, and gone once a write there succeeds.
+            if let prompt = viewModel.systemPermissionPrompts.first(where: { $0.placement == .downloadLocation }) {
+                HStack {
+                    Label("上次没能存到「下载」文件夹：需要在系统设置里允许 Mochi 访问", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Spacer()
+                    Button("打开系统设置") {
+                        viewModel.perform(prompt)
+                    }
+                }
+                .font(.caption)
+            }
         }
+        .onAppear { viewModel.refreshSystemPermissions() }
+        .onChange(of: viewModel.config.downloadLocation) { viewModel.refreshSystemPermissions() }
     }
 
     private var currentChoice: Choice {

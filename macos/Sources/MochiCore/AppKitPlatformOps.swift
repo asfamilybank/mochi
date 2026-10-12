@@ -663,6 +663,13 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// in-flight download's destination — kept so completion can bounce the Dock with the path.
     var downloadRequestedHandler: ((DownloadRequest, @escaping (DownloadDestinationDecision) -> Void) -> Void)?
     var downloadDestinations: [ObjectIdentifier: URL] = [:]
+    /// #105: told how each download ended, and what follows the answer to 「无法存到下载文件夹」;
+    /// the in-flight downloads whose destination a Save panel chose; and where each download
+    /// restarted by 存到其他位置… must land (set before WebKit asks for its destination).
+    var downloadEndedHandler: ((DownloadOutcome) -> DownloadOutcomeDecision)?
+    var downloadsFolderDeniedAnsweredHandler: ((DownloadsFolderDeniedAnswer) -> DownloadsFolderDeniedFollowUp)?
+    var downloadsChosenInSavePanel: Set<ObjectIdentifier> = []
+    var restartedDownloadDestinations: [ObjectIdentifier: URL] = [:]
     var mediaCaptureRequestedHandler: ((MediaCaptureRequest) -> MediaCaptureDecision)?  // #69
     /// #101: told the answer to Mochi's camera/microphone prompt, and each web view's new documents.
     var mediaCapturePromptAnsweredHandler: ((MediaCaptureRequest, MediaCapturePromptAnswer) -> Bool)?
@@ -2400,6 +2407,18 @@ public final class AppKitPlatformOps: PlatformOps {
         handle(for: window)?.downloadRequestedHandler = handler
     }
 
+    // #105
+    public func onDownloadEnded(_ window: WidgetWindowHandle, perform handler: @escaping (DownloadOutcome) -> DownloadOutcomeDecision) {
+        handle(for: window)?.downloadEndedHandler = handler
+    }
+
+    public func onDownloadsFolderDeniedAnswered(
+        _ window: WidgetWindowHandle,
+        perform handler: @escaping (DownloadsFolderDeniedAnswer) -> DownloadsFolderDeniedFollowUp
+    ) {
+        handle(for: window)?.downloadsFolderDeniedAnsweredHandler = handler
+    }
+
     // #69
     public func onMediaCaptureRequested(
         _ window: WidgetWindowHandle, perform handler: @escaping (MediaCaptureRequest) -> MediaCaptureDecision
@@ -2610,7 +2629,12 @@ public final class AppKitPlatformOps: PlatformOps {
     }
 
     public func setSystemPermissionMarker(_ marker: SystemPermissionMarker, _ isSet: Bool) {
+        // #105: the Downloads folder's marker is its permission's only status — an open settings
+        // panel hears about a change at once rather than on the next return to the front.
+        let downloadsFolderChanged =
+            marker == .downloadsFolderWriteDenied && isSystemPermissionMarkerSet(marker) != isSet
         UserDefaults.standard.set(isSet, forKey: marker.rawValue)
+        if downloadsFolderChanged { systemPermissionsMayHaveChangedHandlers.forEach { $0() } }
     }
 
     public func onSystemPermissionsMayHaveChanged(perform handler: @escaping () -> Void) {

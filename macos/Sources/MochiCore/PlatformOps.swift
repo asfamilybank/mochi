@@ -337,6 +337,8 @@ public protocol PlatformOps: AnyObject {
     /// the front (System Settings sends no notice of its own) and when a request is answered.
     /// Consumers just read the statuses again. Every call adds one more handler, for as long as
     /// the app runs — app-global, like the consumers that register them.
+    /// #105: also when `SystemPermissionMarker.downloadsFolderWriteDenied` changes value — that
+    /// marker is all there is to know about the Downloads folder's permission.
     func onSystemPermissionsMayHaveChanged(perform handler: @escaping () -> Void)
 
     /// Hands `keystroke` to `window`'s web view as a real key event (#93, ADR-0025): the page sees
@@ -366,6 +368,19 @@ public protocol PlatformOps: AnyObject {
     func onDownloadRequested(
         _ window: WidgetWindowHandle,
         perform handler: @escaping (DownloadRequest, @escaping (DownloadDestinationDecision) -> Void) -> Void)
+
+    /// #105: registers the handler told how each download ended — finished or failed, once it had
+    /// a destination (`DownloadWriteResult.classifying` sorts the failure). The platform shows
+    /// 「无法存到下载文件夹」 as a sheet on `.offerAnotherLocation` and reports the answer through
+    /// `onDownloadsFolderDeniedAnswered`, keeping the download's original request for a retry.
+    func onDownloadEnded(_ window: WidgetWindowHandle, perform handler: @escaping (DownloadOutcome) -> DownloadOutcomeDecision)
+
+    /// #105: registers the handler that decides what follows the user's answer to
+    /// 「无法存到下载文件夹」. On `.saveElsewhereWithSavePanel` the platform shows a Save panel and
+    /// starts that download's original request again, landing where the panel says.
+    func onDownloadsFolderDeniedAnswered(
+        _ window: WidgetWindowHandle,
+        perform handler: @escaping (DownloadsFolderDeniedAnswer) -> DownloadsFolderDeniedFollowUp)
 
     /// Registers the handler that decides a page's camera/microphone request (#69) — from the
     /// widget's page or any of its Popup Windows (`MediaCaptureRequest.source`). The platform

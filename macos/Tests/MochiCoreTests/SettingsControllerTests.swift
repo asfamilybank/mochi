@@ -1371,4 +1371,20 @@ import Testing
 
         #expect(controller.systemPermissionPrompts.map(\.permission) == [.microphone])
     }
+
+    /// #105: the Downloads folder's prompt follows the remembered refusal of its last write — kept
+    /// in `UserDefaults`, so it is there from the first look after a relaunch — and its button
+    /// opens 文件和文件夹.
+    @Test func promptsForTheDownloadsFolderWhileItsLastWriteStandsRefused() {
+        let fake = FakePlatformOps()
+        let controller = makeController(store: PersistedStore(WidgetConfig()), platformOps: fake)
+
+        #expect(controller.systemPermissionPrompts.isEmpty)
+        fake.systemPermissionMarkers.insert(.downloadsFolderWriteDenied)
+        let prompts = controller.systemPermissionPrompts
+
+        #expect(prompts.map(\.permission) == [.downloadsFolder])
+        prompts.forEach(controller.perform)
+        #expect(fake.openedSystemSettings == [.downloadsFolder])
+    }
 }

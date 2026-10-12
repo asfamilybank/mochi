@@ -97,6 +97,86 @@ public enum DownloadDestinationDecision: Equatable, Sendable {
     case askWithSavePanel(directory: URL, suggestedFilename: String)
 }
 
+// MARK: Download outcome (#105, ADR-0026)
+
+/// How writing a download's file went — the only way Mochi learns where the Downloads folder's
+/// 文件和文件夹 permission stands, since the system offers no query for it.
+public enum DownloadWriteResult: Equatable, Sendable {
+    case succeeded
+    /// The system refused the write: for the Downloads folder, the permission is off.
+    case deniedPermission
+    /// Anything else — the network, a full disk, a cancel. Says nothing about the permission.
+    case failed
+
+    /// What a download ending with `error` (`nil`: it finished) means. An error that wraps another
+    /// (`NSUnderlyingErrorKey`) is judged by what it wraps; a bare "couldn't create / open the
+    /// file" from WebKit's URL loading counts as a refusal, since that is what it means for a
+    /// folder that exists.
+    public static func classifying(_ error: Error?) -> DownloadWriteResult {
+        guard let error else { return .succeeded }
+        return isPermissionError(error as NSError) ? .deniedPermission : .failed
+    }
+
+    private static func isPermissionError(_ error: NSError) -> Bool {
+        let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError
+        if let underlying, isPermissionError(underlying) { return true }
+        switch error.domain {
+        case NSCocoaErrorDomain:
+            return [CocoaError.fileWriteNoPermission.rawValue, CocoaError.fileReadNoPermission.rawValue]
+                .contains(error.code)
+        case NSPOSIXErrorDomain:
+            return [Int(EPERM), Int(EACCES)].contains(error.code)
+        case NSURLErrorDomain:
+            return underlying == nil
+                && [URLError.cannotCreateFile.rawValue, URLError.cannotOpenFile.rawValue].contains(error.code)
+        default:
+            return false
+        }
+    }
+}
+
+/// A download that has ended (#105) — reported whether it finished or failed, once it had a
+/// destination.
+public struct DownloadOutcome: Equatable, Sendable {
+    public var destination: URL
+    /// The user picked `destination` in a Save panel (每次询问, or 存到其他位置…): the system lets
+    /// Mochi write there whatever the 文件和文件夹 permission says, so the outcome tells nothing
+    /// about it.
+    public var chosenInSavePanel: Bool
+    public var result: DownloadWriteResult
+
+    public init(destination: URL, chosenInSavePanel: Bool, result: DownloadWriteResult) {
+        self.destination = destination
+        self.chosenInSavePanel = chosenInSavePanel
+        self.result = result
+    }
+}
+
+/// What follows a download's end.
+public enum DownloadOutcomeDecision: Equatable, Sendable {
+    /// Nothing to show.
+    case none
+    /// Normal Mode, refused by the Downloads folder: a sheet 「无法存到下载文件夹」 with 打开系统设置,
+    /// 存到其他位置… and 取消, whose answer goes back as a `DownloadsFolderDeniedAnswer`.
+    case offerAnotherLocation
+}
+
+/// The user's answer to 「无法存到下载文件夹」 (`DownloadOutcomeDecision.offerAnotherLocation`).
+public enum DownloadsFolderDeniedAnswer: Equatable, Sendable {
+    case openSystemSettings
+    case saveElsewhere
+    case cancel
+}
+
+/// What the platform does after that answer. Opening System Settings isn't one of these: MochiCore
+/// does it itself through `PlatformOps.openSystemSettings(for:)` and answers `.none`.
+public enum DownloadsFolderDeniedFollowUp: Equatable, Sendable {
+    case none
+    /// Show a Save panel (the failed file's name pre-filled), then start the download's original
+    /// request again, landing where the user picked — a place the permission doesn't govern.
+    case saveElsewhereWithSavePanel
+}
+
 // MARK: - 摄像头与麦克风 (#69) · 网站例外与 Mochi 的询问框 (#101, ADR-0027)
 
 /// Which capture devices a page's `getUserMedia` asks for.
