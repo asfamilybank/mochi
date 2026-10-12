@@ -691,6 +691,15 @@ extension WidgetConfig {
         return copy
     }
 
+    /// 清除浏览数据… (#107): drops every exception, of either permission, last modified at or
+    /// after `start` — `.distantPast` drops them all.
+    public func removingPagePermissionExceptions(modifiedSince start: Date) -> WidgetConfig {
+        var copy = self
+        copy.cameraExceptions.removeAll { $0.lastModified >= start }
+        copy.microphoneExceptions.removeAll { $0.lastModified >= start }
+        return copy
+    }
+
     public func updatingSearchEngine(_ searchEngine: SearchEngine) -> WidgetConfig {
         var copy = self
         copy.searchEngine = searchEngine

@@ -151,6 +151,12 @@ final class SettingsViewModel: ObservableObject {
         controller.removeAllWebsiteData()
     }
 
+    // #107 — re-publishes the config, since clearing 网页权限例外 edits it.
+    func clearBrowsingData(_ kinds: Set<BrowsingDataKind>, from range: BrowsingDataTimeRange) {
+        controller.clearBrowsingData(kinds, from: range)
+        config = controller.config
+    }
+
     func reloadPageNow() {
         reloadPage()
     }

@@ -101,8 +101,8 @@ public final class SettingsController {
     // #109: 网站 → 摄像头 / 麦克风's exceptions table (ADR-0027) — read at each request, so
     // persisting is applying.
 
-    /// Stamps an exception edited in the table, for 清除浏览数据's time ranges. Tests swap in a
-    /// fixed date.
+    /// Stamps an exception edited in the table, and is what 清除浏览数据's 「过去 1 小时」 and the
+    /// rest count back from (#107). Tests swap in a fixed date, like `Orchestrator.currentDate`.
     public var currentDate: () -> Date = { Date() }
 
     /// Sets `host`'s exception for `permission` to `setting`, stamped with the time of the edit.
@@ -129,6 +129,22 @@ public final class SettingsController {
     /// confirmation before calling this.
     public func removeAllWebsiteData() {
         platformOps.removeAllWebsiteData()
+    }
+
+    // MARK: - #107: 清除浏览数据…
+
+    /// Clears `kinds` modified within `range`: the website data ones through the platform, the
+    /// 网页权限例外 through the config (by their modification time). The page isn't reloaded. The
+    /// UI asks for confirmation before calling this.
+    public func clearBrowsingData(_ kinds: Set<BrowsingDataKind>, from range: BrowsingDataTimeRange) {
+        let start = range.startDate(now: currentDate())
+        let categories = BrowsingDataKind.websiteDataCategories(for: kinds)
+        if !categories.isEmpty {
+            platformOps.removeData(ofTypes: categories, modifiedSince: start)
+        }
+        if kinds.contains(.pagePermissionExceptions) {
+            persistAndNotify { $0.removingPagePermissionExceptions(modifiedSince: start) }
+        }
     }
 
     public func updateSearchEngine(_ engine: SearchEngine) {

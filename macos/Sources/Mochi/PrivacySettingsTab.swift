@@ -7,6 +7,7 @@ import SwiftUI
 struct PrivacySettingsTab: View {
     @ObservedObject var viewModel: SettingsViewModel
     @State private var isConfirmingDataRemoval = false
+    @State private var isClearingBrowsingData = false
 
     var body: some View {
         Form {
@@ -15,6 +16,12 @@ struct PrivacySettingsTab: View {
                 Text("清除 Cookie、缓存、本地存储与网站图标。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                // #107
+                Button("清除浏览数据…") { isClearingBrowsingData = true }
+                    .sheet(isPresented: $isClearingBrowsingData) {
+                        ClearBrowsingDataSheet { kinds, range in viewModel.clearBrowsingData(kinds, from: range) }
+                    }
             }
             .alert("确定要移除所有网站数据吗？", isPresented: $isConfirmingDataRemoval) {
                 Button("移除", role: .destructive) { viewModel.removeAllWebsiteData() }

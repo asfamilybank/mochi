@@ -279,6 +279,11 @@ public protocol PlatformOps: AnyObject {
     /// the widget closed. Never touches `config.toml`. Confirmation is the caller's job.
     func removeAllWebsiteData()
 
+    /// 清除浏览数据… (#107): removes the website data of `types` that was modified at or after
+    /// `modifiedSince` (`.distantPast` for 时间不限), from every website. App-global like
+    /// `removeAllWebsiteData`; never reloads a page. Confirmation is the caller's job.
+    func removeData(ofTypes types: Set<WebsiteDataCategory>, modifiedSince: Date)
+
     /// Creates the app's persistent menu-bar (tray) icon (#9) — present for the app's entire
     /// lifetime regardless of Normal/Ghost Mode — populated with `items` in order. Not tied to a
     /// `WidgetWindowHandle` since the tray icon is app-global, not per-window. Called once, at

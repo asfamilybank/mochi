@@ -283,6 +283,13 @@ final class FakePlatformOps: PlatformOps {
         removeAllWebsiteDataCallCount += 1
     }
 
+    // #107: 清除浏览数据…
+    private(set) var websiteDataRemovals: [(types: Set<WebsiteDataCategory>, modifiedSince: Date)] = []
+
+    func removeData(ofTypes types: Set<WebsiteDataCategory>, modifiedSince: Date) {
+        websiteDataRemovals.append((types, modifiedSince))
+    }
+
     func createTrayIcon(items: [TrayMenuItem]) {
         createTrayIconCallCount += 1
         trayMenuItems = items

@@ -2537,6 +2537,20 @@ public final class AppKitPlatformOps: PlatformOps {
         }
     }
 
+    /// #107: the same shared store, narrowed to `types`' WebKit data types and to what was
+    /// modified since `modifiedSince`. Mochi's favicon cache counts as cached images: it goes
+    /// whenever the cache does (it has no timestamps, and is refetched on demand anyway).
+    public func removeData(ofTypes types: Set<WebsiteDataCategory>, modifiedSince: Date) {
+        let webKitTypes = WebsiteDataCategory.webKitTypes(for: types, among: WebsiteDataCategory.allWebKitTypes)
+        guard !webKitTypes.isEmpty else { return }
+        WKWebsiteDataStore.default().removeData(ofTypes: webKitTypes, modifiedSince: modifiedSince) {}
+        if types.contains(.cache) {
+            for handle in liveHandles.allObjects {
+                handle.clearFaviconCache()
+            }
+        }
+    }
+
     /// Drops the HTTP cache when the User-Agent suffix changed since the last run, then calls
     /// `completion` — on the main thread, before which no web view may load (ADR-0025). Only the
     /// cache goes: cookies, local storage and logins stay. Calls straight through when nothing

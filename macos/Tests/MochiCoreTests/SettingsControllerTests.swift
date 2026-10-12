@@ -872,6 +872,127 @@ import Testing
         #expect(notified == 0)
     }
 
+    // MARK: - #107: 清除浏览数据…
+
+    private static let clearingNow = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private func makeClearingController(
+        store: PersistedStore, platformOps: FakePlatformOps, configDidChange: @escaping () -> Void = {}
+    ) -> SettingsController {
+        let controller = makeController(store: store, platformOps: platformOps, configDidChange: configDidChange)
+        controller.currentDate = { Self.clearingNow }
+        return controller
+    }
+
+    @Test(arguments: [
+        (kinds: [BrowsingDataKind.cache], categories: [WebsiteDataCategory.cache]),
+        (kinds: [.websiteData], categories: [.cookiesAndOtherData]),
+        (kinds: [.websiteData, .cache], categories: [.cookiesAndOtherData, .cache]),
+        (kinds: [.websiteData, .cache, .pagePermissionExceptions], categories: [.cookiesAndOtherData, .cache]),
+    ])
+    func clearingBrowsingDataRemovesTheTickedWebsiteDataFromTheRangesStart(
+        _ row: (kinds: [BrowsingDataKind], categories: [WebsiteDataCategory])
+    ) {
+        let fake = FakePlatformOps()
+        let controller = makeClearingController(store: PersistedStore(WidgetConfig()), platformOps: fake)
+
+        controller.clearBrowsingData(Set(row.kinds), from: .past24Hours)
+
+        #expect(fake.websiteDataRemovals.map(\.types) == [Set(row.categories)])
+        #expect(fake.websiteDataRemovals.map(\.modifiedSince) == [Self.clearingNow.addingTimeInterval(-86_400)])
+    }
+
+    @Test func clearingAllTimeRemovesWebsiteDataFromTheDistantPast() {
+        let fake = FakePlatformOps()
+        let controller = makeClearingController(store: PersistedStore(WidgetConfig()), platformOps: fake)
+
+        controller.clearBrowsingData(BrowsingDataKind.defaultSelection, from: .allTime)
+
+        #expect(fake.websiteDataRemovals.map(\.modifiedSince) == [.distantPast])
+    }
+
+    /// Website data isn't config: clearing only it writes nothing and notifies no one.
+    @Test func clearingOnlyWebsiteDataLeavesTheConfigAlone() {
+        let store = PersistedStore(Self.configWithExceptions())
+        let fake = FakePlatformOps()
+        var notified = 0
+        let controller = makeClearingController(store: store, platformOps: fake, configDidChange: { notified += 1 })
+
+        controller.clearBrowsingData([.websiteData, .cache], from: .allTime)
+
+        #expect(store.writeCount == 0)
+        #expect(notified == 0)
+        #expect(store.config == Self.configWithExceptions())
+    }
+
+    /// Exceptions for both devices: two changed 30 minutes ago, one 2 days ago, one 30 days ago.
+    private static func configWithExceptions() -> WidgetConfig {
+        WidgetConfig()
+            .updatingPagePermissionException(
+                .camera, host: "recent.example", setting: .allow, modifiedAt: clearingNow.addingTimeInterval(-1_800))
+            .updatingPagePermissionException(
+                .microphone, host: "recent.example", setting: .deny, modifiedAt: clearingNow.addingTimeInterval(-1_800))
+            .updatingPagePermissionException(
+                .camera, host: "days.example", setting: .deny, modifiedAt: clearingNow.addingTimeInterval(-2 * 86_400))
+            .updatingPagePermissionException(
+                .microphone, host: "old.example", setting: .allow, modifiedAt: clearingNow.addingTimeInterval(-30 * 86_400))
+    }
+
+    @Test(arguments: [
+        (range: BrowsingDataTimeRange.pastHour, camera: ["days.example"], microphone: ["old.example"]),
+        (range: .past24Hours, camera: ["days.example"], microphone: ["old.example"]),
+        (range: .past7Days, camera: [], microphone: ["old.example"]),
+        (range: .past4Weeks, camera: [], microphone: ["old.example"]),
+        (range: .allTime, camera: [], microphone: []),
+    ])
+    func clearingPagePermissionExceptionsRemovesThoseModifiedWithinTheRange(
+        _ row: (range: BrowsingDataTimeRange, camera: [String], microphone: [String])
+    ) {
+        let store = PersistedStore(Self.configWithExceptions())
+        var notified = 0
+        let controller = makeClearingController(
+            store: store, platformOps: FakePlatformOps(), configDidChange: { notified += 1 })
+
+        controller.clearBrowsingData([.pagePermissionExceptions], from: row.range)
+
+        #expect(store.config.pagePermissionExceptions(.camera).map(\.host) == row.camera)
+        #expect(store.config.pagePermissionExceptions(.microphone).map(\.host) == row.microphone)
+        #expect(notified == 1)
+    }
+
+    /// An exception changed exactly at the range's start is inside it (「不早于起点」).
+    @Test func anExceptionModifiedExactlyAtTheStartIsCleared() {
+        let start = Self.clearingNow.addingTimeInterval(-3_600)
+        let store = PersistedStore(
+            WidgetConfig().updatingPagePermissionException(.camera, host: "edge.example", setting: .allow, modifiedAt: start))
+        let controller = makeClearingController(store: store, platformOps: FakePlatformOps())
+
+        controller.clearBrowsingData([.pagePermissionExceptions], from: .pastHour)
+
+        #expect(store.config.pagePermissionExceptions(.camera).isEmpty)
+    }
+
+    @Test func clearingOnlyPagePermissionExceptionsNeverReachesThePlatform() {
+        let fake = FakePlatformOps()
+        let controller = makeClearingController(store: PersistedStore(Self.configWithExceptions()), platformOps: fake)
+
+        controller.clearBrowsingData([.pagePermissionExceptions], from: .allTime)
+
+        #expect(fake.websiteDataRemovals.isEmpty)
+        #expect(fake.removeAllWebsiteDataCallCount == 0)
+    }
+
+    @Test func clearingNothingDoesNothing() {
+        let store = PersistedStore(Self.configWithExceptions())
+        let fake = FakePlatformOps()
+        let controller = makeClearingController(store: store, platformOps: fake)
+
+        controller.clearBrowsingData([], from: .allTime)
+
+        #expect(fake.websiteDataRemovals.isEmpty)
+        #expect(store.writeCount == 0)
+    }
+
     @Test func aWebInspectorEditReachesTheLiveWindowWhenWiredToTheOrchestrator() {
         let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
         let fake = FakePlatformOps()
