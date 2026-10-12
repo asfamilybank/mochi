@@ -12,6 +12,8 @@ final class MainMenuBuilder {
     private var targets: [MenuItemActionTarget] = []
     /// #102: the 历史记录 menu's delegate — `NSMenu.delegate` is weak.
     private var historyMenuController: HistoryMenuController?
+    /// #108: the 历史记录 window, created the first time ⌘Y asks for it.
+    private var historyWindowController: HistoryWindowController?
 
     /// - Parameters:
     ///   - orchestrator: supplies everything the menus do. Widget-bound items go through its
@@ -151,7 +153,8 @@ final class MainMenuBuilder {
 
     /// 返回/前进 (#59) — the same steps as the toolbar's back/forward segments, Empty Page
     /// included — and below them the history list (#102), rebuilt by `HistoryMenuController`
-    /// every time the menu opens.
+    /// every time the menu opens. 显示全部历史记录 (⌘Y, #108) stays at the bottom: a fixed item,
+    /// so its key equivalent works without the menu ever having been opened.
     private func historyMenuItem(orchestrator: Orchestrator) -> NSMenuItem {
         let menu = NSMenu(title: "历史记录")
 
@@ -165,9 +168,23 @@ final class MainMenuBuilder {
         historyMenuController.attach(to: menu)
         self.historyMenuController = historyMenuController
 
+        // #108: below the list, which `HistoryMenuController` rebuilds above these.
+        menu.addItem(.separator())
+        menu.addItem(action("显示全部历史记录", symbol: "clock", keyEquivalent: "y") { [weak self] in
+            self?.toggleHistoryWindow(orchestrator: orchestrator)
+        })
+
         let item = NSMenuItem()
         item.submenu = menu
         return item
+    }
+
+    /// ⌘Y opens the 历史记录 window, and closes it again when it is the window in front (#108).
+    private func toggleHistoryWindow(orchestrator: Orchestrator) {
+        if historyWindowController == nil, let browser = orchestrator.makeHistoryBrowser() {
+            historyWindowController = HistoryWindowController(browser: browser)
+        }
+        historyWindowController?.toggle()
     }
 
     // MARK: - Window menu

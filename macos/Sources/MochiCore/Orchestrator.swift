@@ -553,6 +553,14 @@ public final class Orchestrator {
         handleURLSubmitted(url)
     }
 
+    /// #108: what the 历史记录 window (⌘Y) shows and does — the same store the menu is rebuilt
+    /// from, so the menu follows whatever the window deletes, and the same `openFromHistory`.
+    /// `nil` without a store.
+    public func makeHistoryBrowser() -> HistoryBrowser? {
+        guard let historyStore else { return nil }
+        return HistoryBrowser(store: historyStore) { [weak self] url in self?.openFromHistory(url) }
+    }
+
     // MARK: 网页交互请求 (#66)
 
     /// Wires every page-initiated interaction request to its decision. Ghost Mode is read at
