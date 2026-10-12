@@ -95,11 +95,15 @@ final class SettingsViewModel: ObservableObject {
     func updateCameraPermission(_ permission: WidgetConfig.MediaCapturePermission) {
         controller.updateCameraPermission(permission)
         config = controller.config
+        // #104: 拒绝 takes the page's 系统权限 prompt away, anything else may bring it back.
+        refreshSystemPermissions()
     }
 
     func updateMicrophonePermission(_ permission: WidgetConfig.MediaCapturePermission) {
         controller.updateMicrophonePermission(permission)
         config = controller.config
+        // #104: 拒绝 takes the page's 系统权限 prompt away, anything else may bring it back.
+        refreshSystemPermissions()
     }
 
     // #67
@@ -196,6 +200,11 @@ final class SettingsViewModel: ObservableObject {
 
     func perform(_ prompt: SystemPermissionPrompt) {
         controller.perform(prompt)
+    }
+
+    /// 网站 → 摄像头 / 麦克风's prompt for `device`, if it has one (#104).
+    func websitesPermissionPagePrompt(for device: SystemPermission) -> SystemPermissionPrompt? {
+        systemPermissionPrompts.first { $0.placement == .websitesPermissionPage && $0.permission == device }
     }
 
     /// `true` once the mapping is live; a refusal is shown on the add row instead.

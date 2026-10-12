@@ -1319,4 +1319,41 @@ import Testing
 
         #expect(heard == 1)
     }
+
+    // MARK: 摄像头 / 麦克风的系统权限 (#104)
+
+    /// 网站 → 摄像头 / 麦克风: each page's button asks the platform about its own device — 请求权限
+    /// for one the system has never asked about, 打开系统设置 for one it has refused.
+    @Test(arguments: [
+        (camera: SystemPermissionStatus.notDetermined, microphone: SystemPermissionStatus.denied,
+         requested: [SystemPermission.camera], opened: [SystemPermission.microphone]),
+        (camera: .denied, microphone: .notDetermined, requested: [.microphone], opened: [.camera]),
+    ])
+    func cameraAndMicrophonePromptsGoToThePlatformForTheirOwnDevice(
+        _ row: (camera: SystemPermissionStatus, microphone: SystemPermissionStatus,
+                requested: [SystemPermission], opened: [SystemPermission])
+    ) {
+        let fake = FakePlatformOps()
+        fake.stubbedSystemPermissionStatuses = [.camera: row.camera, .microphone: row.microphone]
+        let controller = makeController(store: PersistedStore(WidgetConfig()), platformOps: fake)
+
+        let prompts = controller.systemPermissionPrompts.filter { $0.placement == .websitesPermissionPage }
+        prompts.forEach(controller.perform)
+
+        #expect(prompts.map(\.permission) == [.camera, .microphone])
+        #expect(fake.systemPermissionRequests == row.requested)
+        #expect(fake.openedSystemSettings == row.opened)
+    }
+
+    /// Setting a page's 网页权限 to 拒绝 takes its prompt away straight off — the prompts are read
+    /// from the config as it now stands.
+    @Test func aDeniedPagePermissionTakesItsSystemPermissionPromptAway() {
+        let fake = FakePlatformOps()
+        fake.stubbedSystemPermissionStatuses = [.camera: .denied, .microphone: .denied]
+        let controller = makeController(store: PersistedStore(WidgetConfig()), platformOps: fake)
+
+        controller.updateCameraPermission(.deny)
+
+        #expect(controller.systemPermissionPrompts.map(\.permission) == [.microphone])
+    }
 }

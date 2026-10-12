@@ -36,17 +36,23 @@ struct WebsitesSettingsTab: View {
                         permission: Binding(
                             get: { viewModel.config.cameraPermission },
                             set: { viewModel.updateCameraPermission($0) }
-                        ))
+                        ),
+                        systemPermissionPrompt: viewModel.websitesPermissionPagePrompt(for: .camera),
+                        perform: viewModel.perform)
                 case .microphone:
                     PagePermissionPage(
                         permission: Binding(
                             get: { viewModel.config.microphonePermission },
                             set: { viewModel.updateMicrophonePermission($0) }
-                        ))
+                        ),
+                        systemPermissionPrompt: viewModel.websitesPermissionPagePrompt(for: .microphone),
+                        perform: viewModel.perform)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
+        // #104: System Settings may have changed the camera or microphone since last shown.
+        .onAppear { viewModel.refreshSystemPermissions() }
     }
 }
 
@@ -133,8 +139,20 @@ private struct WebsitesGeneralPage: View {
 /// default — which stays at the bottom, as in Safari.
 private struct PagePermissionPage: View {
     @Binding var permission: WidgetConfig.MediaCapturePermission
+    /// #104: shown above everything else while the system keeps pages from this device.
+    var systemPermissionPrompt: SystemPermissionPrompt?
+    var perform: (SystemPermissionPrompt) -> Void
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let systemPermissionPrompt {
+                SystemPermissionHint(prompt: systemPermissionPrompt, perform: perform)
+            }
+            form
+        }
+    }
+
+    private var form: some View {
         Form {
             Section {
                 Picker("访问其他网站时：", selection: $permission) {
@@ -147,6 +165,37 @@ private struct PagePermissionPage: View {
             }
         }
         .formStyle(.columns)
+    }
+}
+
+/// The 系统权限 hint at the top of 网站 → 摄像头 / 麦克风 (#104, ADR-0026): the 网页权限 lets pages
+/// ask, but the system has not given Mochi the device, so they would get nothing.
+private struct SystemPermissionHint: View {
+    let prompt: SystemPermissionPrompt
+    let perform: (SystemPermissionPrompt) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+            switch prompt.action {
+            case .request: Button("请求权限") { perform(prompt) }.controlSize(.small)
+            case .openSystemSettings: Button("打开系统设置") { perform(prompt) }.controlSize(.small)
+            case nil: EmptyView()
+            }
+        }
+        .font(.caption)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var message: String {
+        let device = prompt.permission == .camera ? "摄像头" : "麦克风"
+        return switch prompt.action {
+        case .request: "Mochi 还没有获得\(device)权限，网页暂时无法使用\(device)。"
+        case .openSystemSettings: "Mochi 的\(device)权限已被拒绝，网页无法使用\(device)。"
+        case nil: "\(device)权限受管理策略限制，网页无法使用\(device)。"
+        }
     }
 }
 
