@@ -612,21 +612,21 @@ private struct VideoControlRow: View {
 /// its trigger but not its page key, so a change is delete-and-add — with the add row below.
 ///
 /// Since #92 a trigger is a tap, a double tap or a combo, picked in the add row's dropdown
-/// (组合键 first, as every mapping used to be). Like a 视频控制 row's, picking a kind only tries
-/// it out: it starts recording, and leaving without a key puts the dropdown back and keeps any
-/// trigger already recorded. Only a combo is taken from other apps, so the section no longer
-/// says its keys are; a combo says so itself — a lock beside each mapping's, a line under the add
-/// row while 组合键 is picked.
+/// (组合键 first, as every mapping used to be). Picking a kind starts recording, as in a 视频控制
+/// row — but unlike there, it sticks: the add row is a draft, not a live binding, so there is
+/// nothing to put back when the user leaves without a key. A trigger already recorded of another
+/// kind no longer matches the dropdown and is dropped. Only a combo is taken from other apps, so
+/// the section no longer says its keys are; a combo says so itself — a lock beside each
+/// mapping's, a line under the add row while 组合键 is picked.
 private struct HotkeyForwardingSection: View {
     @ObservedObject var viewModel: SettingsViewModel
     @State private var newKind = TriggerKind.combo
-    /// The kind being tried out while recording; `nil` otherwise.
-    @State private var pendingKind: TriggerKind?
     @State private var newTrigger: TriggerKey?
     @State private var newPageKeystroke: Hotkey?
     @State private var newTriggerRecordingRequest = 0
 
     private static let occupiedNote = "这个组合会被占用，其他应用里按不出来"
+    private static let scrollerGutter = NSScroller.scrollerWidth(for: .regular, scrollerStyle: .overlay)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -659,7 +659,9 @@ private struct HotkeyForwardingSection: View {
                         .help("删除映射")
                         .accessibilityLabel("删除映射")
                     }
-                    .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+                    // Keeps the trash buttons clear of the scroller, which overlays the rows once
+                    // there are enough mappings to scroll.
+                    .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: Self.scrollerGutter))
                 }
             }
             .listStyle(.plain)
@@ -670,9 +672,12 @@ private struct HotkeyForwardingSection: View {
                     Picker(
                         "触发方式",
                         selection: Binding(
-                            get: { pendingKind ?? newKind },
+                            get: { newKind },
                             set: { kind in
-                                pendingKind = kind
+                                if kind != newKind {
+                                    newKind = kind
+                                    newTrigger = nil
+                                }
                                 newTriggerRecordingRequest += 1
                             }
                         )
@@ -684,11 +689,10 @@ private struct HotkeyForwardingSection: View {
                     .labelsHidden()
                     .fixedSize()
                     TriggerKeyRecorderView(
-                        trigger: newTrigger, kind: pendingKind ?? newKind, accessibilityName: "触发键",
+                        trigger: newTrigger, kind: newKind, accessibilityName: "触发键",
                         width: HotkeyRecorderField.mappingWidth,
                         recordingRequest: newTriggerRecordingRequest,
                         onRecordingStarted: viewModel.clearRowRejection,
-                        onRecordingStopped: { pendingKind = nil },
                         onHint: { viewModel.showHint($0, on: .newMapping) },
                         onCapture: { trigger in
                             newTrigger = trigger
@@ -715,7 +719,7 @@ private struct HotkeyForwardingSection: View {
                     Text(rejection)
                         .font(.caption)
                         .foregroundStyle(.red)
-                } else if (pendingKind ?? newKind) == .combo {
+                } else if newKind == .combo {
                     Text(Self.occupiedNote)
                         .font(.caption)
                         .foregroundStyle(.secondary)
