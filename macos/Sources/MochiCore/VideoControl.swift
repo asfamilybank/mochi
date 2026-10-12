@@ -62,6 +62,11 @@ public final class VideoControl {
     private var tapRecognizer = TriggerTapRecognizer()
     /// Cancels the wait on `tapRecognizer`'s held-back tap, while there is one.
     private var cancelHeldBackTapRelease: (() -> Void)?
+    /// Cancels the next look at whether Accessibility has arrived, while listening without it.
+    private var cancelAccessibilityCheck: (() -> Void)?
+
+    /// How often a listener without Accessibility looks for it (#103).
+    static let accessibilityCheckInterval: TimeInterval = 2
 
     public init(
         platformOps: PlatformOps,
@@ -99,9 +104,7 @@ public final class VideoControl {
             startObservingInput()
         } else if !shouldObserve, isObserving {
             isObserving = false
-            platformOps.stopObservingInput()
-            cancelHeldBackTapRelease?()
-            cancelHeldBackTapRelease = nil
+            stopObservingInput()
         }
     }
 
@@ -111,19 +114,47 @@ public final class VideoControl {
         platformOps.startObservingInput { [weak self] event in
             self?.handle(event)
         }
+        if isObservingWithoutAccessibility {
+            scheduleAccessibilityCheck()
+        }
+    }
+
+    private func stopObservingInput() {
+        platformOps.stopObservingInput()
+        cancelHeldBackTapRelease?()
+        cancelHeldBackTapRelease = nil
+        cancelAccessibilityCheck?()
+        cancelAccessibilityCheck = nil
     }
 
     /// Granting Accessibility takes effect without a relaunch or a trip out of Ghost Mode (#103):
     /// a listener that went in without it is put in afresh once it arrives. Whether the old one
     /// would have started hearing other apps on its own is the system's business; reinstalling
     /// is right either way.
+    ///
+    /// Two things look: `onSystemPermissionsMayHaveChanged`, when Mochi becomes active again, and
+    /// a check every `accessibilityCheckInterval` — in Ghost Mode Mochi hands focus away and is
+    /// never activated, so the first alone would leave the user granting it in System Settings
+    /// with nothing happening (spec #95, story 12).
     private func reinstallObservationIfAccessibilityArrived() {
         guard isObserving, isObservingWithoutAccessibility,
               platformOps.systemPermissionStatus(.accessibility) == .authorized else { return }
-        platformOps.stopObservingInput()
-        cancelHeldBackTapRelease?()
-        cancelHeldBackTapRelease = nil
+        stopObservingInput()
         startObservingInput()
+    }
+
+    private func scheduleAccessibilityCheck() {
+        cancelAccessibilityCheck?()
+        cancelAccessibilityCheck = platformOps.schedule(after: Self.accessibilityCheckInterval) { [weak self] in
+            guard let self else { return }
+            cancelAccessibilityCheck = nil
+            guard isObserving, isObservingWithoutAccessibility else { return }
+            if platformOps.systemPermissionStatus(.accessibility) == .authorized {
+                reinstallObservationIfAccessibilityArrived()
+            } else {
+                scheduleAccessibilityCheck()
+            }
+        }
     }
 
     private func handle(_ event: RawInputEvent) {

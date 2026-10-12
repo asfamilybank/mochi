@@ -378,6 +378,68 @@ import Testing
         #expect(fake.videoCommands.map(\.command) == [.togglePlayback])
     }
 
+    /// In Ghost Mode Mochi hands focus away and is never activated again, so the
+    /// `onSystemPermissionsMayHaveChanged` signal never comes (spec #95, story 12): while
+    /// listening without Accessibility, `VideoControl` checks for it on its own until it arrives.
+    @Test func grantingAccessibilityInGhostModeTakesEffectWithoutMochiBeingActivated() {
+        let fake = FakePlatformOps()
+        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
+        let orchestrator = startedInGhostMode(fake)
+
+        withExtendedLifetime(orchestrator) {
+            fake.runScheduledWork()
+            #expect(fake.startObservingInputCallCount == 1)
+            #expect(fake.pendingScheduledWorkCount == 1)
+
+            fake.stubbedSystemPermissionStatuses[.accessibility] = .authorized
+            fake.runScheduledWork()
+            fake.simulateModifierTap(.rightOption)
+        }
+
+        #expect(fake.startObservingInputCallCount == 2)
+        #expect(fake.stopObservingInputCallCount == 1)
+        #expect(fake.isObservingInput)
+        #expect(fake.pendingScheduledWorkCount == 0)
+        #expect(fake.videoCommands.map(\.command) == [.togglePlayback])
+    }
+
+    @Test func leavingGhostModeStopsCheckingForAccessibility() {
+        let fake = FakePlatformOps()
+        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
+        let orchestrator = startedInGhostMode(fake)
+
+        withExtendedLifetime(orchestrator) {
+            fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+        }
+
+        #expect(fake.pendingScheduledWorkCount == 0)
+        #expect(!fake.isObservingInput)
+    }
+
+    @Test func accessibilityArrivingWithActivationStopsTheCheck() {
+        let fake = FakePlatformOps()
+        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
+        let orchestrator = startedInGhostMode(fake)
+
+        withExtendedLifetime(orchestrator) {
+            fake.stubbedSystemPermissionStatuses[.accessibility] = .authorized
+            fake.simulateSystemPermissionsMayHaveChanged()
+        }
+
+        #expect(fake.startObservingInputCallCount == 2)
+        #expect(fake.pendingScheduledWorkCount == 0)
+    }
+
+    @Test func listeningWithAccessibilityNeverChecksForIt() {
+        let fake = FakePlatformOps()
+        let orchestrator = startedInGhostMode(fake)
+
+        withExtendedLifetime(orchestrator) {}
+
+        #expect(fake.isObservingInput)
+        #expect(fake.pendingScheduledWorkCount == 0)
+    }
+
     @Test(arguments: [
         (name: "already granted when listening began", ghostMode: true, deniedAtFirst: false),
         (name: "not listening", ghostMode: false, deniedAtFirst: true),
