@@ -36,9 +36,21 @@ extension AppKitWidgetWindowHandle: WKDownloadDelegate {
         completionHandler: @escaping (URL?) -> Void
     ) {
         // No decider registered means nobody may choose a place on disk: cancel.
-        guard let decision = downloadRequestedHandler?(DownloadRequest(suggestedFilename: suggestedFilename)) else {
-            return completionHandler(nil)
+        guard let decide = downloadRequestedHandler else { return completionHandler(nil) }
+        // The answer may come later (#99): deciding reads the disk off the main thread, and the
+        // first read of ~/Downloads waits until the system's 「访问下载文件夹」 prompt is answered.
+        decide(DownloadRequest(suggestedFilename: suggestedFilename)) { [weak self] decision in
+            guard let self else { return completionHandler(nil) }
+            execute(decision, for: download, completionHandler: completionHandler)
         }
+    }
+
+    /// Carries out MochiCore's answer on the main thread: hand WebKit the file URL, or ask first
+    /// with a Save panel sheet.
+    private func execute(
+        _ decision: DownloadDestinationDecision, for download: WKDownload,
+        completionHandler: @escaping (URL?) -> Void
+    ) {
         switch decision {
         case .saveTo(let url):
             downloadDestinations[ObjectIdentifier(download)] = url

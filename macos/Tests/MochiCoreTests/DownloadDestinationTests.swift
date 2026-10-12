@@ -93,9 +93,76 @@ import Testing
         #expect(decision == .saveTo(Self.downloads.appendingPathComponent(row.expected)))
     }
 
+    /// #99: the first touch of ~/Downloads can hang on the system's 「访问下载文件夹」 prompt, so
+    /// every disk check runs inside the file system's off-main runner and the decision arrives
+    /// through the completion — the same decision the synchronous form gives.
+    @Test func asyncDecisionTouchesTheDiskOnlyInsideTheOffMainRunner() {
+        var diskChecks = 0
+        var pending: [() -> Void] = []
+        var fileSystem = DownloadFileSystem(
+            downloadsFolder: Self.downloads,
+            fileExists: { url in
+                diskChecks += 1
+                return url.lastPathComponent == "report.pdf"
+            },
+            isWritableDirectory: { _ in
+                diskChecks += 1
+                return false
+            })
+        fileSystem.offMainThread = { access, deliver in pending.append { deliver(access()) } }
+        var delivered: [DownloadDestinationDecision] = []
+
+        DownloadDestination.decide(
+            suggestedFilename: "report.pdf", location: .folder(Self.chosen), isGhostModeActive: false,
+            fileSystem: fileSystem
+        ) { delivered.append($0) }
+
+        #expect(diskChecks == 0)
+        #expect(delivered.isEmpty)
+
+        pending.forEach { $0() }
+
+        // The bad chosen folder still falls back to Downloads, and the collision is still renamed.
+        #expect(delivered == [.saveTo(Self.downloads.appendingPathComponent("report (1).pdf"))])
+        #expect(diskChecks > 0)
+    }
+
+    /// Off the main thread for real: the live runner never runs the disk checks on the main thread
+    /// and hands the decision back on it.
+    @Test func liveRunnerAccessesOffMainAndDeliversOnMain() async {
+        var fileSystem = DownloadFileSystem.live
+        let accessedOnMain = Locked<Bool?>(nil)
+        fileSystem.downloadsFolder = Self.downloads
+        fileSystem.fileExists = { _ in
+            accessedOnMain.set(Thread.isMainThread)
+            return false
+        }
+
+        let deliveredOnMain = await withCheckedContinuation { continuation in
+            DispatchQueue.main.async {
+                DownloadDestination.decide(
+                    suggestedFilename: "a.zip", location: .downloadsFolder, isGhostModeActive: false,
+                    fileSystem: fileSystem
+                ) { _ in continuation.resume(returning: Thread.isMainThread) }
+            }
+        }
+
+        #expect(accessedOnMain.get() == false)
+        #expect(deliveredOnMain)
+    }
+
     static func fakeFileSystem(chosenFolderIsWritable: Bool) -> DownloadFileSystem {
         DownloadFileSystem(
             downloadsFolder: downloads, fileExists: { _ in false },
             isWritableDirectory: { $0 == chosen ? chosenFolderIsWritable : true })
     }
+}
+
+/// A value shared with the live runner's background queue.
+private final class Locked<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Value
+    init(_ value: Value) { self.value = value }
+    func set(_ newValue: Value) { lock.withLock { value = newValue } }
+    func get() -> Value { lock.withLock { value } }
 }

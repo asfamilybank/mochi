@@ -73,6 +73,40 @@ import Testing
                 == .saveTo(Self.downloads.appendingPathComponent("a.zip")))
     }
 
+    /// #99: the handler hands WebKit its answer through the completion once the disk work is
+    /// done, never touching the disk itself — while the setting and the mode are still read at
+    /// the moment of the download, not when the disk work happens to run.
+    @Test func answersThroughTheCompletionAfterTheDiskWork() {
+        let config = WidgetConfig(url: URL(string: "https://example.com")!).updatingDownloadLocation(.askEachTime)
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+        var diskChecks = 0
+        var pending: [() -> Void] = []
+        var fileSystem = Self.fakeFileSystem
+        fileSystem.fileExists = { _ in
+            diskChecks += 1
+            return false
+        }
+        fileSystem.offMainThread = { access, deliver in pending.append { deliver(access()) } }
+        orchestrator.downloadFileSystem = fileSystem
+        orchestrator.start()
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+        defer { withExtendedLifetime(orchestrator) {} }
+
+        var delivered: [DownloadDestinationDecision] = []
+        fake.simulateDownloadRequested(DownloadRequest(suggestedFilename: "a.zip")) { delivered.append($0) }
+        // Leaving Ghost Mode before the disk work runs doesn't turn the answer into a Save panel.
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+
+        #expect(diskChecks == 0)
+        #expect(delivered.isEmpty)
+
+        pending.forEach { $0() }
+
+        #expect(delivered == [.saveTo(Self.downloads.appendingPathComponent("a.zip"))])
+        #expect(diskChecks == 1)
+    }
+
     static var fakeFileSystem: DownloadFileSystem {
         DownloadFileSystem(
             downloadsFolder: downloads, fileExists: { _ in false }, isWritableDirectory: { $0 != missing })

@@ -660,7 +660,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     var fileUploadRequestedHandler: ((FileUploadRequest) -> FileUploadDecision)?
     /// #68: MochiCore's destination decider, consulted by `WebDownloadDelegate.swift`, and each
     /// in-flight download's destination — kept so completion can bounce the Dock with the path.
-    var downloadRequestedHandler: ((DownloadRequest) -> DownloadDestinationDecision)?
+    var downloadRequestedHandler: ((DownloadRequest, @escaping (DownloadDestinationDecision) -> Void) -> Void)?
     var downloadDestinations: [ObjectIdentifier: URL] = [:]
     var mediaCaptureRequestedHandler: ((MediaCaptureRequest) -> MediaCaptureDecision)?  // #69
     /// #67: MochiCore's new-window decider, and the Popup Windows this widget opened (owned here,
@@ -2342,7 +2342,10 @@ public final class AppKitPlatformOps: PlatformOps {
         handle(for: window)?.fileUploadRequestedHandler = handler
     }
 
-    public func onDownloadRequested(_ window: WidgetWindowHandle, perform handler: @escaping (DownloadRequest) -> DownloadDestinationDecision) {
+    public func onDownloadRequested(
+        _ window: WidgetWindowHandle,
+        perform handler: @escaping (DownloadRequest, @escaping (DownloadDestinationDecision) -> Void) -> Void
+    ) {
         handle(for: window)?.downloadRequestedHandler = handler
     }
 

@@ -486,14 +486,16 @@ public final class Orchestrator {
         platformOps.onFileUploadRequested(window) { [weak self] _ in
             (self?.isGhostModeActive ?? false) ? .cancel : .presentOpenPanel
         }
-        // #68: setting, Ghost Mode and the disk are all read now, at the moment of the download.
-        platformOps.onDownloadRequested(window) { [weak self] request in
+        // #68: setting and Ghost Mode are read now, at the moment of the download; the disk is
+        // read off the main thread (#99), since the first touch of ~/Downloads waits on a prompt.
+        platformOps.onDownloadRequested(window) { [weak self] request, completion in
             let config = self?.currentConfig()
-            return DownloadDestination.decide(
+            DownloadDestination.decide(
                 suggestedFilename: request.suggestedFilename,
                 location: config?.downloadLocation ?? .downloadsFolder,
                 isGhostModeActive: self?.isGhostModeActive ?? false,
-                fileSystem: self?.downloadFileSystem ?? .live)
+                fileSystem: self?.downloadFileSystem ?? .live,
+                completion: completion)
         }
 
         // #69 — both the settings and the mode are read at request time.

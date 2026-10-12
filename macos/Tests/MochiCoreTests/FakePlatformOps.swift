@@ -420,15 +420,30 @@ final class FakePlatformOps: PlatformOps {
     }
 
     // #68
-    private var downloadRequestedHandlers: [Int: (DownloadRequest) -> DownloadDestinationDecision] = [:]
+    private var downloadRequestedHandlers:
+        [Int: (DownloadRequest, @escaping (DownloadDestinationDecision) -> Void) -> Void] = [:]
 
-    func onDownloadRequested(_ window: WidgetWindowHandle, perform handler: @escaping (DownloadRequest) -> DownloadDestinationDecision) {
+    func onDownloadRequested(
+        _ window: WidgetWindowHandle,
+        perform handler: @escaping (DownloadRequest, @escaping (DownloadDestinationDecision) -> Void) -> Void
+    ) {
         let handle = window as! FakeWidgetWindowHandle
         downloadRequestedHandlers[handle.id] = handler
     }
 
+    /// The decision, when the handler answers before returning (an inline disk runner); `nil`
+    /// when nothing is registered or the answer is still pending.
     func simulateDownloadRequested(_ request: DownloadRequest, windowID: Int = 1) -> DownloadDestinationDecision? {
-        downloadRequestedHandlers[windowID]?(request)
+        var decision: DownloadDestinationDecision?
+        simulateDownloadRequested(request, windowID: windowID) { decision = $0 }
+        return decision
+    }
+
+    /// #99: hands the answer to `completion` whenever the handler delivers it.
+    func simulateDownloadRequested(
+        _ request: DownloadRequest, windowID: Int = 1, completion: @escaping (DownloadDestinationDecision) -> Void
+    ) {
+        downloadRequestedHandlers[windowID]?(request, completion)
     }
 
     // #69

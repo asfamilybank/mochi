@@ -18,13 +18,25 @@ public struct DownloadFileSystem {
     public var fileExists: (URL) -> Bool
     /// An existing directory this process can create files in.
     public var isWritableDirectory: (URL) -> Bool
+    /// #99: where the checks above run — `access` does them, `deliver` gets its answer. The very
+    /// first touch of ~/Downloads raises the system's 「访问下载文件夹」 prompt and blocks the
+    /// calling thread until it's answered, so live this is a background queue with the answer
+    /// handed back on the main thread. Defaults to running both inline (fakes need nothing else).
+    public var offMainThread: OffMainRunner
+
+    public typealias OffMainRunner = (
+        _ access: @escaping () -> DownloadDestinationDecision,
+        _ deliver: @escaping (DownloadDestinationDecision) -> Void
+    ) -> Void
 
     public init(
-        downloadsFolder: URL, fileExists: @escaping (URL) -> Bool, isWritableDirectory: @escaping (URL) -> Bool
+        downloadsFolder: URL, fileExists: @escaping (URL) -> Bool, isWritableDirectory: @escaping (URL) -> Bool,
+        offMainThread: @escaping OffMainRunner = { access, deliver in deliver(access()) }
     ) {
         self.downloadsFolder = downloadsFolder
         self.fileExists = fileExists
         self.isWritableDirectory = isWritableDirectory
+        self.offMainThread = offMainThread
     }
 
     public static var live: DownloadFileSystem {
@@ -35,6 +47,12 @@ public struct DownloadFileSystem {
                 var isDirectory: ObjCBool = false
                 return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
                     && isDirectory.boolValue && FileManager.default.isWritableFile(atPath: url.path)
+            },
+            offMainThread: { access, deliver in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let decision = access()
+                    DispatchQueue.main.async { deliver(decision) }
+                }
             })
     }
 }
@@ -67,6 +85,21 @@ public enum DownloadDestination {
             directory = fileSystem.isWritableDirectory(folder) ? folder : fileSystem.downloadsFolder
         }
         return .saveTo(uniqueFileURL(for: filename, in: directory, fileExists: fileSystem.fileExists))
+    }
+
+    /// The same decision, with every disk check run through `fileSystem.offMainThread` (#99) and
+    /// the answer handed to `completion` — what WebKit's destination callback is given, so the
+    /// main thread never waits on the Downloads folder prompt.
+    public static func decide(
+        suggestedFilename: String, location: DownloadLocation, isGhostModeActive: Bool, fileSystem: DownloadFileSystem,
+        completion: @escaping (DownloadDestinationDecision) -> Void
+    ) {
+        fileSystem.offMainThread(
+            {
+                decide(
+                    suggestedFilename: suggestedFilename, location: location, isGhostModeActive: isGhostModeActive,
+                    fileSystem: fileSystem)
+            }, completion)
     }
 
     /// `name.ext`, else `name (1).ext`, `name (2).ext`, … — the first that doesn't exist. The
