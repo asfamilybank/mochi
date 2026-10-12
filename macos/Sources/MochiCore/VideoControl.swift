@@ -43,11 +43,12 @@ public enum VideoCommand: Equatable, Sendable {
 /// are never registered with Carbon — handing their page keystroke to `HotkeyForwarder`; one
 /// recognizer serves both, so a key bound both ways across the two waits the same way.
 ///
-/// App-global like `HotkeyForwarder`, built once by `Orchestrator.start()`, so the "ask for
-/// Accessibility at most once per launch" bookkeeping survives a widget close and reopen. Whether
-/// to listen is recomputed by `refreshObservation()` whenever its inputs change — the mode, the
-/// window's existence, the bindings — and every key is resolved against the config read at the
-/// moment it is pressed.
+/// App-global like `HotkeyForwarder`, built once by `Orchestrator.start()`. It asks for
+/// Accessibility on its own at most once in Mochi's lifetime (#103, ADR-0026) — remembered in
+/// `SystemPermissionMarker.accessibilityAutoRequested`, not in memory. Whether to listen is
+/// recomputed by `refreshObservation()` whenever its inputs change — the mode, the window's
+/// existence, the bindings — and every key is resolved against the config read at the moment it
+/// is pressed.
 public final class VideoControl {
     private let platformOps: PlatformOps
     private let currentConfig: () -> WidgetConfig
@@ -56,7 +57,8 @@ public final class VideoControl {
     /// Hands a tap-triggered mapping's page keystroke to Hotkey Forwarding (#92).
     private let forward: (Hotkey) -> Void
     private var isObserving = false
-    private var hasRequestedAccessibility = false
+    /// Whether the current listener went in before Accessibility was granted (#103).
+    private var isObservingWithoutAccessibility = false
     private var tapRecognizer = TriggerTapRecognizer()
     /// Cancels the wait on `tapRecognizer`'s held-back tap, while there is one.
     private var cancelHeldBackTapRelease: (() -> Void)?
@@ -73,6 +75,9 @@ public final class VideoControl {
         self.isGhostModeActive = isGhostModeActive
         self.currentWindow = currentWindow
         self.forward = forward
+        platformOps.onSystemPermissionsMayHaveChanged { [weak self] in
+            self?.reinstallObservationIfAccessibilityArrived()
+        }
     }
 
     /// Starts or stops listening to match the current state: only in Ghost Mode, only with a
@@ -85,21 +90,40 @@ public final class VideoControl {
         let anythingBound = !Self.listenedTriggers(in: config).isEmpty
         let shouldObserve = isGhostModeActive() && currentWindow() != nil && anythingBound
         if shouldObserve, !isObserving {
-            if platformOps.systemPermissionStatus(.accessibility) != .authorized, !hasRequestedAccessibility {
-                hasRequestedAccessibility = true
+            if platformOps.systemPermissionStatus(.accessibility) != .authorized,
+               !platformOps.isSystemPermissionMarkerSet(.accessibilityAutoRequested) {
+                platformOps.setSystemPermissionMarker(.accessibilityAutoRequested, true)
                 platformOps.requestSystemPermission(.accessibility)
             }
             isObserving = true
-            tapRecognizer = TriggerTapRecognizer()
-            platformOps.startObservingInput { [weak self] event in
-                self?.handle(event)
-            }
+            startObservingInput()
         } else if !shouldObserve, isObserving {
             isObserving = false
             platformOps.stopObservingInput()
             cancelHeldBackTapRelease?()
             cancelHeldBackTapRelease = nil
         }
+    }
+
+    private func startObservingInput() {
+        isObservingWithoutAccessibility = platformOps.systemPermissionStatus(.accessibility) != .authorized
+        tapRecognizer = TriggerTapRecognizer()
+        platformOps.startObservingInput { [weak self] event in
+            self?.handle(event)
+        }
+    }
+
+    /// Granting Accessibility takes effect without a relaunch or a trip out of Ghost Mode (#103):
+    /// a listener that went in without it is put in afresh once it arrives. Whether the old one
+    /// would have started hearing other apps on its own is the system's business; reinstalling
+    /// is right either way.
+    private func reinstallObservationIfAccessibilityArrived() {
+        guard isObserving, isObservingWithoutAccessibility,
+              platformOps.systemPermissionStatus(.accessibility) == .authorized else { return }
+        platformOps.stopObservingInput()
+        cancelHeldBackTapRelease?()
+        cancelHeldBackTapRelease = nil
+        startObservingInput()
     }
 
     private func handle(_ event: RawInputEvent) {
@@ -147,6 +171,14 @@ public final class VideoControl {
             // A combo mapping is Carbon's to dispatch; hearing its keyDown here too would forward twice.
             forward(mapping.pageKeystroke)
         }
+    }
+
+    /// Whether anything in `config` is heard by this listener — and so needs Accessibility,
+    /// without which no key pressed in another app reaches it (#103). Every bound video key
+    /// counts, a combo too; of the Hotkey Forwarding mappings only those set off by a tap or a
+    /// double tap — a combo mapping goes through Carbon, which needs no permission.
+    public static func needsAccessibility(for config: WidgetConfig) -> Bool {
+        !listenedTriggers(in: config).isEmpty
     }
 
     /// Every trigger key this listener answers for: the bound video keys, and since #92 the

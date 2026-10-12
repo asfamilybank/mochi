@@ -272,9 +272,10 @@ enum TrayScenario: Sendable {
         orchestrator.start()
 
         #expect(fake.trayMenuItems.map { $0.isSeparator ? "—" : $0.title }
-            == ["打开窗口", "幽灵模式", "隐藏窗口", "—", "设置…", "关于 Mochi", "—", "退出"])
+            == ["打开窗口", "幽灵模式", "隐藏窗口", "—", "视频控制需要辅助功能权限…", "设置…", "关于 Mochi", "—", "退出"])
         #expect(fake.trayMenuItems.map(\.icon) == [
             .symbol(DesignTokens.Symbol.openWidget), .ghost, .symbol(DesignTokens.Symbol.hideWidget), nil,
+            .symbol(DesignTokens.Symbol.systemPermissionMissing),
             .symbol(DesignTokens.Symbol.settings), .symbol(DesignTokens.Symbol.about), nil, .appQuit,
         ])
     }
@@ -287,7 +288,7 @@ enum TrayScenario: Sendable {
 
         #expect(fake.trayMenuItems.map { $0.hotkeyHint() } == [
             nil, DefaultHotkeys.toggleGhostMode, DefaultHotkeys.hideWidget, nil,
-            DefaultHotkeys.openSettings, nil, nil, DefaultHotkeys.quit,
+            nil, DefaultHotkeys.openSettings, nil, nil, DefaultHotkeys.quit,
         ])
     }
 
@@ -378,6 +379,40 @@ enum TrayScenario: Sendable {
             #expect(item.isEnabled())
             #expect(!item.isChecked())
         }
+    }
+
+    // #103: the tray's note that 视频控制 lacks Accessibility — there only while it is missing
+    // and something needs it, read live each time the menu opens.
+
+    @Test func trayAccessibilityNoteComesAndGoesWithThePermissionAndTheBindings() {
+        let fake = FakePlatformOps()
+        var config = WidgetConfig(url: nil)
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+        orchestrator.start()
+        let note = fake.trayItem("视频控制需要辅助功能权限…")
+
+        #expect(!note.isVisible())
+
+        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
+        #expect(note.isVisible())
+
+        config = VideoControlAction.allCases.reduce(config) { $0.updatingVideoControlTrigger(nil, for: $1) }
+        #expect(!note.isVisible())
+        withExtendedLifetime(orchestrator) {}
+    }
+
+    @Test func trayAccessibilityNoteOpensSystemSettings() {
+        let fake = FakePlatformOps()
+        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { WidgetConfig(url: nil) })
+        orchestrator.start()
+
+        withExtendedLifetime(orchestrator) {
+            fake.trayItem("视频控制需要辅助功能权限…").action()
+        }
+
+        #expect(fake.openedSystemSettings == [.accessibility])
+        #expect(fake.systemPermissionRequests.isEmpty)
     }
 
     @Test func trayGhostModeEntryEntersGhostModeFromNormalMode() {

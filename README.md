@@ -32,6 +32,24 @@ xattr -dr com.apple.quarantine /Applications/Mochi.app
 
 > 网上流传的「右键 →『打开』」那条老办法在 macOS 15 之后已经被移除，照着做只会白折腾。
 
+## 常见问题
+
+**升级之后，幽灵模式里的视频控制没反应了**
+
+视频控制，以及轻按或连按两次触发的热键传递，要靠「辅助功能」权限才能在其他应用里听到按键。Mochi 只做 ad-hoc 签名，系统按每一版的签名记账，所以每次升级之后，「系统设置 → 隐私与安全性 → 辅助功能」里 Mochi 的开关**看着还开着，实际已经失效**。在列表里选中 Mochi，点下方的「−」把它移除，再点「+」把 `/Applications/Mochi.app` 重新添加进来并打开开关即可，不需要重启 Mochi。缺这项权限时，设置的「幽灵模式」面板顶部和托盘菜单里也会给出提示。
+
+## 卸载
+
+把 `/Applications/Mochi.app` 移到废纸篓即可。如果想连数据一起清掉，再删除 `~/Library/Application Support/Mochi`（配置文件 `config.toml`）和 `~/Library/Caches/com.daidalma.mochi`、`~/Library/WebKit/com.daidalma.mochi`、`~/Library/HTTPStorages/com.daidalma.mochi.binarycookies`（网站缓存与登录态）。
+
+授予过的系统权限（辅助功能、摄像头、麦克风、下载文件夹）由系统按应用身份保管，**不会随卸载或删除数据而消失**，重新安装后仍然在。要彻底清除，在终端执行：
+
+```bash
+tccutil reset All com.daidalma.mochi
+```
+
+或者到「系统设置 → 隐私与安全性」的对应页面里把 Mochi 逐项移除。
+
 ## 开发
 
 Swift 项目在 [macos/](macos/) 子目录下。日常开发与测试走 Swift Package Manager：

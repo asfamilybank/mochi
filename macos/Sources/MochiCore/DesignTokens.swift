@@ -321,12 +321,15 @@ public enum DesignTokens {
         public static let settings = "gearshape"
         /// 关于 Mochi — the App menu's and the tray's (#63).
         public static let about = "info.circle"
+        /// The tray's note that a 系统权限 is missing (#103).
+        public static let systemPermissionMissing = "exclamationmark.triangle"
 
         /// Every symbol name the app can ask for, the address field's drawn states included.
         /// `.siteIcon` contributes nothing here — it draws a downloaded favicon, not a symbol.
         public static let all: [String] = [
             back, forward, refresh, stop, failure, openWidget, hideWidget, settings, about,
             AddressFieldLeadingIcon.genericPage.symbolName!, AddressFieldLeadingIcon.search.symbolName!,
+            systemPermissionMissing,
         ]
     }
 

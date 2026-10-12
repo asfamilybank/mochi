@@ -37,6 +37,9 @@ public struct TrayMenuItem {
     public let hotkeyHint: () -> Hotkey?
     public let isChecked: () -> Bool
     public let isEnabled: () -> Bool
+    /// Whether the entry is in the menu this time it opens (#103) — for one that only belongs
+    /// there while something is wrong.
+    public let isVisible: () -> Bool
     public let action: () -> Void
 
     public init(
@@ -45,6 +48,7 @@ public struct TrayMenuItem {
         hotkeyHint: @escaping () -> Hotkey? = { nil },
         isChecked: @escaping () -> Bool = { false },
         isEnabled: @escaping () -> Bool = { true },
+        isVisible: @escaping () -> Bool = { true },
         action: @escaping () -> Void
     ) {
         self.title = title
@@ -53,6 +57,7 @@ public struct TrayMenuItem {
         self.hotkeyHint = hotkeyHint
         self.isChecked = isChecked
         self.isEnabled = isEnabled
+        self.isVisible = isVisible
         self.action = action
     }
 
@@ -63,6 +68,7 @@ public struct TrayMenuItem {
         hotkeyHint = { nil }
         isChecked = { false }
         isEnabled = { false }
+        isVisible = { true }
         action = {}
     }
 

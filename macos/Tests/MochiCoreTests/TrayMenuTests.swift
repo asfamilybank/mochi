@@ -40,6 +40,29 @@ import Testing
         #expect(items[0].keyEquivalent == "")
     }
 
+    /// An entry that only belongs in the menu while something is wrong (#103) comes and goes with
+    /// its closure, read each time the menu opens.
+    @Test func visibilityFollowsTheClosureEachTimeTheMenuOpens() {
+        var visible = false
+        let tray = TrayMenu(items: [
+            TrayMenuItem(title: "视频控制需要辅助功能权限…", isVisible: { visible }) {},
+            TrayMenuItem(title: "设置…") {},
+        ])
+        let items = tray.menu.items
+
+        #expect(items.map(\.isHidden) == [true, false])
+
+        visible = true
+        tray.menuNeedsUpdate(tray.menu)
+
+        #expect(items.map(\.isHidden) == [false, false])
+
+        visible = false
+        tray.menuNeedsUpdate(tray.menu)
+
+        #expect(items.map(\.isHidden) == [true, false])
+    }
+
     /// With the menu closed, AppKit must never find a hint to match — the Carbon hotkey is the
     /// only keyboard path to these actions.
     @Test func neverOffersItsHintsForKeyEquivalentMatching() throws {

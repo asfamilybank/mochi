@@ -1278,7 +1278,22 @@ import Testing
         #expect(controller.systemPermissionPrompts.isEmpty)
         fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
 
-        #expect(controller.systemPermissionPrompts.map(\.permission) == [.accessibility])
+        #expect(controller.systemPermissionPrompts.filter { $0.placement == .ghostModePanelTop }.map(\.permission)
+            == [.accessibility])
+    }
+
+    /// The prompts follow the config the panel is editing (#103): unbinding everything that needs
+    /// Accessibility takes its prompt away.
+    @Test func accessibilityPromptGoesOnceNothingNeedsIt() {
+        let fake = FakePlatformOps()
+        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
+        let controller = makeController(store: PersistedStore(WidgetConfig()), platformOps: fake)
+
+        for action in VideoControlAction.allCases {
+            _ = controller.updateVideoControlTrigger(nil, for: action)
+        }
+
+        #expect(controller.systemPermissionPrompts.isEmpty)
     }
 
     @Test(arguments: [
@@ -1291,7 +1306,7 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: PersistedStore(WidgetConfig()), platformOps: fake)
 
-        controller.perform(SystemPermissionPrompt(permission: .camera, placement: .videoControlSection, action: row.action))
+        controller.perform(SystemPermissionPrompt(permission: .camera, placement: .ghostModePanelTop, action: row.action))
 
         #expect(fake.systemPermissionRequests == row.requested)
         #expect(fake.openedSystemSettings == row.opened)
@@ -1301,7 +1316,7 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: PersistedStore(WidgetConfig()), platformOps: fake)
 
-        controller.perform(SystemPermissionPrompt(permission: .camera, placement: .videoControlSection, action: nil))
+        controller.perform(SystemPermissionPrompt(permission: .camera, placement: .ghostModePanelTop, action: nil))
 
         #expect(fake.systemPermissionRequests.isEmpty)
         #expect(fake.openedSystemSettings.isEmpty)

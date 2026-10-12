@@ -15,7 +15,11 @@ final class SettingsViewModel: ObservableObject {
     private let reloadPage: () -> Void
     /// #70's 重新打开窗口 — `Orchestrator.reopenWidget`. Defaulted so other wiring stays untouched.
     var reopenWidget: () -> Void = {}
-    @Published private(set) var config: WidgetConfig
+    @Published private(set) var config: WidgetConfig {
+        // Whether a 系统权限 prompt belongs on screen depends on the config too (#103): unbinding
+        // every key that needs Accessibility takes its prompt away.
+        didSet { refreshSystemPermissions() }
+    }
 
     /// A row of the 热键 pane a refusal can be shown on (#86).
     enum HotkeyRowID: Hashable {

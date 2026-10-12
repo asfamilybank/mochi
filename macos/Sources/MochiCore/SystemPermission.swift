@@ -47,8 +47,10 @@ public enum SystemPermissionMarker: String, CaseIterable, Hashable, Sendable {
 public struct SystemPermissionPrompt: Equatable, Sendable {
     /// Where in the settings panel it goes.
     public enum Placement: Equatable, Sendable {
-        /// Below 视频控制's keys — where #79 put the Accessibility note.
-        case videoControlSection
+        /// The top of the 幽灵模式 panel, above everything that needs the permission (#103).
+        case ghostModePanelTop
+        /// An entry in the tray menu, the one place that reaches the user in Ghost Mode (#103).
+        case trayMenu
         /// Top of 网站 → 摄像头 / 麦克风 (#104): the page of the prompt's own `permission`.
         case websitesPermissionPage
     }
@@ -78,16 +80,17 @@ public enum SystemPermissionPrompts {
     /// each permission — read by the caller at the moment of asking, since System Settings changes
     /// them behind Mochi's back.
     ///
-    /// For now this carries over #79's one rule: Accessibility, below 视频控制, whenever it is not
-    /// granted. The system answers nothing finer than "trusted or not" for it, so the button is
-    /// always 打开系统设置.
+    /// Accessibility (#103): whenever it is not granted and `VideoControl` has something to listen
+    /// for, at the top of the 幽灵模式 panel and in the tray. The system answers nothing finer than
+    /// "trusted or not" for it, so the button is always 打开系统设置.
     public static func prompts(
         for config: WidgetConfig, status: (SystemPermission) -> SystemPermissionStatus
     ) -> [SystemPermissionPrompt] {
         var prompts: [SystemPermissionPrompt] = []
-        if status(.accessibility) != .authorized {
-            prompts.append(SystemPermissionPrompt(
-                permission: .accessibility, placement: .videoControlSection, action: .openSystemSettings))
+        if VideoControl.needsAccessibility(for: config), status(.accessibility) != .authorized {
+            prompts += [SystemPermissionPrompt.Placement.ghostModePanelTop, .trayMenu].map {
+                SystemPermissionPrompt(permission: .accessibility, placement: $0, action: .openSystemSettings)
+            }
         }
         // #104: camera and microphone, each at the top of its own 网站 page and judged apart, while
         // the 网页权限 lets pages through and the system has not granted Mochi the device —

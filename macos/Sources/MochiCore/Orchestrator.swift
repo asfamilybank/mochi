@@ -137,6 +137,14 @@ public final class Orchestrator {
                 self?.perform(HotkeyAction.hideWidget)
             },
             .separator,
+            // Only while Accessibility is missing and something needs it (#103, ADR-0026): in
+            // Ghost Mode the tray is the one place left to say why the video keys do nothing.
+            TrayMenuItem(
+                title: "视频控制需要辅助功能权限…", icon: .symbol(DesignTokens.Symbol.systemPermissionMissing),
+                isVisible: { [weak self] in self?.trayPrompt(for: .accessibility) != nil }
+            ) { [weak self] in
+                self?.platformOps.openSystemSettings(for: .accessibility)
+            },
             TrayMenuItem(
                 title: "设置…", icon: .symbol(DesignTokens.Symbol.settings),
                 hotkeyHint: { DefaultHotkeys.openSettings }, action: openSettings),
@@ -149,6 +157,13 @@ public final class Orchestrator {
                 title: "退出", icon: .appQuit,
                 hotkeyHint: { DefaultHotkeys.quit }, action: platformOps.terminateApp),
         ]
+    }
+
+    /// The tray's prompt for `permission`, if one belongs there right now (#103) — read from the
+    /// live config and the system's live answer each time the menu opens.
+    private func trayPrompt(for permission: SystemPermission) -> SystemPermissionPrompt? {
+        SystemPermissionPrompts.prompts(for: currentConfig(), status: platformOps.systemPermissionStatus)
+            .first { $0.permission == permission && $0.placement == .trayMenu }
     }
 
     /// Opens the widget window (#42) — at launch and again after a `⌘W`/red-button close. A

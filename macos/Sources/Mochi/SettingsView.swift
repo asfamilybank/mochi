@@ -57,7 +57,7 @@ enum SettingsPane: CaseIterable {
         Group {
             switch self {
             case .general: GeneralSettingsTab(viewModel: viewModel)
-            case .ghostMode: GhostModeSettingsTab(viewModel: viewModel).frame(height: 790)
+            case .ghostMode: GhostModeSettingsTab(viewModel: viewModel).frame(height: 830)
             case .websites: WebsitesSettingsTab(viewModel: viewModel).frame(height: 260)
             case .privacy: PrivacySettingsTab(viewModel: viewModel)
             case .scripts: ScriptsTab(viewModel: viewModel).frame(height: 560)
@@ -240,6 +240,12 @@ struct GhostModeSettingsTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if let prompt = viewModel.systemPermissionPrompts.first(where: { $0.placement == .ghostModePanelTop }) {
+                AccessibilityPromptBanner { viewModel.perform(prompt) }
+
+                Divider()
+            }
+
             GhostAppearanceSection(viewModel: viewModel)
 
             Divider()
@@ -285,6 +291,7 @@ struct GhostModeSettingsTab: View {
             }
         }
         .padding(.vertical, 8)
+        .onAppear { viewModel.refreshSystemPermissions() }
     }
 }
 
@@ -387,8 +394,9 @@ private extension VideoControlAction {
     }
 }
 
-/// 视频控制 (#79): the three video keys, the jump length, and whether Accessibility — without
-/// which keys pressed in other apps never reach Mochi — has been granted.
+/// 视频控制 (#79): the three video keys and the jump length. Whether Accessibility — without
+/// which keys pressed in other apps never reach Mochi — is missing is said at the top of the pane
+/// (#103), since tap-triggered Hotkey Forwarding needs it too.
 private struct VideoControlSection: View {
     @ObservedObject var viewModel: SettingsViewModel
 
@@ -408,22 +416,31 @@ private struct VideoControlSection: View {
                     in: WidgetConfig.videoSeekStepRange
                 )
             }
-            HStack {
-                if let prompt = viewModel.systemPermissionPrompts.first(where: { $0.placement == .videoControlSection }) {
-                    Label("需要辅助功能权限，才能在其他应用里响应这些按键", systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                    Spacer()
-                    Button("打开系统设置") {
-                        viewModel.perform(prompt)
-                    }
-                } else {
-                    Label("已获得辅助功能权限", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .font(.caption)
         }
-        .onAppear { viewModel.refreshSystemPermissions() }
+    }
+}
+
+/// The top of the 幽灵模式 pane while Accessibility is missing and something there needs it
+/// (#103, ADR-0026); nothing at all once it is granted. Ad-hoc signing means an update leaves
+/// System Settings' switch on but no longer honoured, and Mochi cannot tell that apart from off —
+/// so the text itself says what to do about it.
+private struct AccessibilityPromptBanner: View {
+    let perform: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("需要辅助功能权限").font(.headline)
+                Text("视频控制，以及轻按或连按两次触发的热键传递，要靠它在其他应用里听到按键。如果系统设置里已经打开，请先移除 Mochi 再重新添加（每次升级后都需要）。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            Button("打开系统设置", action: perform)
+        }
     }
 }
 

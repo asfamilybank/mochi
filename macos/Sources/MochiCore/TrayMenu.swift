@@ -1,8 +1,8 @@
 import AppKit
 
 /// The tray's `NSMenu` (#63): built once from `TrayMenuItem`s, and re-synced from their closures
-/// every time it is about to open — checkmarks, greyed-out states and hotkey hints are never a
-/// snapshot of launch.
+/// every time it is about to open — checkmarks, greyed-out states, hotkey hints and whether an
+/// entry is there at all (#103) are never a snapshot of launch.
 ///
 /// **Hints are display only.** A hint is drawn by setting the item's `keyEquivalent` and
 /// modifier mask, the only way to put a combo in AppKit's own key-equivalent column (right
@@ -84,6 +84,7 @@ final class TrayMenu: NSObject, NSMenuDelegate {
     /// which AppKit runs as the menu opens.
     private func sync() {
         for (item, menuItem) in entries where !item.isSeparator {
+            menuItem.isHidden = !item.isVisible()
             menuItem.state = item.isChecked() ? .on : .off
             if let hint = item.hotkeyHint(), let key = HotkeyDisplay.menuKeyEquivalent(for: hint) {
                 menuItem.keyEquivalent = key
