@@ -72,9 +72,32 @@ public struct WidgetConfig: Equatable {
         case allow
     }
 
-    /// Both default to `.ask`, handing the request to WebKit's own prompt.
+    /// Both default to `.ask`, Mochi's own prompt. Since #101 these are 「访问其他网站时」: the
+    /// default for every website without an exception.
     public var cameraPermission: MediaCapturePermission = .ask
     public var microphonePermission: MediaCapturePermission = .ask
+
+    /// One website's exception to a 网页权限's default (#101, ADR-0027). The two settings above are
+    /// that default — 「访问其他网站时」 — under their original keys, so an old config needs no
+    /// migration. `lastModified` lets 清除浏览数据 clear the exceptions of a time range.
+    public struct PagePermissionException: Equatable, Sendable {
+        /// The requesting frame's host, lower-cased: `meet.google.com` and `calendar.google.com`
+        /// are two websites.
+        public var host: String
+        public var setting: MediaCapturePermission
+        public var lastModified: Date
+
+        public init(host: String, setting: MediaCapturePermission, lastModified: Date) {
+            self.host = host
+            self.setting = setting
+            self.lastModified = lastModified
+        }
+    }
+
+    /// Sorted by host, one entry per host. Read through `pagePermissionExceptions(_:)` /
+    /// `pagePermissionSetting(_:forHost:)`, written through `updatingPagePermissionException`.
+    public var cameraExceptions: [PagePermissionException] = []
+    public var microphoneExceptions: [PagePermissionException] = []
     /// 网页内容 → 弹出式窗口 (#67), Safari's wording. Maps to WebKit's
     /// `javaScriptCanOpenWindowsAutomatically`: 阻止 lets WebKit drop a `window.open` that no user
     /// click started, 允许 lets it through to the new-window decision (ADR-0017).
@@ -193,6 +216,9 @@ extension WidgetConfig {
         config.cameraPermission = table["camera_permission"]?.string.flatMap(MediaCapturePermission.init(rawValue:)) ?? .ask
         config.microphonePermission =
             table["microphone_permission"]?.string.flatMap(MediaCapturePermission.init(rawValue:)) ?? .ask
+        // #101
+        config.cameraExceptions = parsePagePermissionExceptions(from: table["camera_exceptions"]?.array)
+        config.microphoneExceptions = parsePagePermissionExceptions(from: table["microphone_exceptions"]?.array)
         if let videoControl = table["video_control"]?.table {
             config.videoControlOverrides = parseVideoControlOverrides(from: videoControl)
             config.videoSeekStep = videoControl["seek_step"]?.int.map(clampedVideoSeekStep) ?? defaultVideoSeekStep
@@ -343,6 +369,35 @@ extension WidgetConfig {
         }
     }
 
+    /// `[[camera_exceptions]]` / `[[microphone_exceptions]]` (#101): `host`, `setting` (one of the
+    /// three `MediaCapturePermission` values) and `modified` (ISO 8601). An entry missing any of
+    /// them, or with a value that doesn't parse, is dropped — the same leniency as the rest of this
+    /// hand-editable file; of two entries for one host the later wins.
+    private static func parsePagePermissionExceptions(from array: TOMLArray?) -> [PagePermissionException] {
+        guard let array else { return [] }
+        var byHost: [String: PagePermissionException] = [:]
+        for value in array {
+            guard let entry = value.table,
+                let host = entry["host"]?.string?.trimmingCharacters(in: .whitespaces).lowercased(), !host.isEmpty,
+                let setting = entry["setting"]?.string.flatMap(MediaCapturePermission.init(rawValue:)),
+                let modified = entry["modified"]?.string.flatMap({ try? Date($0, strategy: .iso8601) })
+            else { continue }
+            byHost[host] = PagePermissionException(host: host, setting: setting, lastModified: modified)
+        }
+        return byHost.values.sorted { $0.host < $1.host }
+    }
+
+    private static func serializedPagePermissionExceptions(_ exceptions: [PagePermissionException]) -> TOMLArray {
+        TOMLArray(
+            exceptions.sorted { $0.host < $1.host }.map { exception -> TOMLTable in
+                let entry = TOMLTable()
+                entry["host"] = exception.host
+                entry["setting"] = exception.setting.rawValue
+                entry["modified"] = exception.lastModified.formatted(.iso8601)
+                return entry
+            })
+    }
+
     private static func parseWindowState(from table: TOMLTable?) -> WindowState? {
         guard let table,
             let x = table["x"]?.double,
@@ -471,6 +526,13 @@ extension WidgetConfig {
         // #69
         table["camera_permission"] = cameraPermission.rawValue
         table["microphone_permission"] = microphonePermission.rawValue
+        // #101 — nothing is written while a permission has no exceptions.
+        if !cameraExceptions.isEmpty {
+            table["camera_exceptions"] = Self.serializedPagePermissionExceptions(cameraExceptions)
+        }
+        if !microphoneExceptions.isEmpty {
+            table["microphone_exceptions"] = Self.serializedPagePermissionExceptions(microphoneExceptions)
+        }
         // #67 — only a departure from the default is written.
         if popupWindowPolicy != .block {
             table["popup_windows"] = popupWindowPolicy.rawValue
@@ -580,6 +642,52 @@ extension WidgetConfig {
     public func updatingMicrophonePermission(_ permission: MediaCapturePermission) -> WidgetConfig {
         var copy = self
         copy.microphonePermission = permission
+        return copy
+    }
+
+    // #101: 网页权限 — a default plus per-website exceptions (ADR-0027).
+
+    /// 「访问其他网站时」: the setting for every host without an exception.
+    public func pagePermissionDefault(_ permission: PagePermission) -> MediaCapturePermission {
+        switch permission {
+        case .camera: cameraPermission
+        case .microphone: microphonePermission
+        }
+    }
+
+    public func pagePermissionExceptions(_ permission: PagePermission) -> [PagePermissionException] {
+        switch permission {
+        case .camera: cameraExceptions
+        case .microphone: microphoneExceptions
+        }
+    }
+
+    /// What `permission` is for `host`: its exception — matched on the exact host, so
+    /// `meet.google.com` says nothing about `calendar.google.com` — or the default. A host-less
+    /// page (`nil`) always gets the default.
+    public func pagePermissionSetting(_ permission: PagePermission, forHost host: String?) -> MediaCapturePermission {
+        guard let host = host?.lowercased(),
+            let exception = pagePermissionExceptions(permission).first(where: { $0.host == host })
+        else { return pagePermissionDefault(permission) }
+        return exception.setting
+    }
+
+    /// Sets `host`'s exception for `permission` to `setting`, stamped `modifiedAt` — or removes it
+    /// when `setting` is `nil`, sending the host back to the default.
+    public func updatingPagePermissionException(
+        _ permission: PagePermission, host: String, setting: MediaCapturePermission?, modifiedAt: Date
+    ) -> WidgetConfig {
+        let host = host.lowercased()
+        var exceptions = pagePermissionExceptions(permission).filter { $0.host != host }
+        if let setting {
+            exceptions.append(PagePermissionException(host: host, setting: setting, lastModified: modifiedAt))
+            exceptions.sort { $0.host < $1.host }
+        }
+        var copy = self
+        switch permission {
+        case .camera: copy.cameraExceptions = exceptions
+        case .microphone: copy.microphoneExceptions = exceptions
+        }
         return copy
     }
 

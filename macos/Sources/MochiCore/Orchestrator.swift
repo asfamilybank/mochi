@@ -33,6 +33,9 @@ public final class Orchestrator {
     private let currentConfig: () -> WidgetConfig
     private let persistWindowState: (WindowState) -> Void
     private let persistURL: (URL) -> Void
+    /// #101: the transform-based write `SettingsController` also gets — 网页权限 exceptions
+    /// remembered from Mochi's prompt are applied on top of whatever was persisted last.
+    private let persist: (@escaping (WidgetConfig) -> WidgetConfig) -> Void
     private let openSettings: () -> Void
     private let openAbout: () -> Void
     /// #102: `nil` keeps no history at all (most tests).
@@ -57,6 +60,7 @@ public final class Orchestrator {
         currentConfig: @escaping () -> WidgetConfig,
         persistWindowState: @escaping (WindowState) -> Void = { _ in },
         persistURL: @escaping (URL) -> Void = { _ in },
+        persist: @escaping (@escaping (WidgetConfig) -> WidgetConfig) -> Void = { _ in },
         openSettings: @escaping () -> Void = {},
         openAbout: @escaping () -> Void = {},
         historyStore: HistoryStore? = nil
@@ -65,6 +69,7 @@ public final class Orchestrator {
         self.currentConfig = currentConfig
         self.persistWindowState = persistWindowState
         self.persistURL = persistURL
+        self.persist = persist
         self.openSettings = openSettings
         self.openAbout = openAbout
         self.historyStore = historyStore
@@ -254,6 +259,7 @@ public final class Orchestrator {
         window = nil
         ghostModeController = nil
         addressBarController = nil
+        mediaCapturePermissions = nil  // #101: 「仅这次允许」 ends with the widget
         videoControl?.refreshObservation()
     }
 
@@ -557,14 +563,12 @@ public final class Orchestrator {
                 completion: completion)
         }
 
-        // #69 — both the settings and the mode are read at request time.
-        platformOps.onMediaCaptureRequested(window) { [weak self] request in
-            guard let self else { return .deny }
-            let config = currentConfig()
-            return .deciding(
-                request, camera: config.cameraPermission, microphone: config.microphonePermission,
-                isGhostModeActive: isGhostModeActive)
-        }
+        // #69/#101 — settings, exceptions and the mode are read at request time; a fresh
+        // controller per window, so a reopened widget has no 「仅这次允许」 left over.
+        mediaCapturePermissions = MediaCapturePermissionController(
+            platformOps: platformOps, window: window, currentConfig: currentConfig, persist: persist,
+            isGhostModeActive: { [weak self] in self?.isGhostModeActive ?? false },
+            now: { [weak self] in self?.currentDate() ?? Date() })
 
         platformOps.onNewWindowRequested(window) { [weak self] request in
             self?.decideNewWindow(request) ?? .cancel
@@ -599,6 +603,10 @@ public final class Orchestrator {
     /// #68: the disk facts download destinations are decided against. Tests swap in a fake so
     /// nothing reads (let alone writes) the real ~/Downloads.
     public var downloadFileSystem: DownloadFileSystem = .live
+
+    /// #101: stamps the 网页权限 exceptions remembered from Mochi's prompt. Tests swap in a fixed date.
+    public var currentDate: () -> Date = { Date() }
+    private var mediaCapturePermissions: MediaCapturePermissionController?
 
     private var isGhostModeActive: Bool { ghostModeController?.mode == .ghost }
 

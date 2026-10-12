@@ -22,12 +22,15 @@ final class PopupWindowController: NSObject, NSWindowDelegate, WKNavigationDeleg
 
     let window: NSWindow
     let webView: WKWebView
+    /// #101: which popup this is in `WebViewSource.popupWindow(id:)`, unique within its widget.
+    let id: Int
     private let addressLabel: NSTextField
     private weak var owner: AppKitWidgetWindowHandle?
     private var observations: [NSKeyValueObservation] = []
 
-    init(configuration: WKWebViewConfiguration, windowFeatures: WKWindowFeatures, owner: AppKitWidgetWindowHandle) {
+    init(configuration: WKWebViewConfiguration, windowFeatures: WKWindowFeatures, owner: AppKitWidgetWindowHandle, id: Int) {
         self.owner = owner
+        self.id = id
         webView = WKWebView(frame: .zero, configuration: configuration)
         webView.translatesAutoresizingMaskIntoConstraints = false
 
@@ -172,5 +175,11 @@ final class PopupWindowController: NSObject, NSWindowDelegate, WKNavigationDeleg
         let warns = owner?.isHTTPWarningEnabled ?? false
         preferences.preferredHTTPSNavigationPolicy = warns ? .userMediatedFallbackToHTTP : .keepAsRequested
         decisionHandler(.allow, preferences)
+    }
+
+    /// #101: a new document in this popup ends its 「仅这次允许」 — not called for same-document
+    /// changes (`pushState`, fragments).
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        owner?.newDocumentCommittedHandler?(.popupWindow(id: id))
     }
 }

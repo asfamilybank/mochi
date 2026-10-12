@@ -83,13 +83,44 @@ extension AppKitWidgetWindowHandle: WKUIDelegate {
         case .cameraAndMicrophone: device = .cameraAndMicrophone
         @unknown default: return decisionHandler(.deny)
         }
-        let request = MediaCaptureRequest(device: device, host: origin.host.isEmpty ? nil : origin.host)
-        // No decider registered means nobody decided: deny rather than grant or prompt.
+        // #101: the *frame's* host — `origin` is the top-level page's, and a meeting iframe must
+        // count as the meeting service.
+        let request = MediaCaptureRequest(device: device, host: Self.host(of: frame), source: webViewSource(of: webView))
+        // No decider registered means nobody decided: deny rather than grant or ask.
         switch mediaCaptureRequestedHandler?(request) ?? .deny {
-        case .prompt: decisionHandler(.prompt)
+        case .ask: askAboutMediaCapture(request, in: webView, decisionHandler: decisionHandler)
         case .grant: decisionHandler(.grant)
         case .deny: decisionHandler(.deny)
         }
+    }
+
+    /// Mochi's own prompt (#101), a sheet on the requesting window: WebKit waits for the answer.
+    /// No default button — Return must not hand a website the camera for good — and Escape is
+    /// 不允许. A sheet ended without an answer (the window closing) denies and remembers nothing.
+    private func askAboutMediaCapture(
+        _ request: MediaCaptureRequest, in webView: WKWebView,
+        decisionHandler: @escaping (WKPermissionDecision) -> Void
+    ) {
+        let prompt = MediaCapturePrompt(for: request)
+        let alert = NSAlert()
+        alert.messageText = prompt.title
+        for choice in prompt.choices {
+            let button = alert.addButton(withTitle: choice.title)
+            button.keyEquivalent = choice.answer == .deny ? "\u{1b}" : ""
+        }
+        alert.beginSheetModal(for: sheetWindow(for: webView)) { [weak self] response in
+            let index = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+            guard prompt.choices.indices.contains(index),
+                let granted = self?.mediaCapturePromptAnsweredHandler?(request, prompt.choices[index].answer)
+            else { return decisionHandler(.deny) }
+            decisionHandler(granted ? .grant : .deny)
+        }
+    }
+
+    private func webViewSource(of webView: WKWebView) -> WebViewSource {
+        if webView === self.webView { return .widget }
+        guard let popup = popupWindows.first(where: { $0.webView === webView }) else { return .widget }
+        return .popupWindow(id: popup.id)
     }
 
     // MARK: New windows (#67)
@@ -113,7 +144,9 @@ extension AppKitWidgetWindowHandle: WKUIDelegate {
             if navigationAction.request.url != nil { webView.load(navigationAction.request) }
             return nil
         case .openPopupWindow:
-            let popup = PopupWindowController(configuration: configuration, windowFeatures: windowFeatures, owner: self)
+            let popup = PopupWindowController(
+                configuration: configuration, windowFeatures: windowFeatures, owner: self, id: nextPopupWindowID)
+            nextPopupWindowID += 1
             popupWindows.append(popup)
             popup.show()
             return popup.webView

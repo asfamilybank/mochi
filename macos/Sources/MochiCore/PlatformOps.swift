@@ -361,10 +361,22 @@ public protocol PlatformOps: AnyObject {
         _ window: WidgetWindowHandle,
         perform handler: @escaping (DownloadRequest, @escaping (DownloadDestinationDecision) -> Void) -> Void)
 
-    /// Registers the handler that decides a page's camera/microphone request (#69). The platform
-    /// hands `.prompt` to WebKit's own permission prompt and answers `.grant`/`.deny` directly.
+    /// Registers the handler that decides a page's camera/microphone request (#69) — from the
+    /// widget's page or any of its Popup Windows (`MediaCaptureRequest.source`). The platform
+    /// answers `.grant`/`.deny` directly; on `.ask` (#101) it shows `MediaCapturePrompt` as a sheet
+    /// on the requesting window and holds WebKit's decision until the user answers.
     func onMediaCaptureRequested(
         _ window: WidgetWindowHandle, perform handler: @escaping (MediaCaptureRequest) -> MediaCaptureDecision)
+
+    /// #101: registers the handler told the user's answer to a `.ask` prompt; it returns whether
+    /// to grant. A sheet ended without an answer (the window closing) denies without calling it.
+    func onMediaCapturePromptAnswered(
+        _ window: WidgetWindowHandle, perform handler: @escaping (MediaCaptureRequest, MediaCapturePromptAnswer) -> Bool)
+
+    /// #101: registers the handler told that one of the widget's web views committed a new
+    /// document in its main frame — a navigation or a reload, but not a same-document change
+    /// (`pushState`, a fragment), which keeps the page load. Ends that web view's 「仅这次允许」.
+    func onNewDocumentCommitted(_ window: WidgetWindowHandle, perform handler: @escaping (WebViewSource) -> Void)
 
     // #67: new windows and Popup Windows
 

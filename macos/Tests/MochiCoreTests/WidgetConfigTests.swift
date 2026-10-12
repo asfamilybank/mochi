@@ -688,6 +688,101 @@ import Testing
         #expect(try WidgetConfig.parse(original.serialized()) == original)
     }
 
+    // MARK: - #101: 网页权限的网站例外
+
+    /// An old config — only the two #69 keys — needs no migration: they are the defaults now, and
+    /// there are no exceptions, so every website gets exactly what it got before.
+    @Test func aConfigWithOnlyTheOldKeysParsesAsDefaultsWithNoExceptions() throws {
+        let config = try WidgetConfig.parse("""
+            camera_permission = "allow"
+            microphone_permission = "deny"
+            """)
+        #expect(config.cameraExceptions.isEmpty && config.microphoneExceptions.isEmpty)
+        #expect(config.pagePermissionDefault(.camera) == .allow)
+        #expect(config.pagePermissionDefault(.microphone) == .deny)
+        #expect(config.pagePermissionSetting(.camera, forHost: "meet.google.com") == .allow)
+        #expect(config.pagePermissionSetting(.microphone, forHost: "meet.google.com") == .deny)
+        #expect(!config.serialized().contains("exceptions"), "nothing written while there are none")
+    }
+
+    @Test func parsesExceptionsSortedByHost() throws {
+        let config = try WidgetConfig.parse("""
+            [[camera_exceptions]]
+            host = "zoom.us"
+            setting = "deny"
+            modified = "2026-10-12T08:00:00Z"
+
+            [[camera_exceptions]]
+            host = "Meet.Google.com"
+            setting = "allow"
+            modified = "2026-10-11T08:00:00Z"
+
+            [[microphone_exceptions]]
+            host = "meet.google.com"
+            setting = "ask"
+            modified = "2026-10-10T08:00:00Z"
+            """)
+        #expect(
+            config.cameraExceptions == [
+                .init(host: "meet.google.com", setting: .allow, lastModified: try Date("2026-10-11T08:00:00Z", strategy: .iso8601)),
+                .init(host: "zoom.us", setting: .deny, lastModified: try Date("2026-10-12T08:00:00Z", strategy: .iso8601)),
+            ])
+        #expect(
+            config.microphoneExceptions == [
+                .init(host: "meet.google.com", setting: .ask, lastModified: try Date("2026-10-10T08:00:00Z", strategy: .iso8601))
+            ])
+    }
+
+    /// Same leniency as the rest of the file: a malformed entry is dropped, the good ones are kept.
+    @Test(arguments: [
+        "setting = \"allow\"\nmodified = \"2026-10-12T08:00:00Z\"",  // no host
+        "host = \"\"\nsetting = \"allow\"\nmodified = \"2026-10-12T08:00:00Z\"",  // empty host
+        "host = 1\nsetting = \"allow\"\nmodified = \"2026-10-12T08:00:00Z\"",  // host not a string
+        "host = \"bad.example\"\nmodified = \"2026-10-12T08:00:00Z\"",  // no setting
+        "host = \"bad.example\"\nsetting = \"Allow\"\nmodified = \"2026-10-12T08:00:00Z\"",  // unknown setting
+        "host = \"bad.example\"\nsetting = \"allow\"",  // no modification time
+        "host = \"bad.example\"\nsetting = \"allow\"\nmodified = \"yesterday\"",  // unparsable time
+    ])
+    func dropsMalformedExceptions(_ badEntry: String) throws {
+        let config = try WidgetConfig.parse("""
+            [[camera_exceptions]]
+            \(badEntry)
+
+            [[camera_exceptions]]
+            host = "good.example"
+            setting = "allow"
+            modified = "2026-10-12T08:00:00Z"
+            """)
+        #expect(config.cameraExceptions.map(\.host) == ["good.example"])
+    }
+
+    @Test func serializingThenReparsingRoundTripsExceptions() throws {
+        let date = Date(timeIntervalSince1970: 1_800_000_000)
+        let original = WidgetConfig(url: URL(string: "https://example.com")!)
+            .updatingPagePermissionException(.camera, host: "zoom.us", setting: .deny, modifiedAt: date)
+            .updatingPagePermissionException(.camera, host: "meet.google.com", setting: .allow, modifiedAt: date.addingTimeInterval(60))
+            .updatingPagePermissionException(.microphone, host: "meet.google.com", setting: .ask, modifiedAt: date)
+
+        let serialized = original.serialized()
+        #expect(try WidgetConfig.parse(serialized) == original)
+        #expect(serialized == (try WidgetConfig.parse(serialized).serialized()), "stable order")
+        #expect(original.cameraExceptions.map(\.host) == ["meet.google.com", "zoom.us"])
+    }
+
+    /// One exception per host: setting it again replaces it (and its time); `nil` removes it.
+    @Test func updatingAnExceptionReplacesOrRemovesIt() {
+        let first = Date(timeIntervalSince1970: 1_800_000_000)
+        let later = first.addingTimeInterval(3600)
+        let config = WidgetConfig()
+            .updatingPagePermissionException(.camera, host: "meet.google.com", setting: .allow, modifiedAt: first)
+            .updatingPagePermissionException(.camera, host: "MEET.google.com", setting: .deny, modifiedAt: later)
+
+        #expect(config.cameraExceptions == [.init(host: "meet.google.com", setting: .deny, lastModified: later)])
+        #expect(config.microphoneExceptions.isEmpty)
+        let removed = config.updatingPagePermissionException(.camera, host: "meet.google.com", setting: nil, modifiedAt: later)
+        #expect(removed.cameraExceptions.isEmpty)
+    }
+
     // MARK: - #72: 高级 pane switches
 
     @Test func advancedSwitchesDefaultToOffWhenAbsent() throws {

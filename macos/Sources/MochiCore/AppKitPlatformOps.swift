@@ -664,6 +664,11 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     var downloadRequestedHandler: ((DownloadRequest, @escaping (DownloadDestinationDecision) -> Void) -> Void)?
     var downloadDestinations: [ObjectIdentifier: URL] = [:]
     var mediaCaptureRequestedHandler: ((MediaCaptureRequest) -> MediaCaptureDecision)?  // #69
+    /// #101: told the answer to Mochi's camera/microphone prompt, and each web view's new documents.
+    var mediaCapturePromptAnsweredHandler: ((MediaCaptureRequest, MediaCapturePromptAnswer) -> Bool)?
+    var newDocumentCommittedHandler: ((WebViewSource) -> Void)?
+    /// #101: tells this widget's Popup Windows apart in `WebViewSource.popupWindow(id:)`.
+    var nextPopupWindowID = 1
     /// #67: MochiCore's new-window decider, and the Popup Windows this widget opened (owned here,
     /// closed with the widget — see `WebInteractionUIDelegate.swift`).
     var newWindowRequestedHandler: ((NewWindowRequest) -> NewWindowDecision)?
@@ -1820,8 +1825,10 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     }
 
     /// A new document in the main frame (WebKit sends this for the main frame only) — after its
-    /// redirects, so none of the hops in between is ever reported.
+    /// redirects, so none of the hops in between is ever reported. It also ends the page's
+    /// 「仅这次允许」 (#101); same-document changes (`pushState`, fragments) never get here.
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        newDocumentCommittedHandler?(.widget)
         guard let url = webView.url else { return }
         reportMainFrameURL(url)
     }
@@ -2398,6 +2405,17 @@ public final class AppKitPlatformOps: PlatformOps {
         _ window: WidgetWindowHandle, perform handler: @escaping (MediaCaptureRequest) -> MediaCaptureDecision
     ) {
         handle(for: window)?.mediaCaptureRequestedHandler = handler
+    }
+
+    // #101
+    public func onMediaCapturePromptAnswered(
+        _ window: WidgetWindowHandle, perform handler: @escaping (MediaCaptureRequest, MediaCapturePromptAnswer) -> Bool
+    ) {
+        handle(for: window)?.mediaCapturePromptAnsweredHandler = handler
+    }
+
+    public func onNewDocumentCommitted(_ window: WidgetWindowHandle, perform handler: @escaping (WebViewSource) -> Void) {
+        handle(for: window)?.newDocumentCommittedHandler = handler
     }
 
     // #67: new windows and Popup Windows

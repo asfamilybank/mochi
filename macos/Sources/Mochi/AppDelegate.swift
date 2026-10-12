@@ -53,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             currentConfig: { currentConfig },
             persistWindowState: { windowState in persist { $0.updatingWindowState(windowState) } },
             persistURL: { url in persist { $0.updatingURL(url) } },
+            persist: persist,
             openSettings: { [unowned self] in self.settingsWindowController?.show() },
             openAbout: { AboutPanel.show() },
             // #102: opened once, for the app's lifetime; a damaged file is moved aside, never fatal.

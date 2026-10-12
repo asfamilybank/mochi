@@ -490,6 +490,33 @@ final class FakePlatformOps: PlatformOps {
         mediaCaptureRequestedHandlers[windowID]?(request)
     }
 
+    // #101
+    private var mediaCapturePromptAnsweredHandlers: [Int: (MediaCaptureRequest, MediaCapturePromptAnswer) -> Bool] = [:]
+    private var newDocumentCommittedHandlers: [Int: (WebViewSource) -> Void] = [:]
+
+    func onMediaCapturePromptAnswered(
+        _ window: WidgetWindowHandle, perform handler: @escaping (MediaCaptureRequest, MediaCapturePromptAnswer) -> Bool
+    ) {
+        let handle = window as! FakeWidgetWindowHandle
+        mediaCapturePromptAnsweredHandlers[handle.id] = handler
+    }
+
+    /// The user answering the sheet a `.ask` decision showed: whether WebKit is told to grant.
+    func simulateMediaCapturePromptAnswered(
+        _ answer: MediaCapturePromptAnswer, to request: MediaCaptureRequest, windowID: Int = 1
+    ) -> Bool? {
+        mediaCapturePromptAnsweredHandlers[windowID]?(request, answer)
+    }
+
+    func onNewDocumentCommitted(_ window: WidgetWindowHandle, perform handler: @escaping (WebViewSource) -> Void) {
+        let handle = window as! FakeWidgetWindowHandle
+        newDocumentCommittedHandlers[handle.id] = handler
+    }
+
+    func simulateNewDocumentCommitted(in source: WebViewSource = .widget, windowID: Int = 1) {
+        newDocumentCommittedHandlers[windowID]?(source)
+    }
+
     // MARK: #67: new windows and Popup Windows
 
     private var newWindowRequestedHandlers: [Int: (NewWindowRequest) -> NewWindowDecision] = [:]

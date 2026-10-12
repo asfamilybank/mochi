@@ -97,52 +97,108 @@ public enum DownloadDestinationDecision: Equatable, Sendable {
     case askWithSavePanel(directory: URL, suggestedFilename: String)
 }
 
-// MARK: - 摄像头与麦克风 (#69)
+// MARK: - 摄像头与麦克风 (#69) · 网站例外与 Mochi 的询问框 (#101, ADR-0027)
 
 /// Which capture devices a page's `getUserMedia` asks for.
 public enum MediaCaptureDevice: Equatable, Sendable {
     case camera
     case microphone
     case cameraAndMicrophone
+
+    /// The 网页权限 this request needs — both for a camera+microphone request.
+    public var pagePermissions: [PagePermission] {
+        switch self {
+        case .camera: [.camera]
+        case .microphone: [.microphone]
+        case .cameraAndMicrophone: [.camera, .microphone]
+        }
+    }
+
+    /// How the prompt names the device.
+    var displayName: String {
+        switch self {
+        case .camera: "摄像头"
+        case .microphone: "麦克风"
+        case .cameraAndMicrophone: "摄像头和麦克风"
+        }
+    }
+}
+
+/// A 网页权限 (CONTEXT.md「网页权限」): each has a「访问其他网站时」default plus per-website
+/// exceptions in `WidgetConfig`.
+public enum PagePermission: String, CaseIterable, Sendable {
+    case camera
+    case microphone
+}
+
+/// Which of a widget's web views a request came from: the widget's own page, or one of its Popup
+/// Windows — `id` tells the popups apart while they are open.
+public enum WebViewSource: Hashable, Sendable {
+    case widget
+    case popupWindow(id: Int)
 }
 
 /// A page's camera/microphone request (#69).
 public struct MediaCaptureRequest: Equatable, Sendable {
     public var device: MediaCaptureDevice
-    /// The requesting origin's host — `nil` when it has none.
+    /// The requesting *frame's* host — a meeting iframe counts as the meeting service, not the page
+    /// around it (#101). Lower-cased; `nil` when it has none (`data:`, `file:`).
     public var host: String?
+    public var source: WebViewSource
 
-    public init(device: MediaCaptureDevice, host: String?) {
+    public init(device: MediaCaptureDevice, host: String?, source: WebViewSource = .widget) {
         self.device = device
-        self.host = host
+        let host = host?.lowercased()
+        self.host = host?.isEmpty == false ? host : nil
+        self.source = source
     }
 }
 
-/// How a camera/microphone request is settled — one-to-one with WebKit's `WKPermissionDecision`,
-/// so the AppKit layer only translates.
+/// One 「仅这次允许」 answer, held for the page load of the web view it was given in.
+public struct MediaCaptureGrant: Hashable, Sendable {
+    public var host: String
+    public var permission: PagePermission
+
+    public init(host: String, permission: PagePermission) {
+        self.host = host
+        self.permission = permission
+    }
+}
+
+/// How a camera/microphone request is settled.
 public enum MediaCaptureDecision: Equatable, Sendable {
-    /// Hand it to WebKit's own permission prompt. Mochi does not remember the user's answer there:
-    /// remembering would introduce per-site state, and Settings are global (CONTEXT.md「Settings」).
-    case prompt
+    /// Mochi asks the user with its own sheet (`MediaCapturePrompt`) on the requesting window, and
+    /// WebKit gets its decision once the answer is back. Never WebKit's own prompt: that one would
+    /// not tell Mochi what the user chose, so nothing could be remembered (ADR-0027).
+    case ask
     case grant
     case deny
 
-    /// The decision for `request` given the two 网页内容 settings and the live mode. Ghost Mode
-    /// always denies, without a prompt ("不打扰"); a camera+microphone request takes the stricter
-    /// of the two settings (拒绝 > 询问 > 允许), so each setting still holds for its own device.
+    /// The decision for `request` (ADR-0027):
+    ///
+    /// - Ghost Mode denies a request from the widget's page without asking ("不打扰"); a Popup
+    ///   Window is an ordinary window the user may be working in, so its requests go through the
+    ///   rules as usual.
+    /// - Each permission the request needs is the host's exception, or the default when the host
+    ///   has none (always the default for a host-less page). A 「仅这次允许」 grant of the same
+    ///   page load turns 询问 into 允许 — never a 拒绝 the user has set since.
+    /// - A camera+microphone request takes the stricter of the two (拒绝 > 询问 > 允许).
     public static func deciding(
-        _ request: MediaCaptureRequest, camera: WidgetConfig.MediaCapturePermission,
-        microphone: WidgetConfig.MediaCapturePermission, isGhostModeActive: Bool
+        _ request: MediaCaptureRequest, config: WidgetConfig, isGhostModeActive: Bool,
+        grantedThisTime: Set<MediaCaptureGrant>
     ) -> MediaCaptureDecision {
-        guard !isGhostModeActive else { return .deny }
-        let permission: WidgetConfig.MediaCapturePermission
-        switch request.device {
-        case .camera: permission = camera
-        case .microphone: permission = microphone
-        case .cameraAndMicrophone: permission = camera.strictness >= microphone.strictness ? camera : microphone
+        if isGhostModeActive, request.source == .widget { return .deny }
+        let settings = request.device.pagePermissions.map { permission -> WidgetConfig.MediaCapturePermission in
+            let setting = config.pagePermissionSetting(permission, forHost: request.host)
+            if setting == .ask, let host = request.host,
+                grantedThisTime.contains(MediaCaptureGrant(host: host, permission: permission))
+            {
+                return .allow
+            }
+            return setting
         }
-        switch permission {
-        case .ask: return .prompt
+        switch settings.max(by: { $0.strictness < $1.strictness }) ?? .deny {
+        case .ask: return .ask
         case .allow: return .grant
         case .deny: return .deny
         }
@@ -156,6 +212,46 @@ extension WidgetConfig.MediaCapturePermission {
         case .allow: 0
         case .ask: 1
         case .deny: 2
+        }
+    }
+}
+
+/// What the user picked in Mochi's prompt.
+public enum MediaCapturePromptAnswer: Equatable, Sendable {
+    /// 访问此网站时允许 — remembered as an 允许 exception for the host.
+    case allowOnThisSite
+    /// 仅这次允许 (plain 允许 on a host-less page) — held for this page load only.
+    case allowThisTime
+    /// 不允许 — remembered as a 拒绝 exception for the host; a host-less page remembers nothing.
+    case deny
+}
+
+/// The sheet Mochi shows for an `.ask` decision: the host and the device in the title, Chrome's
+/// three choices — or just 允许 / 不允许 when the page has no host to remember anything under.
+public struct MediaCapturePrompt: Equatable, Sendable {
+    public struct Choice: Equatable, Sendable {
+        public var answer: MediaCapturePromptAnswer
+        public var title: String
+    }
+
+    public var title: String
+    /// In display order, top to bottom.
+    public var choices: [Choice]
+
+    public init(for request: MediaCaptureRequest) {
+        if let host = request.host {
+            title = "“\(host)”想使用你的\(request.device.displayName)"
+            choices = [
+                Choice(answer: .allowOnThisSite, title: "访问此网站时允许"),
+                Choice(answer: .allowThisTime, title: "仅这次允许"),
+                Choice(answer: .deny, title: "不允许"),
+            ]
+        } else {
+            title = "此网页想使用你的\(request.device.displayName)"
+            choices = [
+                Choice(answer: .allowThisTime, title: "允许"),
+                Choice(answer: .deny, title: "不允许"),
+            ]
         }
     }
 }
