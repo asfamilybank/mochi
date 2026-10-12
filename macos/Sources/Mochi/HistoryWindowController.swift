@@ -12,9 +12,13 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSToo
     private static let searchItemIdentifier = NSToolbarItem.Identifier("history.search")
 
     private let model: HistoryViewModel
+    /// `PlatformOps.activateApp` — activation goes through the platform seam, never straight to
+    /// `NSApp` (CLAUDE.md).
+    private let activateApp: () -> Void
 
-    init(browser: HistoryBrowser) {
+    init(browser: HistoryBrowser, activateApp: @escaping () -> Void) {
         model = HistoryViewModel(browser: browser)
+        self.activateApp = activateApp
         let hostingController = NSHostingController(rootView: HistoryView(model: model))
         // Only the minimum: the window is resizable and the list fills whatever it is given.
         hostingController.sizingOptions = [.minSize]
@@ -50,7 +54,7 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSToo
             model.removeExpiredEntries()
             model.reload()
             window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            activateApp()
         }
     }
 

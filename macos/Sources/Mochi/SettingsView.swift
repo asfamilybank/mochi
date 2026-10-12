@@ -2,13 +2,11 @@ import MochiCore
 import SwiftUI
 
 /// The settings window's panes (#65), in toolbar order — the Safari-style preferences window
-/// that `SettingsWindowController` builds, one toolbar button per case. Regrouped by the user's
-/// mental model rather than by implementation (#46), then widened from four tabs to six so the
-/// settings #64 adds each have a home: 网页内容 and 高级 start out empty and are filled by later
-/// tickets, which add items to a pane rather than inventing panes of their own. #88 folded 热键
-/// and 窗口 into 幽灵模式: nearly every hotkey only works in Ghost Mode, and its opacity sat a pane
-/// away from them; 窗口's one remaining switch, Snap, moved to 通用. #100 renamed 网页内容 to 网站
-/// and gave HTTP 警告 and 网站数据 their own 隐私与安全性 pane, following Safari's 网站 and 隐私.
+/// that `SettingsWindowController` builds, one toolbar button per case. Grouped by the user's
+/// mental model rather than by implementation (#46): a new setting joins the pane it belongs to
+/// rather than inventing a pane of its own. 幽灵模式 holds the hotkeys too (#88) — nearly every
+/// one only works in Ghost Mode — while Snap lives in 通用. 网站 and 隐私与安全性 (#100) follow
+/// Safari's 网站 and 隐私: per-website settings in one, what is kept about websites in the other.
 ///
 /// Every pane is backed by `SettingsViewModel` so each edit flows through `SettingsController`'s
 /// persistence path — view-local `@State` only ever holds a value mid-edit (text being typed, a
@@ -70,8 +68,8 @@ enum SettingsPane: CaseIterable {
     }
 }
 
-/// 高级 (#70, #72). Each `Section` is self-contained so later tickets can append their own. Since
-/// #100 only 辅助功能 and 开发 are left: HTTP 警告 and 网站数据 moved to 隐私与安全性.
+/// 高级 (#70, #72): 辅助功能 and 开发, each a self-contained `Section`. HTTP 警告 and 网站数据 live
+/// in 隐私与安全性 (#100).
 struct AdvancedSettingsTab: View {
     @ObservedObject var viewModel: SettingsViewModel
 

@@ -2,8 +2,8 @@ import MochiCore
 import SwiftUI
 
 /// 隐私与安全性 (#100): what is kept about websites and how they are reached, after Safari's 隐私
-/// pane. Both sections moved here unchanged from 高级 (#72); later tickets append their own
-/// (管理网站和数据…, 清除浏览数据…, history retention) as further rows or sections.
+/// pane: how long history is kept (#110), each website's data (管理网站和数据… #106, 清除浏览数据…
+/// #107), and the HTTP warning, moved here from 高级 (#72).
 struct PrivacySettingsTab: View {
     @ObservedObject var viewModel: SettingsViewModel
     @State private var isManagingWebsites = false
@@ -27,7 +27,7 @@ struct PrivacySettingsTab: View {
             }
 
             Section("网站数据") {
-                // #106: replaces 移除所有网站数据…, whose job is the sheet's 全部删除.
+                // #106: removing every website's data is the sheet's 全部删除.
                 Button("管理网站和数据…") { isManagingWebsites = true }
                 Text("按网站查看并删除 Cookie、缓存等数据，或重置网页权限。")
                     .font(.caption)

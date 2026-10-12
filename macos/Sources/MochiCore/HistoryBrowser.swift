@@ -92,7 +92,7 @@ public final class HistoryBrowser {
     /// - Parameter entries: newest first, as `HistoryStore` returns them.
     static func sections(of entries: [HistoryEntry], now: Date, calendar: Calendar) -> [Section] {
         var days: [(day: Date, rows: [Row])] = []
-        let time = formatter("HH:mm", calendar: calendar)
+        let time = HistoryText.formatter("HH:mm", calendar: calendar)
         for entry in entries {
             let day = calendar.startOfDay(for: entry.lastVisited)
             if days.last?.day != day { days.append((day, [])) }
@@ -102,10 +102,10 @@ public final class HistoryBrowser {
     }
 
     private static func row(for entry: HistoryEntry, time: DateFormatter) -> Row {
-        let title = (entry.title ?? "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        let title = HistoryText.title(of: entry)
         let address = entry.url.absoluteString
         return Row(
-            url: entry.url, title: title.isEmpty ? address : title, subtitle: title.isEmpty ? nil : address,
+            url: entry.url, title: title ?? address, subtitle: title == nil ? nil : address,
             time: time.string(from: entry.lastVisited))
     }
 
@@ -114,15 +114,7 @@ public final class HistoryBrowser {
         if day == today { return "今天" }
         if let yesterday = calendar.date(byAdding: .day, value: -1, to: today), day == yesterday { return "昨天" }
         let sameYear = calendar.component(.year, from: day) == calendar.component(.year, from: now)
-        return formatter(sameYear ? "M月d日 EEEE" : "yyyy年M月d日 EEEE", calendar: calendar).string(from: day)
-    }
-
-    private static func formatter(_ format: String, calendar: Calendar) -> DateFormatter {
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.timeZone = calendar.timeZone
-        formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = format
-        return formatter
+        let format = sameYear ? HistoryText.dayFormat : HistoryText.dayWithYearFormat
+        return HistoryText.formatter(format, calendar: calendar).string(from: day)
     }
 }

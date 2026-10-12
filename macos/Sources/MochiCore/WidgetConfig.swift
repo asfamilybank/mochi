@@ -42,7 +42,7 @@ public struct WidgetConfig: Equatable {
     /// `updatingCustomStylesheet`, so the long memberwise init stays untouched.
     public var customStylesheet: String? = nil
 
-    /// 网页内容 → 自动播放 (#70), Safari's three options mapped onto WebKit's
+    /// 网站 → 通用 → 自动播放 (#70), Safari's three options mapped onto WebKit's
     /// `mediaTypesRequiringUserActionForPlayback`. Read once, when the web view is created — the
     /// public API has no per-navigation equivalent — so an edit applies on the next open.
     public enum AutoplayPolicy: String, CaseIterable, Equatable, Sendable {
@@ -58,13 +58,13 @@ public struct WidgetConfig: Equatable {
     /// `offeredMinimumFontSizes`. Pushed to the live web view by `Orchestrator.reapplyConfiguration`.
     public var minimumFontSize: Int?
 
-    /// 高级 → 安全性 → 通过 HTTP 连接网站前接收警告 (#72), off by default. Consulted by the
+    /// 隐私与安全性 → 安全性 → 通过 HTTP 连接网站前接收警告 (#72, #100), off by default. Consulted by the
     /// platform in every navigation policy decision.
     public var isHTTPWarningEnabled: Bool = false
     /// 高级 → 显示网页开发者功能 (#72), off by default — `WKWebView.isInspectable`.
     public var isWebInspectorEnabled: Bool = false
 
-    /// 网页内容 → 摄像头 / 麦克风 (#69), Safari's three options. Read at each request, so an edit
+    /// 网站 → 摄像头 / 麦克风 (#69), Safari's three options. Read at each request, so an edit
     /// applies from the next request on; the decision itself is `MediaCaptureDecision.deciding`.
     public enum MediaCapturePermission: String, CaseIterable, Equatable, Sendable {
         case ask
@@ -98,7 +98,7 @@ public struct WidgetConfig: Equatable {
     /// `pagePermissionSetting(_:forHost:)`, written through `updatingPagePermissionException`.
     public var cameraExceptions: [PagePermissionException] = []
     public var microphoneExceptions: [PagePermissionException] = []
-    /// 网页内容 → 弹出式窗口 (#67), Safari's wording. Maps to WebKit's
+    /// 网站 → 通用 → 弹出式窗口 (#67), Safari's wording. Maps to WebKit's
     /// `javaScriptCanOpenWindowsAutomatically`: 阻止 lets WebKit drop a `window.open` that no user
     /// click started, 允许 lets it through to the new-window decision (ADR-0017).
     public enum PopupWindowPolicy: String, CaseIterable, Equatable, Sendable {
@@ -290,9 +290,8 @@ extension WidgetConfig {
         }
     }
 
-    /// Hotkey Forwarding's (#11) user-configured mappings — until #14 ships a settings-panel
-    /// editor for this table, hand-editing this array in the TOML file is the only way to set it
-    /// (consistent with the domain doc's "power users can hand-edit the config" story). A
+    /// Hotkey Forwarding's (#11) user-configured mappings — edited in the settings panel (#14), or
+    /// by hand in the TOML file (the domain doc's "power users can hand-edit the config" story). A
     /// malformed entry (out-of-range/negative numbers a hand-edit could easily introduce) is
     /// skipped rather than crashing the whole app on every launch — this is the boundary where
     /// untrusted external data enters the system, so it validates rather than trusting the file.

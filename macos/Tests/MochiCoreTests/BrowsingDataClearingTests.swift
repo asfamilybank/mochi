@@ -56,16 +56,21 @@ import Testing
     private let allTypes: Set<String> = [
         "WKWebsiteDataTypeDiskCache", "WKWebsiteDataTypeMemoryCache", "WKWebsiteDataTypeCookies",
         "WKWebsiteDataTypeLocalStorage", "WKWebsiteDataTypeIndexedDBDatabases", "WKWebsiteDataTypeFetchCache",
+        "WKWebsiteDataTypeOfflineWebApplicationCache",
     ]
 
-    @Test func theCacheIsWebKitsDiskAndMemoryCacheOnly() {
-        #expect(WebsiteDataCategory.webKitTypes(for: [.cache], among: allTypes)
-            == ["WKWebsiteDataTypeDiskCache", "WKWebsiteDataTypeMemoryCache"])
+    private let cacheTypes: Set<String> = [
+        "WKWebsiteDataTypeDiskCache", "WKWebsiteDataTypeMemoryCache", "WKWebsiteDataTypeFetchCache",
+        "WKWebsiteDataTypeOfflineWebApplicationCache",
+    ]
+
+    @Test func theCacheIsEveryWebKitCache() {
+        #expect(WebsiteDataCategory.webKitTypes(for: [.cache], among: allTypes) == cacheTypes)
     }
 
     @Test func cookiesAndOtherDataIsEveryOtherType() {
         #expect(WebsiteDataCategory.webKitTypes(for: [.cookiesAndOtherData], among: allTypes)
-            == allTypes.subtracting(["WKWebsiteDataTypeDiskCache", "WKWebsiteDataTypeMemoryCache"]))
+            == allTypes.subtracting(cacheTypes))
     }
 
     @Test func bothTogetherAreEveryType() {
@@ -73,11 +78,32 @@ import Testing
         #expect(WebsiteDataCategory.webKitTypes(for: [], among: allTypes).isEmpty)
     }
 
-    /// The constants this mapping names are WebKit's real ones, and both caches are among the
-    /// types WebKit itself reports.
+    /// 清除浏览数据's 「缓存的图片和文件」 clears exactly what 管理网站和数据… lists as 缓存 — the two
+    /// read the same mapping.
+    @Test(arguments: [
+        (type: "WKWebsiteDataTypeDiskCache", kind: WebsiteDataKind.cache),
+        (type: "WKWebsiteDataTypeMemoryCache", kind: .cache),
+        (type: "WKWebsiteDataTypeFetchCache", kind: .cache),
+        (type: "WKWebsiteDataTypeOfflineWebApplicationCache", kind: .cache),
+        (type: "WKWebsiteDataTypeCookies", kind: .cookies),
+        (type: "WKWebsiteDataTypeSessionStorage", kind: .localStorage),
+        (type: "WKWebsiteDataTypeIndexedDBDatabases", kind: .databases),
+        (type: "WKWebsiteDataTypeServiceWorkerRegistrations", kind: .serviceWorkers),
+        (type: "WKWebsiteDataTypeSomethingNew", kind: .other),
+    ])
+    func eachWebKitTypeFoldsIntoOneKind(_ row: (type: String, kind: WebsiteDataKind)) {
+        #expect(WebsiteDataKind(webKitType: row.type) == row.kind)
+        let category: WebsiteDataCategory = row.kind == .cache ? .cache : .cookiesAndOtherData
+        #expect(WebsiteDataCategory.webKitTypes(for: [category], among: [row.type]) == [row.type])
+    }
+
+    /// The constants this mapping names are WebKit's real ones, and the disk and memory caches are
+    /// among the types WebKit itself reports.
     @Test func theCacheTypesAreAmongWebKitsOwn() {
         let real = WebsiteDataCategory.allWebKitTypes
-        #expect(WebsiteDataCategory.webKitTypes(for: [.cache], among: real).count == 2)
+        let caches = WebsiteDataCategory.webKitTypes(for: [.cache], among: real)
+        #expect(caches.isSuperset(of: ["WKWebsiteDataTypeDiskCache", "WKWebsiteDataTypeMemoryCache"]))
+        #expect(caches.isSubset(of: cacheTypes))
         #expect(WebsiteDataCategory.webKitTypes(for: [.cookiesAndOtherData], among: real).contains("WKWebsiteDataTypeCookies"))
     }
 }

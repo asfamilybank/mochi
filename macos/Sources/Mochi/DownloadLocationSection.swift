@@ -45,7 +45,6 @@ struct DownloadLocationSection: View {
             }
         }
         .onAppear { viewModel.refreshSystemPermissions() }
-        .onChange(of: viewModel.config.downloadLocation) { viewModel.refreshSystemPermissions() }
     }
 
     private var currentChoice: Choice {

@@ -69,8 +69,8 @@ public enum DefaultHotkeys {
     /// can show it as a hint. `0x0C` is `kVK_ANSI_Q`.
     public static let quit = Hotkey(keyCode: 0x0C, modifierFlags: cmd)
 
-    /// ⌘Y — the History menu's 显示全部历史记录 (#97). Reserved since #102, ahead of the item
-    /// itself, so no mapping settles on it in the meantime. `0x10` is `kVK_ANSI_Y`.
+    /// ⌘Y — the History menu's 显示全部历史记录 (#97, #108), which opens and closes the History
+    /// window. `0x10` is `kVK_ANSI_Y`.
     public static let showAllHistory = Hotkey(keyCode: 0x10, modifierFlags: cmd)
 
     /// The fixed local menu shortcuts #37 built into `MainMenuBuilder` (⌘R/⌘+/⌘-/⌘0/⌘,) — never

@@ -26,7 +26,8 @@ final class FaviconLoader {
     private var misses: Set<String> = []
     private var missOrder: [String] = []
 
-    /// 移除所有网站数据… (#72) drops both caches — hits and remembered misses.
+    /// Removing website data — 清除浏览数据…'s cache (#107), 管理网站和数据… (#106) — drops both
+    /// caches: hits and remembered misses.
     func removeAll() {
         cache.removeAll()
         cacheOrder.removeAll()

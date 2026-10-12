@@ -123,9 +123,8 @@ public enum SystemPermissionPrompts {
 
     /// Whether a page can get as far as the system's gate for `device`: a page needs the 网页权限
     /// first, then the 系统权限 (CONTEXT.md), so while the 网页权限 is 拒绝 the system's answer is
-    /// beside the point and no prompt shows. The one place this is decided: since websites can
-    /// have exceptions (#109), some page may use the device whenever the default **or any
-    /// exception** is not 拒绝.
+    /// beside the point and no prompt shows. The one place this is decided: some page may use
+    /// the device whenever the default **or any website's exception** (#109) is not 拒绝.
     private static func pagesMayUse(_ device: SystemPermission, config: WidgetConfig) -> Bool {
         let permission: PagePermission
         switch device {

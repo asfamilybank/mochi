@@ -3,8 +3,7 @@ import Foundation
 // MARK: - 网页交互请求接缝 (#66)
 //
 // A page can ask Mochi for something only a user can answer: a JavaScript dialog, a file to
-// upload — and, in follow-up tickets, a new window (#67), a download (#68), camera/microphone
-// access (#69). Every such request crosses the platform boundary the same way:
+// upload, a new window (#67), a download (#68), camera/microphone access (#69). Every such request crosses the platform boundary the same way:
 //
 // - The AppKit layer translates one WebKit delegate callback into a *request* value and hands it
 //   to the handler registered through a per-kind `PlatformOps.on…Requested` hook.

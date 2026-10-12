@@ -859,19 +859,6 @@ import Testing
         #expect(notified == 1)
     }
 
-    @Test func removingAllWebsiteDataReachesThePlatformWithoutTouchingTheConfig() {
-        let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
-        let fake = FakePlatformOps()
-        var notified = 0
-        let controller = makeController(store: store, platformOps: fake, configDidChange: { notified += 1 })
-
-        controller.removeAllWebsiteData()
-
-        #expect(fake.removeAllWebsiteDataCallCount == 1)
-        #expect(store.writeCount == 0)
-        #expect(notified == 0)
-    }
-
     // MARK: - Writes made elsewhere (#109)
 
     /// The settings window must see what was written outside it — the 询问框's 「访问此网站时允许」
@@ -1022,7 +1009,6 @@ import Testing
         controller.clearBrowsingData([.pagePermissionExceptions], from: .allTime)
 
         #expect(fake.websiteDataRemovals.isEmpty)
-        #expect(fake.removeAllWebsiteDataCallCount == 0)
     }
 
     @Test func clearingNothingDoesNothing() {
@@ -1089,7 +1075,6 @@ import Testing
         controller.clearBrowsingData([.history], from: .allTime)
 
         #expect(fake.websiteDataRemovals.isEmpty)
-        #expect(fake.removeAllWebsiteDataCallCount == 0)
         #expect(store.writeCount == 0)
     }
 
@@ -1218,7 +1203,6 @@ import Testing
         #expect(store.config.pagePermissionExceptions(.camera).map(\.host) == ["zoom.us"])
         #expect(store.config.pagePermissionExceptions(.microphone).isEmpty)
         #expect(fake.websiteDataRecordRemovals.isEmpty)
-        #expect(fake.removeAllWebsiteDataCallCount == 0)
         #expect(notified == 1)
     }
 

@@ -269,18 +269,12 @@ final class FakePlatformOps: PlatformOps {
     // #72: 高级 pane
     private(set) var webInspectableChanges: [(enabled: Bool, windowID: Int)] = []
     private(set) var httpWarningChanges: [(enabled: Bool, windowID: Int)] = []
-    private(set) var removeAllWebsiteDataCallCount = 0
-
     func setWebInspectable(_ enabled: Bool, in window: WidgetWindowHandle) {
         webInspectableChanges.append((enabled, (window as! FakeWidgetWindowHandle).id))
     }
 
     func setHTTPWarningEnabled(_ enabled: Bool, in window: WidgetWindowHandle) {
         httpWarningChanges.append((enabled, (window as! FakeWidgetWindowHandle).id))
-    }
-
-    func removeAllWebsiteData() {
-        removeAllWebsiteDataCallCount += 1
     }
 
     // #107: 清除浏览数据…

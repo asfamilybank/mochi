@@ -71,16 +71,15 @@ public enum BrowsingDataKind: String, CaseIterable, Sendable {
     }
 }
 
-/// How 清除浏览数据 splits WebKit's website data (#107): the HTTP cache, which can go without
+/// How 清除浏览数据 splits WebKit's website data (#107): the caches, which can go without
 /// logging anyone out, and everything else.
 public enum WebsiteDataCategory: String, CaseIterable, Sendable {
-    /// WebKit's disk and memory caches.
+    /// Every WebKit type `WebsiteDataKind` counts as 缓存 — the disk, memory and fetch caches and
+    /// the offline web application cache.
     case cache
     /// Every other website data type: cookies, local and session storage, IndexedDB, service
-    /// workers and their caches, ….
+    /// worker registrations, ….
     case cookiesAndOtherData
-
-    static let cacheWebKitTypes: Set<String> = [WKWebsiteDataTypeDiskCache, WKWebsiteDataTypeMemoryCache]
 
     /// Every type the running WebKit knows about.
     static var allWebKitTypes: Set<String> { WKWebsiteDataStore.allWebsiteDataTypes() }
@@ -88,9 +87,29 @@ public enum WebsiteDataCategory: String, CaseIterable, Sendable {
     /// The WebKit data types `categories` come to, out of `all` (normally `allWebKitTypes`;
     /// passed in so the split is testable without WebKit's list).
     static func webKitTypes(for categories: Set<WebsiteDataCategory>, among all: Set<String>) -> Set<String> {
+        let caches = all.filter { WebsiteDataKind(webKitType: $0) == .cache }
         var types: Set<String> = []
-        if categories.contains(.cache) { types.formUnion(all.intersection(cacheWebKitTypes)) }
-        if categories.contains(.cookiesAndOtherData) { types.formUnion(all.subtracting(cacheWebKitTypes)) }
+        if categories.contains(.cache) { types.formUnion(caches) }
+        if categories.contains(.cookiesAndOtherData) { types.formUnion(all.subtracting(caches)) }
         return types
+    }
+}
+
+/// WebKit's data types, folded into the kinds 管理网站和数据… shows (#106). The one place that
+/// says which types are 缓存: 清除浏览数据's 「缓存的图片和文件」 (`WebsiteDataCategory.cache`)
+/// clears exactly what 管理网站和数据… lists as 缓存.
+extension WebsiteDataKind {
+    init(webKitType: String) {
+        switch webKitType {
+        case WKWebsiteDataTypeCookies: self = .cookies
+        case WKWebsiteDataTypeLocalStorage, WKWebsiteDataTypeSessionStorage: self = .localStorage
+        case WKWebsiteDataTypeIndexedDBDatabases, WKWebsiteDataTypeWebSQLDatabases, WKWebsiteDataTypeFileSystem:
+            self = .databases
+        case WKWebsiteDataTypeDiskCache, WKWebsiteDataTypeMemoryCache, WKWebsiteDataTypeFetchCache,
+            WKWebsiteDataTypeOfflineWebApplicationCache:
+            self = .cache
+        case WKWebsiteDataTypeServiceWorkerRegistrations: self = .serviceWorkers
+        default: self = .other
+        }
     }
 }

@@ -59,19 +59,13 @@ public struct HistoryMenu: Equatable {
     /// The page's title on one line, or its address when it has none; cut to
     /// `maximumTitleLength` with a trailing ellipsis.
     private static func item(for entry: HistoryEntry) -> Item {
-        let title = (entry.title ?? "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        let shown = title.isEmpty ? entry.url.absoluteString : title
+        let shown = HistoryText.title(of: entry) ?? entry.url.absoluteString
         let cut = shown.count > maximumTitleLength ? shown.prefix(maximumTitleLength - 1) + "…" : shown
         return Item(title: String(cut), url: entry.url)
     }
 
     /// 「10月11日 星期日」.
     private static func title(of day: Date, calendar: Calendar) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = calendar
-        formatter.timeZone = calendar.timeZone
-        formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = "M月d日 EEEE"
-        return formatter.string(from: day)
+        HistoryText.formatter(HistoryText.dayFormat, calendar: calendar).string(from: day)
     }
 }

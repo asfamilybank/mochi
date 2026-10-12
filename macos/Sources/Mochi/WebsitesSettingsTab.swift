@@ -1,7 +1,7 @@
 import MochiCore
 import SwiftUI
 
-/// 网站 (#100, formerly 网页内容 #70), laid out like Safari's 网站 pane: a list of settings on the
+/// 网站 (#70, #100), laid out like Safari's 网站 pane: a list of settings on the
 /// left, the selected one's page on the right. 通用 holds the settings that stay global (自动播放,
 /// 弹出式窗口); 摄像头 and 麦克风 each hold their 网页权限 (ADR-0027).
 ///
@@ -293,9 +293,9 @@ extension WidgetConfig.AutoplayPolicy {
     }
 }
 
-// #69 — Safari's wording.
+// #69 — Safari's wording; 管理网站和数据… (#106) names each exception the same way.
 extension WidgetConfig.MediaCapturePermission {
-    fileprivate var displayName: String {
+    var displayName: String {
         switch self {
         case .ask: "询问"
         case .deny: "拒绝"

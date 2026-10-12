@@ -913,7 +913,7 @@ import Testing
     }
 }
 
-/// 网页内容 → 弹出式窗口 (#67).
+/// 网站 → 通用 → 弹出式窗口 (#67).
 @Suite struct WidgetConfigPopupWindowPolicyTests {
     @Test func defaultsToBlockWhenAbsent() throws {
         #expect(try WidgetConfig.parse("").popupWindowPolicy == .block)

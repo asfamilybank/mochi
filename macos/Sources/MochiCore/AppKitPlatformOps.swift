@@ -2526,28 +2526,25 @@ public final class AppKitPlatformOps: PlatformOps {
         handle(for: window)?.setHTTPWarningEnabled(enabled)
     }
 
-    /// Every web view shares `WKWebsiteDataStore.default()` (none is configured otherwise), so
-    /// clearing it logs every site out. `config.toml` is not WebKit data and is left alone.
-    public func removeAllWebsiteData() {
-        WKWebsiteDataStore.default().removeData(
-            ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast
-        ) {}
-        for handle in liveHandles.allObjects {
-            handle.clearFaviconCache()
-        }
-    }
-
-    /// #107: the same shared store, narrowed to `types`' WebKit data types and to what was
-    /// modified since `modifiedSince`. Mochi's favicon cache counts as cached images: it goes
-    /// whenever the cache does (it has no timestamps, and is refetched on demand anyway).
+    /// #107: every web view shares `WKWebsiteDataStore.default()` (none is configured otherwise),
+    /// narrowed here to `types`' WebKit data types and to what was modified since
+    /// `modifiedSince`. `config.toml` is not WebKit data and is left alone. Mochi's favicon cache
+    /// counts as cached images: it goes whenever the cache does (it has no timestamps, and is
+    /// refetched on demand anyway).
     public func removeData(ofTypes types: Set<WebsiteDataCategory>, modifiedSince: Date) {
         let webKitTypes = WebsiteDataCategory.webKitTypes(for: types, among: WebsiteDataCategory.allWebKitTypes)
         guard !webKitTypes.isEmpty else { return }
         WKWebsiteDataStore.default().removeData(ofTypes: webKitTypes, modifiedSince: modifiedSince) {}
         if types.contains(.cache) {
-            for handle in liveHandles.allObjects {
-                handle.clearFaviconCache()
-            }
+            clearEveryFaviconCache()
+        }
+    }
+
+    /// The favicon caches of every live window — not WebKit data, so removing website data
+    /// clears them alongside.
+    private func clearEveryFaviconCache() {
+        for handle in liveHandles.allObjects {
+            handle.clearFaviconCache()
         }
     }
 
@@ -2571,9 +2568,7 @@ public final class AppKitPlatformOps: PlatformOps {
         let names = Set(names)
         store.fetchDataRecords(ofTypes: types) { [weak self] records in
             store.removeData(ofTypes: types, for: records.filter { names.contains($0.displayName) }) {
-                for handle in self?.liveHandles.allObjects ?? [] {
-                    handle.clearFaviconCache()
-                }
+                self?.clearEveryFaviconCache()
                 completion()
             }
         }
@@ -2810,22 +2805,5 @@ public final class AppKitPlatformOps: PlatformOps {
 
     private func handle(for window: WidgetWindowHandle) -> AppKitWidgetWindowHandle? {
         window as? AppKitWidgetWindowHandle
-    }
-}
-
-// #106: WebKit's data types, folded into the kinds 管理网站和数据… shows.
-extension WebsiteDataKind {
-    init(webKitType: String) {
-        switch webKitType {
-        case WKWebsiteDataTypeCookies: self = .cookies
-        case WKWebsiteDataTypeLocalStorage, WKWebsiteDataTypeSessionStorage: self = .localStorage
-        case WKWebsiteDataTypeIndexedDBDatabases, WKWebsiteDataTypeWebSQLDatabases, WKWebsiteDataTypeFileSystem:
-            self = .databases
-        case WKWebsiteDataTypeDiskCache, WKWebsiteDataTypeMemoryCache, WKWebsiteDataTypeFetchCache,
-            WKWebsiteDataTypeOfflineWebApplicationCache:
-            self = .cache
-        case WKWebsiteDataTypeServiceWorkerRegistrations: self = .serviceWorkers
-        default: self = .other
-        }
     }
 }

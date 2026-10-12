@@ -77,11 +77,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configWasPersisted = { settingsController.configWasPersisted() }
         let settingsViewModel = SettingsViewModel(controller: settingsController, reloadPage: { orchestrator.reloadPage() })
         settingsViewModel.reopenWidget = { orchestrator.reopenWidget() }
-        settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)
+        settingsWindowController = SettingsWindowController(
+            viewModel: settingsViewModel, activateApp: { platformOps.activateApp() })
 
         let mainMenuBuilder = MainMenuBuilder()
         self.mainMenuBuilder = mainMenuBuilder
-        NSApp.mainMenu = mainMenuBuilder.build(orchestrator: orchestrator) { [unowned self] in
+        NSApp.mainMenu = mainMenuBuilder.build(
+            orchestrator: orchestrator, activateApp: { platformOps.activateApp() }
+        ) { [unowned self] in
             self.settingsWindowController?.showClearBrowsingData()
         }
 

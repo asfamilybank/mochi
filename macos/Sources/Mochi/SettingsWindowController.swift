@@ -13,20 +13,26 @@ import SwiftUI
 /// is its content's, exactly like Safari's settings window.
 final class SettingsWindowController: NSWindowController {
     private var viewModel: SettingsViewModel?
+    /// `PlatformOps.activateApp` — activation goes through the platform seam, never straight to
+    /// `NSApp` (CLAUDE.md).
+    private var activateApp: () -> Void = {}
 
-    convenience init(viewModel: SettingsViewModel) {
+    convenience init(viewModel: SettingsViewModel, activateApp: @escaping () -> Void) {
         let tabViewController = SettingsTabViewController(viewModel: viewModel)
         let window = NSWindow(contentViewController: tabViewController)
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.toolbarStyle = .preference
         self.init(window: window)
         self.viewModel = viewModel
+        self.activateApp = activateApp
         tabViewController.fitWindowToSelectedPane(animated: false)
     }
 
+    /// Orders the window front first, then activates: activation lands on it as the key window
+    /// (see `PlatformOps.activateApp`), never on a Ghost Mode widget.
     func show() {
         window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        activateApp()
     }
 
     /// The 历史记录 menu's 清除浏览数据… (#110): the very sheet 隐私与安全性 shows, over that pane —

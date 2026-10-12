@@ -145,18 +145,7 @@ private struct ManagedWebsiteRow: View {
     /// `meet.google.com：摄像头 允许，麦克风 拒绝`.
     private static func describe(_ exceptions: WebsiteHostExceptions) -> String {
         let settings = [("摄像头", exceptions.camera), ("麦克风", exceptions.microphone)]
-            .compactMap { name, setting in setting.map { "\(name) \($0.exceptionDisplayName)" } }
+            .compactMap { name, setting in setting.map { "\(name) \($0.displayName)" } }
         return "\(exceptions.host)：\(settings.joined(separator: "，"))"
-    }
-}
-
-extension WidgetConfig.MediaCapturePermission {
-    // Safari's wording, as 网站 → 摄像头 / 麦克风 uses.
-    fileprivate var exceptionDisplayName: String {
-        switch self {
-        case .ask: "询问"
-        case .deny: "拒绝"
-        case .allow: "允许"
-        }
     }
 }

@@ -274,18 +274,14 @@ public protocol PlatformOps: AnyObject {
     /// platform consults the pushed value in every navigation policy decision.
     func setHTTPWarningEnabled(_ enabled: Bool, in window: WidgetWindowHandle)
 
-    /// 移除所有网站数据… (#72): removes every WebKit website data type (cookies, caches, local
-    /// storage, …) plus Mochi's favicon cache. App-global — not tied to a window, and works with
-    /// the widget closed. Never touches `config.toml`. Confirmation is the caller's job.
-    func removeAllWebsiteData()
-
     /// 清除浏览数据… (#107): removes the website data of `types` that was modified at or after
-    /// `modifiedSince` (`.distantPast` for 时间不限), from every website. App-global like
-    /// `removeAllWebsiteData`; never reloads a page. Confirmation is the caller's job.
+    /// `modifiedSince` (`.distantPast` for 时间不限), from every website — and, with the cache,
+    /// Mochi's favicon cache. App-global: not tied to a window, and works with the widget closed.
+    /// Never touches `config.toml` and never reloads a page. Confirmation is the caller's job.
     func removeData(ofTypes types: Set<WebsiteDataCategory>, modifiedSince: Date)
 
     /// 管理网站和数据… (#106): every website data record WebKit holds, one per registrable domain.
-    /// App-global, like `removeAllWebsiteData`. `completion` runs on the main thread.
+    /// App-global, like `removeData(ofTypes:modifiedSince:)`. `completion` runs on the main thread.
     func fetchWebsiteDataRecords(completion: @escaping ([WebsiteDataRecord]) -> Void)
 
     /// Removes the `kinds` of data held by the records named `names` — whole records are WebKit's

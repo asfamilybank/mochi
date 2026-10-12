@@ -106,31 +106,24 @@ final class SettingsViewModel: ObservableObject {
     func updateCameraPermission(_ permission: WidgetConfig.MediaCapturePermission) {
         controller.updateCameraPermission(permission)
         config = controller.config
-        // #104: 拒绝 takes the page's 系统权限 prompt away, anything else may bring it back.
-        refreshSystemPermissions()
     }
 
     func updateMicrophonePermission(_ permission: WidgetConfig.MediaCapturePermission) {
         controller.updateMicrophonePermission(permission)
         config = controller.config
-        // #104: 拒绝 takes the page's 系统权限 prompt away, anything else may bring it back.
-        refreshSystemPermissions()
     }
 
-    // #109: 网站 → 摄像头 / 麦克风's exceptions table. An exception that lets pages through may
-    // bring the page's 系统权限 prompt back, so it is re-read after each edit, like the default.
+    // #109: 网站 → 摄像头 / 麦克风's exceptions table.
     func updatePagePermissionException(
         _ permission: PagePermission, host: String, setting: WidgetConfig.MediaCapturePermission
     ) {
         controller.updatePagePermissionException(permission, host: host, setting: setting)
         config = controller.config
-        refreshSystemPermissions()
     }
 
     func removePagePermissionExceptions(_ permission: PagePermission, hosts: Set<String>) {
         controller.removePagePermissionExceptions(permission, hosts: hosts)
         config = controller.config
-        refreshSystemPermissions()
     }
 
     // #67
@@ -171,8 +164,6 @@ final class SettingsViewModel: ObservableObject {
     func resetPagePermissions(of websites: [ManagedWebsite]) {
         controller.resetPagePermissions(of: websites)
         config = controller.config
-        // #104: the exceptions are part of whether 网站's 系统权限 prompt shows.
-        refreshSystemPermissions()
     }
 
     // #107 — re-publishes the config, since clearing 网页权限例外 edits it.

@@ -19,15 +19,20 @@ final class MainMenuBuilder {
     ///   - orchestrator: supplies everything the menus do. Widget-bound items go through its
     ///     `canPerform(_:)`/`perform(_:)` pair (#57), so whether an item is offered — no widget,
     ///     Ghost Mode — is decided there, never here.
+    ///   - activateApp: `PlatformOps.activateApp`, for the 历史记录 window (#108) to come forward
+    ///     by.
     ///   - clearBrowsingData: the 历史记录 menu's 清除浏览数据… (#110) — the settings window's own
     ///     dialog.
-    func build(orchestrator: Orchestrator, clearBrowsingData: @escaping () -> Void) -> NSMenu {
+    func build(
+        orchestrator: Orchestrator, activateApp: @escaping () -> Void, clearBrowsingData: @escaping () -> Void
+    ) -> NSMenu {
         let mainMenu = NSMenu()
         mainMenu.addItem(appMenuItem(orchestrator: orchestrator))
         mainMenu.addItem(fileMenuItem(orchestrator: orchestrator))
         mainMenu.addItem(editMenuItem())
         mainMenu.addItem(viewMenuItem(orchestrator: orchestrator))
-        mainMenu.addItem(historyMenuItem(orchestrator: orchestrator, clearBrowsingData: clearBrowsingData))
+        mainMenu.addItem(
+            historyMenuItem(orchestrator: orchestrator, activateApp: activateApp, clearBrowsingData: clearBrowsingData))
         mainMenu.addItem(windowMenuItem())
         mainMenu.addItem(helpMenuItem())
         return mainMenu
@@ -157,7 +162,9 @@ final class MainMenuBuilder {
     /// included — and below them the history list (#102), rebuilt by `HistoryMenuController`
     /// every time the menu opens. 显示全部历史记录 (⌘Y, #108) and 清除浏览数据… (#110) stay at the
     /// bottom: fixed items, so ⌘Y works without the menu ever having been opened.
-    private func historyMenuItem(orchestrator: Orchestrator, clearBrowsingData: @escaping () -> Void) -> NSMenuItem {
+    private func historyMenuItem(
+        orchestrator: Orchestrator, activateApp: @escaping () -> Void, clearBrowsingData: @escaping () -> Void
+    ) -> NSMenuItem {
         let menu = NSMenu(title: "历史记录")
 
         menu.addItem(
@@ -173,7 +180,7 @@ final class MainMenuBuilder {
         // #108: below the list, which `HistoryMenuController` rebuilds above these.
         menu.addItem(.separator())
         menu.addItem(action("显示全部历史记录", symbol: "clock", keyEquivalent: "y") { [weak self] in
-            self?.toggleHistoryWindow(orchestrator: orchestrator)
+            self?.toggleHistoryWindow(orchestrator: orchestrator, activateApp: activateApp)
         })
         // #110: Safari's 清除历史记录…, which is 清除浏览数据… here — the same dialog as 隐私与安全性.
         menu.addItem(action("清除浏览数据…", symbol: "trash", perform: clearBrowsingData))
@@ -184,9 +191,9 @@ final class MainMenuBuilder {
     }
 
     /// ⌘Y opens the 历史记录 window, and closes it again when it is the window in front (#108).
-    private func toggleHistoryWindow(orchestrator: Orchestrator) {
+    private func toggleHistoryWindow(orchestrator: Orchestrator, activateApp: @escaping () -> Void) {
         if historyWindowController == nil, let browser = orchestrator.makeHistoryBrowser() {
-            historyWindowController = HistoryWindowController(browser: browser)
+            historyWindowController = HistoryWindowController(browser: browser, activateApp: activateApp)
         }
         historyWindowController?.toggle()
     }

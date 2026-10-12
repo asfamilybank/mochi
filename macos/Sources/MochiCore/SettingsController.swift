@@ -113,7 +113,7 @@ public final class SettingsController {
         persistAndNotify { $0.updatingWebInspectorEnabled(enabled) }
     }
 
-    // #69: 网页内容 → 摄像头 / 麦克风 — read at each request, so persisting is applying.
+    // #69: 网站 → 摄像头 / 麦克风's 「访问其他网站时」 default — read at each request, so persisting is applying.
     public func updateCameraPermission(_ permission: WidgetConfig.MediaCapturePermission) {
         persistAndNotify { $0.updatingCameraPermission(permission) }
     }
@@ -154,12 +154,6 @@ public final class SettingsController {
     public func updateHistoryRetention(_ retention: HistoryRetention) {
         persistAndNotify { $0.updatingHistoryRetention(retention) }
         historyStore?.removeEntries(olderThan: currentConfig().historyRetention)
-    }
-
-    /// Not a config edit: nothing is persisted and `configDidChange` doesn't fire. The UI asks for
-    /// confirmation before calling this.
-    public func removeAllWebsiteData() {
-        platformOps.removeAllWebsiteData()
     }
 
     // MARK: - #107: 清除浏览数据…
