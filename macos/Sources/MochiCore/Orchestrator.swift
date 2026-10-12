@@ -179,6 +179,13 @@ public final class Orchestrator {
     /// a click-through window — "bring it back so I can use it" is the only reading of the request
     /// that doesn't hand focus to a window ADR-0012 says may never be key.
     public func openWidget() {
+        openWidget(startingAt: nil)
+    }
+
+    /// `openWidget()`, except that a widget created here loads `url` in place of the startup
+    /// content — for opening from history (#108), where loading the startup page first would
+    /// flash it and record a visit nobody made. Everything else about the reopen is the same.
+    private func openWidget(startingAt url: URL?) {
         if let window {
             if let ghostModeController, ghostModeController.mode == .ghost {
                 ghostModeController.exitGhostMode()
@@ -205,7 +212,7 @@ public final class Orchestrator {
         // until after the window was already up.
         platformOps.showWindow(window)
 
-        switch StartupResolution.resolveStartupContent(for: config) {
+        switch url.map(StartupContent.url) ?? StartupResolution.resolveStartupContent(for: config) {
         case .url(let url):
             platformOps.loadURL(url, in: window)
             addressBarController.urlLoaded(url)
@@ -549,9 +556,14 @@ public final class Orchestrator {
     /// Opens a page picked from history in the widget — reopening the widget first when it is
     /// closed. An explicit choice, so a Ghost Mode widget follows it *without* leaving Ghost Mode
     /// (`CONTEXT.md`): only the hotkey and the tray decide that, and `openWidget()` is not called
-    /// on an existing widget for exactly that reason. Then the same path as typing the address.
+    /// on an existing widget for exactly that reason. Then the same path as typing the address —
+    /// a reopened widget starts at the page rather than loading the startup content first.
     public func openFromHistory(_ url: URL) {
-        if window == nil { openWidget() }
+        guard window != nil else {
+            openWidget(startingAt: url)
+            persistURL(url)
+            return
+        }
         handleURLSubmitted(url)
     }
 

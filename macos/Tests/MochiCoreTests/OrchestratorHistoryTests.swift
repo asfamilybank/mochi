@@ -189,15 +189,36 @@ import Testing
         #expect(fake.loadedURLs.last?.windowID == 1)
     }
 
-    @Test func openingFromHistoryWithTheWidgetClosedReopensItFirst() {
-        let (fake, orchestrator, _) = makeOrchestrator()
+    /// The reopened widget goes straight to the page picked: the startup page is never loaded on
+    /// the way, so it is neither shown nor recorded as a visit (#102, #108).
+    @Test(arguments: [
+        (name: "startup URL", config: WidgetConfig(url: URL(string: "https://start.example.com")!)),
+        (name: "Empty Page", config: WidgetConfig(url: nil).updatingStartupTarget(.emptyPage)),
+    ])
+    func openingFromHistoryWithTheWidgetClosedLoadsOnlyThatPage(_ row: (name: String, config: WidgetConfig)) {
+        let (fake, orchestrator, _) = makeOrchestrator(config: row.config)
         orchestrator.closeWidget()
 
         orchestrator.openFromHistory(historyURL)
 
         #expect(fake.createdFrames.count == 2)
-        #expect(fake.loadedURLs.last?.url == historyURL)
-        #expect(fake.loadedURLs.last?.windowID == 2)
+        #expect(fake.loadedURLs.filter { $0.windowID == 2 }.map(\.url) == [historyURL])
+        #expect(!fake.emptyPageShownWindowIDs.contains(2))
+    }
+
+    /// Like typing the address: it becomes the page last visited.
+    @Test func openingFromHistoryWithTheWidgetClosedRemembersThePage() {
+        let fake = FakePlatformOps()
+        var persisted: [URL] = []
+        let orchestrator = Orchestrator(
+            platformOps: fake, currentConfig: { WidgetConfig(url: URL(string: "https://start.example.com")!) },
+            persistURL: { persisted.append($0) })
+        orchestrator.start()
+        orchestrator.closeWidget()
+
+        orchestrator.openFromHistory(historyURL)
+
+        #expect(persisted == [historyURL])
     }
 
     /// An explicit choice from history: a Ghost Mode widget follows it without leaving Ghost Mode —
