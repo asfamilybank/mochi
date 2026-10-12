@@ -45,14 +45,14 @@ import Testing
     /// the keystroke nor brings up the permission dialog or an alert.
     @Test func forwardsWithoutAccessibilityPermission() {
         let fake = FakePlatformOps()
-        fake.stubbedAccessibilityTrusted = false
+        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
         let forwarder = HotkeyForwarder(platformOps: fake, isGhostModeActive: { true }, currentWindow: { window })
 
         forwarder.forward(pageKeystroke)
         forwarder.forward(pageKeystroke)
 
         #expect(fake.forwardedKeystrokes == [pageKeystroke, pageKeystroke])
-        #expect(fake.accessibilityPermissionRequestCount == 0)
+        #expect(fake.systemPermissionRequests.isEmpty)
         #expect(fake.presentedAlerts.isEmpty)
     }
 

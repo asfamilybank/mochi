@@ -1,5 +1,6 @@
 import ApplicationServices
 import AppKit
+import AVFoundation
 import CoreGraphics
 import Foundation
 import SwiftUI
@@ -2494,13 +2495,71 @@ public final class AppKitPlatformOps: PlatformOps {
         NSApplication.shared.terminate(nil)
     }
 
-    public func isAccessibilityTrusted() -> Bool {
-        AXIsProcessTrusted()
+    // MARK: 系统权限 (#98, ADR-0026)
+
+    private var systemPermissionsMayHaveChangedHandlers: [() -> Void] = []
+    private var systemPermissionsActivationObserver: NSObjectProtocol?
+
+    public func systemPermissionStatus(_ permission: SystemPermission) -> SystemPermissionStatus {
+        switch permission {
+        case .accessibility: AXIsProcessTrusted() ? .authorized : .denied
+        case .camera: Self.status(of: AVCaptureDevice.authorizationStatus(for: .video))
+        case .microphone: Self.status(of: AVCaptureDevice.authorizationStatus(for: .audio))
+        case .downloadsFolder: .unqueryable
+        }
     }
 
-    public func requestAccessibilityPermission() {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as NSString: true] as CFDictionary
-        AXIsProcessTrustedWithOptions(options)
+    private static func status(of status: AVAuthorizationStatus) -> SystemPermissionStatus {
+        switch status {
+        case .notDetermined: .notDetermined
+        case .denied: .denied
+        case .authorized: .authorized
+        case .restricted: .restricted
+        @unknown default: .denied
+        }
+    }
+
+    public func requestSystemPermission(_ permission: SystemPermission) {
+        switch permission {
+        case .accessibility:
+            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as NSString: true] as CFDictionary
+            AXIsProcessTrustedWithOptions(options)
+        case .camera, .microphone:
+            AVCaptureDevice.requestAccess(for: permission == .camera ? .video : .audio) { [weak self] _ in
+                DispatchQueue.main.async { self?.systemPermissionsMayHaveChangedHandlers.forEach { $0() } }
+            }
+        case .downloadsFolder:
+            break
+        }
+    }
+
+    public func openSystemSettings(for permission: SystemPermission) {
+        let anchor = switch permission {
+        case .accessibility: "Privacy_Accessibility"
+        case .camera: "Privacy_Camera"
+        case .microphone: "Privacy_Microphone"
+        case .downloadsFolder: "Privacy_FilesAndFolders"
+        }
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    public func isSystemPermissionMarkerSet(_ marker: SystemPermissionMarker) -> Bool {
+        UserDefaults.standard.bool(forKey: marker.rawValue)
+    }
+
+    public func setSystemPermissionMarker(_ marker: SystemPermissionMarker, _ isSet: Bool) {
+        UserDefaults.standard.set(isSet, forKey: marker.rawValue)
+    }
+
+    public func onSystemPermissionsMayHaveChanged(perform handler: @escaping () -> Void) {
+        systemPermissionsMayHaveChangedHandlers.append(handler)
+        guard systemPermissionsActivationObserver == nil else { return }
+        systemPermissionsActivationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.systemPermissionsMayHaveChangedHandlers.forEach { $0() }
+        }
     }
 
     // MARK: 热键传递 (#93, ADR-0025)
@@ -2620,11 +2679,6 @@ public final class AppKitPlatformOps: PlatformOps {
 
     public func pauseAllMedia(in window: WidgetWindowHandle) {
         handle(for: window)?.pauseAllMedia()
-    }
-
-    public func openAccessibilitySettings() {
-        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else { return }
-        NSWorkspace.shared.open(url)
     }
 
     private func handle(for window: WidgetWindowHandle) -> AppKitWidgetWindowHandle? {

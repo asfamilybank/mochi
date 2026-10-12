@@ -41,7 +41,6 @@ final class FakePlatformOps: PlatformOps {
     private(set) var terminateAppCallCount = 0
     private(set) var reloadedWindowIDs: [Int] = []
     private(set) var stoppedLoadingWindowIDs: [Int] = []
-    private(set) var accessibilityPermissionRequestCount = 0
     private(set) var forwardedKeystrokes: [Hotkey] = []
     private(set) var forwardedKeystrokeWindowIDs: [Int] = []
     private(set) var windowTitleChanges: [(title: String, windowID: Int)] = []
@@ -63,7 +62,6 @@ final class FakePlatformOps: PlatformOps {
     /// Combos that fail to register as if another application held them, while everything else
     /// still succeeds — the rollback tests need exactly one combo to fail.
     var hotkeysThatFailToRegister: Set<Hotkey> = []
-    var stubbedAccessibilityTrusted = true
     /// What `navigationState(of:)` answers — the AppKit side's effective back/forward/loading.
     var stubbedNavigationState = NavigationState()
 
@@ -339,12 +337,44 @@ final class FakePlatformOps: PlatformOps {
         addressBarFocuses.append((handle.id, shownWindowIDs.contains(handle.id), loadedURLs.count))
     }
 
-    func isAccessibilityTrusted() -> Bool {
-        stubbedAccessibilityTrusted
+    // MARK: 系统权限 (#98, ADR-0026)
+
+    /// What `systemPermissionStatus(_:)` answers; a permission not listed reads as granted.
+    var stubbedSystemPermissionStatuses: [SystemPermission: SystemPermissionStatus] = [:]
+    private(set) var systemPermissionRequests: [SystemPermission] = []
+    private(set) var openedSystemSettings: [SystemPermission] = []
+    /// The markers' `UserDefaults` stand-in: a second `Orchestrator` built on the same fake sees
+    /// what the first one set, the way a relaunch does.
+    var systemPermissionMarkers: Set<SystemPermissionMarker> = []
+    private var systemPermissionsMayHaveChangedHandlers: [() -> Void] = []
+
+    func systemPermissionStatus(_ permission: SystemPermission) -> SystemPermissionStatus {
+        stubbedSystemPermissionStatuses[permission] ?? .authorized
     }
 
-    func requestAccessibilityPermission() {
-        accessibilityPermissionRequestCount += 1
+    func requestSystemPermission(_ permission: SystemPermission) {
+        systemPermissionRequests.append(permission)
+    }
+
+    func openSystemSettings(for permission: SystemPermission) {
+        openedSystemSettings.append(permission)
+    }
+
+    func isSystemPermissionMarkerSet(_ marker: SystemPermissionMarker) -> Bool {
+        systemPermissionMarkers.contains(marker)
+    }
+
+    func setSystemPermissionMarker(_ marker: SystemPermissionMarker, _ isSet: Bool) {
+        if isSet { systemPermissionMarkers.insert(marker) } else { systemPermissionMarkers.remove(marker) }
+    }
+
+    func onSystemPermissionsMayHaveChanged(perform handler: @escaping () -> Void) {
+        systemPermissionsMayHaveChangedHandlers.append(handler)
+    }
+
+    /// As if Mochi had just come back to the front, or a request had just been answered.
+    func simulateSystemPermissionsMayHaveChanged() {
+        systemPermissionsMayHaveChangedHandlers.forEach { $0() }
     }
 
     func forwardKeystroke(_ keystroke: Hotkey, in window: WidgetWindowHandle) {
@@ -529,13 +559,6 @@ final class FakePlatformOps: PlatformOps {
 
     func performVideoCommand(_ command: VideoCommand, in window: WidgetWindowHandle) {
         videoCommands.append((command, (window as! FakeWidgetWindowHandle).id))
-    }
-
-    // #79
-    private(set) var accessibilitySettingsOpenCount = 0
-
-    func openAccessibilitySettings() {
-        accessibilitySettingsOpenCount += 1
     }
 
     // #76

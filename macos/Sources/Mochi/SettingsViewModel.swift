@@ -37,6 +37,7 @@ final class SettingsViewModel: ObservableObject {
         self.controller = controller
         self.reloadPage = reloadPage
         self.config = controller.config
+        controller.onSystemPermissionsMayHaveChanged { [weak self] in self?.refreshSystemPermissions() }
     }
 
     func updateStartupTarget(_ target: WidgetConfig.StartupTarget?) {
@@ -171,10 +172,6 @@ final class SettingsViewModel: ObservableObject {
 
     // MARK: 视频控制 (#79)
 
-    /// Mirrors System Settings, which can change it behind Mochi's back — refreshed whenever the
-    /// hotkeys pane appears and whenever the app comes back to the front.
-    @Published private(set) var isAccessibilityTrusted = true
-
     func updateVideoControlTrigger(_ trigger: TriggerKey?, for action: VideoControlAction) {
         let rejection = controller.updateVideoControlTrigger(trigger, for: action)
         config = controller.config
@@ -186,12 +183,19 @@ final class SettingsViewModel: ObservableObject {
         config = controller.config
     }
 
-    func refreshAccessibilityStatus() {
-        isAccessibilityTrusted = controller.isAccessibilityTrusted
+    // MARK: 系统权限 (#98)
+
+    /// Mirrors what the system reports, which System Settings can change behind Mochi's back —
+    /// refreshed whenever a pane with a prompt appears and whenever a permission may have changed
+    /// (`SettingsController.onSystemPermissionsMayHaveChanged`, wired up in `init`).
+    @Published private(set) var systemPermissionPrompts: [SystemPermissionPrompt] = []
+
+    func refreshSystemPermissions() {
+        systemPermissionPrompts = controller.systemPermissionPrompts
     }
 
-    func openAccessibilitySettings() {
-        controller.openAccessibilitySettings()
+    func perform(_ prompt: SystemPermissionPrompt) {
+        controller.perform(prompt)
     }
 
     /// `true` once the mapping is live; a refusal is shown on the add row instead.

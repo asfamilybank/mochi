@@ -409,24 +409,21 @@ private struct VideoControlSection: View {
                 )
             }
             HStack {
-                if viewModel.isAccessibilityTrusted {
-                    Label("已获得辅助功能权限", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                } else {
+                if let prompt = viewModel.systemPermissionPrompts.first(where: { $0.placement == .videoControlSection }) {
                     Label("需要辅助功能权限，才能在其他应用里响应这些按键", systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                     Spacer()
                     Button("打开系统设置") {
-                        viewModel.openAccessibilitySettings()
+                        viewModel.perform(prompt)
                     }
+                } else {
+                    Label("已获得辅助功能权限", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.secondary)
                 }
             }
             .font(.caption)
         }
-        .onAppear { viewModel.refreshAccessibilityStatus() }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            viewModel.refreshAccessibilityStatus()
-        }
+        .onAppear { viewModel.refreshSystemPermissions() }
     }
 }
 

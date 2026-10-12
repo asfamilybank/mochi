@@ -390,10 +390,26 @@ public final class SettingsController {
         }
     }
 
-    /// Read fresh each time — the user grants it in System Settings, outside Mochi.
-    public var isAccessibilityTrusted: Bool { platformOps.isAccessibilityTrusted() }
+    // MARK: 系统权限 (#98, ADR-0026)
 
-    public func openAccessibilitySettings() {
-        platformOps.openAccessibilitySettings()
+    /// The panel's 系统权限 prompts — read fresh each time, since the user grants permissions in
+    /// System Settings, outside Mochi.
+    public var systemPermissionPrompts: [SystemPermissionPrompt] {
+        SystemPermissionPrompts.prompts(for: config, status: platformOps.systemPermissionStatus)
+    }
+
+    /// What a prompt's button does; a prompt without one does nothing.
+    public func perform(_ prompt: SystemPermissionPrompt) {
+        switch prompt.action {
+        case .request: platformOps.requestSystemPermission(prompt.permission)
+        case .openSystemSettings: platformOps.openSystemSettings(for: prompt.permission)
+        case nil: break
+        }
+    }
+
+    /// For the panel to read `systemPermissionPrompts` again (see
+    /// `PlatformOps.onSystemPermissionsMayHaveChanged`).
+    public func onSystemPermissionsMayHaveChanged(perform handler: @escaping () -> Void) {
+        platformOps.onSystemPermissionsMayHaveChanged(perform: handler)
     }
 }

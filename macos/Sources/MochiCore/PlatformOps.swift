@@ -299,16 +299,32 @@ public protocol PlatformOps: AnyObject {
     /// the same path a click on the bar takes, so it works on the Empty Page too.
     func focusAddressBar(in window: WidgetWindowHandle)
 
-    /// Whether the process currently holds Accessibility permission — required for
-    /// `startObservingInput` to hear keys pressed in other apps (视频控制, and Hotkey Forwarding
-    /// mappings set off by a tap or double tap). Read fresh at every use so a later revocation
-    /// (the user turning it off in System Settings) is caught immediately, not just at launch.
-    func isAccessibilityTrusted() -> Bool
+    // MARK: 系统权限 (#98, ADR-0026) — one set of calls for every `SystemPermission`.
 
-    /// Prompts the user, via the system's own Accessibility permission dialog, to grant Mochi
-    /// Accessibility access. Callers are responsible for only invoking this once per app run
-    /// (see `VideoControl`) since the system dialog itself has no such throttling.
-    func requestAccessibilityPermission()
+    /// Where `permission` stands right now — read fresh at every use, since the user changes it in
+    /// System Settings, behind Mochi's back. Accessibility reads only `.authorized` or `.denied`;
+    /// the Downloads folder always reads `.unqueryable`.
+    func systemPermissionStatus(_ permission: SystemPermission) -> SystemPermissionStatus
+
+    /// Asks the system for `permission`: for Accessibility the system's own dialog pointing at
+    /// System Settings, for the camera and microphone the system's access request. The system
+    /// itself never stops a dialog from coming back, so how often to ask is the caller's to decide
+    /// (see `VideoControl`). A no-op for the Downloads folder, which has no request of its own.
+    func requestSystemPermission(_ permission: SystemPermission)
+
+    /// Opens System Settings at `permission`'s page in 隐私与安全性 (the Downloads folder's is
+    /// 文件和文件夹).
+    func openSystemSettings(for permission: SystemPermission)
+
+    /// Reads / writes a flag kept across launches in `UserDefaults` (see `SystemPermissionMarker`).
+    func isSystemPermissionMarkerSet(_ marker: SystemPermissionMarker) -> Bool
+    func setSystemPermissionMarker(_ marker: SystemPermissionMarker, _ isSet: Bool)
+
+    /// Adds a handler run whenever a `SystemPermission` may have changed: when Mochi comes back to
+    /// the front (System Settings sends no notice of its own) and when a request is answered.
+    /// Consumers just read the statuses again. Every call adds one more handler, for as long as
+    /// the app runs — app-global, like the consumers that register them.
+    func onSystemPermissionsMayHaveChanged(perform handler: @escaping () -> Void)
 
     /// Hands `keystroke` to `window`'s web view as a real key event (#93, ADR-0025): the page sees
     /// an `isTrusted: true` keydown/keyup at whatever element has focus inside it, iframes
@@ -382,10 +398,6 @@ public protocol PlatformOps: AnyObject {
     /// Carries `command` out on the page's target video — choosing it (playing, else most
     /// recently played, else largest visible) and doing nothing when the page has none.
     func performVideoCommand(_ command: VideoCommand, in window: WidgetWindowHandle)
-
-    /// Opens System Settings at 隐私与安全性 → 辅助功能 (#79), for the user to grant what
-    /// `startObservingInput` needs to hear other apps' keys.
-    func openAccessibilitySettings()
 
     /// Pauses every `<video>`/`<audio>` that is playing, in every frame of the page — cross-origin
     /// iframes included (#76). Never resumes anything; there is no inverse.

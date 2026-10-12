@@ -85,9 +85,9 @@ public final class VideoControl {
         let anythingBound = !Self.listenedTriggers(in: config).isEmpty
         let shouldObserve = isGhostModeActive() && currentWindow() != nil && anythingBound
         if shouldObserve, !isObserving {
-            if !platformOps.isAccessibilityTrusted(), !hasRequestedAccessibility {
+            if platformOps.systemPermissionStatus(.accessibility) != .authorized, !hasRequestedAccessibility {
                 hasRequestedAccessibility = true
-                platformOps.requestAccessibilityPermission()
+                platformOps.requestSystemPermission(.accessibility)
             }
             isObserving = true
             tapRecognizer = TriggerTapRecognizer()

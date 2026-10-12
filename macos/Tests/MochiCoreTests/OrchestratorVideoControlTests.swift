@@ -223,7 +223,7 @@ import Testing
 
     @Test func withNothingBoundGhostModeNeitherListensNorAsksForAccessibility() {
         let fake = FakePlatformOps()
-        fake.stubbedAccessibilityTrusted = false
+        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
         let config = VideoControlAction.allCases.reduce(WidgetConfig(url: nil)) {
             $0.updatingVideoControlTrigger(nil, for: $1)
         }
@@ -232,7 +232,7 @@ import Testing
         withExtendedLifetime(orchestrator) {}
 
         #expect(fake.startObservingInputCallCount == 0)
-        #expect(fake.accessibilityPermissionRequestCount == 0)
+        #expect(fake.systemPermissionRequests.isEmpty)
     }
 
     @Test func clearingTheLastBindingInGhostModeStopsListeningAndBindingOneStartsAgain() {
@@ -287,7 +287,7 @@ import Testing
 
     @Test func asksForAccessibilityOnceWithoutAnAlertAndStillEntersGhostMode() {
         let fake = FakePlatformOps()
-        fake.stubbedAccessibilityTrusted = false
+        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
         let orchestrator = startedInGhostMode(fake)
 
         withExtendedLifetime(orchestrator) {
@@ -295,14 +295,15 @@ import Testing
             fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
         }
 
-        #expect(fake.accessibilityPermissionRequestCount == 1)
+        #expect(fake.systemPermissionRequests == [.accessibility])
+        #expect(fake.openedSystemSettings.isEmpty)
         #expect(fake.presentedAlerts.isEmpty)
         #expect(fake.mousePassthroughChanges.map(\.enabled) == [true, false, true])
     }
 
     @Test func asksForAccessibilityOnlyOncePerLaunchEvenAcrossAWidgetReopen() {
         let fake = FakePlatformOps()
-        fake.stubbedAccessibilityTrusted = false
+        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
         let orchestrator = startedInGhostMode(fake)
 
         withExtendedLifetime(orchestrator) {
@@ -311,7 +312,7 @@ import Testing
             fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
         }
 
-        #expect(fake.accessibilityPermissionRequestCount == 1)
+        #expect(fake.systemPermissionRequests == [.accessibility])
         #expect(fake.isObservingInput)
     }
 
@@ -321,7 +322,7 @@ import Testing
 
         withExtendedLifetime(orchestrator) {}
 
-        #expect(fake.accessibilityPermissionRequestCount == 0)
+        #expect(fake.systemPermissionRequests.isEmpty)
     }
 }
 

@@ -1269,14 +1269,54 @@ import Testing
         #expect(store.config.hotkeyMappings.map(\.trigger) == [.modifierTap(.leftControl)])
     }
 
-    @Test func reportsAccessibilityAndOpensItsSettingsPane() {
+    // MARK: 系统权限 (#98)
+
+    @Test func promptsForAccessibilityOnlyWhileItIsNotGranted() {
         let fake = FakePlatformOps()
-        fake.stubbedAccessibilityTrusted = false
         let controller = makeController(store: PersistedStore(WidgetConfig()), platformOps: fake)
 
-        #expect(controller.isAccessibilityTrusted == false)
-        controller.openAccessibilitySettings()
+        #expect(controller.systemPermissionPrompts.isEmpty)
+        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
 
-        #expect(fake.accessibilitySettingsOpenCount == 1)
+        #expect(controller.systemPermissionPrompts.map(\.permission) == [.accessibility])
+    }
+
+    @Test(arguments: [
+        (action: SystemPermissionPrompt.Action.openSystemSettings, requested: [SystemPermission](), opened: [SystemPermission.camera]),
+        (action: .request, requested: [.camera], opened: []),
+    ])
+    func aPromptsButtonGoesToThePlatformForItsPermission(
+        _ row: (action: SystemPermissionPrompt.Action, requested: [SystemPermission], opened: [SystemPermission])
+    ) {
+        let fake = FakePlatformOps()
+        let controller = makeController(store: PersistedStore(WidgetConfig()), platformOps: fake)
+
+        controller.perform(SystemPermissionPrompt(permission: .camera, placement: .videoControlSection, action: row.action))
+
+        #expect(fake.systemPermissionRequests == row.requested)
+        #expect(fake.openedSystemSettings == row.opened)
+    }
+
+    @Test func aPromptWithoutAButtonDoesNothing() {
+        let fake = FakePlatformOps()
+        let controller = makeController(store: PersistedStore(WidgetConfig()), platformOps: fake)
+
+        controller.perform(SystemPermissionPrompt(permission: .camera, placement: .videoControlSection, action: nil))
+
+        #expect(fake.systemPermissionRequests.isEmpty)
+        #expect(fake.openedSystemSettings.isEmpty)
+    }
+
+    /// System Settings changes a permission behind Mochi's back — the panel hears about it through
+    /// the platform's one "may have changed" signal, not by watching the app itself.
+    @Test func passesOnThatSystemPermissionsMayHaveChanged() {
+        let fake = FakePlatformOps()
+        let controller = makeController(store: PersistedStore(WidgetConfig()), platformOps: fake)
+        var heard = 0
+
+        controller.onSystemPermissionsMayHaveChanged { heard += 1 }
+        fake.simulateSystemPermissionsMayHaveChanged()
+
+        #expect(heard == 1)
     }
 }
