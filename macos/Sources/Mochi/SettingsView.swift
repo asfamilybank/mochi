@@ -632,40 +632,44 @@ private struct HotkeyForwardingSection: View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader(title: "热键传递", caption: "幽灵模式下按触发键，向页面发送对应按键。")
 
-            List {
-                ForEach(Array(viewModel.config.hotkeyMappings.enumerated()), id: \.offset) { index, mapping in
-                    HStack {
-                        TriggerKeyRecorderView(
-                            trigger: mapping.trigger, kind: mapping.trigger.kind, accessibilityName: "触发键",
-                            isRecordable: false, width: HotkeyRecorderField.mappingWidth)
-                        // Always takes its width, so every row's arrow lines up.
-                        Image(systemName: "lock")
-                            .foregroundStyle(.secondary)
-                            .frame(width: 14)
-                            .opacity(mapping.trigger.kind == .combo ? 1 : 0)
-                            .help(Self.occupiedNote)
-                            .accessibilityLabel(Self.occupiedNote)
-                            .accessibilityHidden(mapping.trigger.kind != .combo)
-                        Image(systemName: "arrow.right")
-                        HotkeyRecorderView(hotkey: mapping.pageKeystroke, accessibilityName: "页面按键", isRecordable: false,
-                            width: HotkeyRecorderField.mappingWidth)
-                        Spacer()
-                        Button {
-                            viewModel.removeHotkeyMapping(at: index)
-                        } label: {
-                            Image(systemName: "trash")
+            // A ScrollView, not a List: a List's row separators span the full width whatever the
+            // row insets, so they ran under the scroller once enough mappings were added to
+            // scroll. Here the rows and their separators stop a scroller's width short of the
+            // edge, and the scroller overlays only that gutter.
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(Array(viewModel.config.hotkeyMappings.enumerated()), id: \.offset) { index, mapping in
+                        HStack {
+                            TriggerKeyRecorderView(
+                                trigger: mapping.trigger, kind: mapping.trigger.kind, accessibilityName: "触发键",
+                                isRecordable: false, width: HotkeyRecorderField.mappingWidth)
+                            // Always takes its width, so every row's arrow lines up.
+                            Image(systemName: "lock")
+                                .foregroundStyle(.secondary)
+                                .frame(width: 14)
+                                .opacity(mapping.trigger.kind == .combo ? 1 : 0)
+                                .help(Self.occupiedNote)
+                                .accessibilityLabel(Self.occupiedNote)
+                                .accessibilityHidden(mapping.trigger.kind != .combo)
+                            Image(systemName: "arrow.right")
+                            HotkeyRecorderView(hotkey: mapping.pageKeystroke, accessibilityName: "页面按键", isRecordable: false,
+                                width: HotkeyRecorderField.mappingWidth)
+                            Spacer()
+                            Button {
+                                viewModel.removeHotkeyMapping(at: index)
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("删除映射")
+                            .accessibilityLabel("删除映射")
                         }
-                        .buttonStyle(.borderless)
-                        .help("删除映射")
-                        .accessibilityLabel("删除映射")
+                        .padding(.vertical, 3)
+                        Divider()
                     }
-                    // Keeps the trash buttons clear of the scroller, which overlays the rows once
-                    // there are enough mappings to scroll.
-                    .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: Self.scrollerGutter))
                 }
+                .padding(.trailing, Self.scrollerGutter)
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
