@@ -65,6 +65,9 @@ public struct ManagedWebsite: Equatable, Identifiable, Sendable {
 
     public var id: String { domain }
     public var hasData: Bool { dataKinds != nil }
+    /// Holds nothing but cache and has no exceptions — a CDN or an ad server, as often as not:
+    /// nothing worth managing one by one.
+    public var isCacheOnly: Bool { dataKinds == [.cache] && exceptions.isEmpty }
 }
 
 public enum ManagedWebsites {
@@ -89,14 +92,22 @@ public enum ManagedWebsites {
         return websites.values.sorted { $0.domain < $1.domain }
     }
 
-    /// 搜索: websites whose domain or any exception host contains `query`, ignoring case; a blank
-    /// query keeps them all.
-    public static func filtered(_ websites: [ManagedWebsite], matching query: String) -> [ManagedWebsite] {
+    /// 搜索: websites whose domain or any exception host contains `query`, ignoring case. A blank
+    /// query keeps them all, except the cache-only ones unless `includingCacheOnly` — they crowd
+    /// out the websites someone logged in to. A search always looks through everything.
+    public static func filtered(
+        _ websites: [ManagedWebsite], matching query: String, includingCacheOnly: Bool = true
+    ) -> [ManagedWebsite] {
         let query = query.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !query.isEmpty else { return websites }
+        guard !query.isEmpty else { return includingCacheOnly ? websites : websites.filter { !$0.isCacheOnly } }
         return websites.filter { website in
             website.domain.contains(query) || website.exceptions.contains { $0.host.contains(query) }
         }
+    }
+
+    /// How many of `websites` the blank list leaves out by default.
+    public static func cacheOnlyCount(_ websites: [ManagedWebsite]) -> Int {
+        websites.count(where: \.isCacheOnly)
     }
 
     /// Both permissions' exceptions, one entry per host, sorted by host.

@@ -100,4 +100,29 @@ import Testing
         #expect(ManagedWebsites.filtered(websites, matching: "zoom").map(\.domain) == ["zoom.us"])
         #expect(ManagedWebsites.filtered(websites, matching: "  ").map(\.domain) == ["google.com", "zoom.us"])
     }
+
+    /// Websites holding nothing but cache (CDNs, ad servers) crowd the list, so the blank list leaves
+    /// them out unless asked; a search looks through everything, whatever the switch says.
+    @Test(arguments: [
+        (query: "", includingCacheOnly: false, expected: ["example.com", "google.com", "zoom.us"]),
+        (query: "", includingCacheOnly: true, expected: ["cdn.net", "example.com", "google.com", "zoom.us"]),
+        (query: "cdn", includingCacheOnly: false, expected: ["cdn.net"]),
+    ])
+    func cacheOnlyWebsitesAreLeftOutOfTheBlankListUnlessAskedFor(
+        _ row: (query: String, includingCacheOnly: Bool, expected: [String])
+    ) {
+        let websites = ManagedWebsites.grouping(
+            [
+                WebsiteDataRecord(displayName: "cdn.net", kinds: [.cache]),
+                WebsiteDataRecord(displayName: "google.com", kinds: [.cookies, .cache]),
+                // Cache only, but an exception keeps it in view: there is a permission to manage.
+                WebsiteDataRecord(displayName: "zoom.us", kinds: [.cache]),
+            ],
+            exceptionsIn: config(camera: [("zoom.us", .allow), ("example.com", .deny)]))
+
+        #expect(ManagedWebsites.cacheOnlyCount(websites) == 1)
+        #expect(
+            ManagedWebsites.filtered(websites, matching: row.query, includingCacheOnly: row.includingCacheOnly)
+                .map(\.domain) == row.expected)
+    }
 }
