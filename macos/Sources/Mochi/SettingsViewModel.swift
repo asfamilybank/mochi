@@ -147,8 +147,25 @@ final class SettingsViewModel: ObservableObject {
         config = controller.config
     }
 
-    func removeAllWebsiteData() {
-        controller.removeAllWebsiteData()
+    // MARK: 管理网站和数据… (#106)
+
+    func fetchManagedWebsites(completion: @escaping ([ManagedWebsite]) -> Void) {
+        controller.fetchManagedWebsites(completion: completion)
+    }
+
+    func removeWebsiteData(of websites: [ManagedWebsite], completion: @escaping () -> Void) {
+        controller.removeWebsiteData(of: websites, completion: completion)
+    }
+
+    func removeDataOfAllWebsites(completion: @escaping () -> Void) {
+        controller.removeDataOfAllWebsites(completion: completion)
+    }
+
+    func resetPagePermissions(of websites: [ManagedWebsite]) {
+        controller.resetPagePermissions(of: websites)
+        config = controller.config
+        // #104: the exceptions are part of whether 网站's 系统权限 prompt shows.
+        refreshSystemPermissions()
     }
 
     // #107 — re-publishes the config, since clearing 网页权限例外 edits it.

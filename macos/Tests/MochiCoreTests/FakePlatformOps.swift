@@ -290,6 +290,27 @@ final class FakePlatformOps: PlatformOps {
         websiteDataRemovals.append((types, modifiedSince))
     }
 
+    // #106: 管理网站和数据… — completions run synchronously; a removal takes the removed kinds out
+    // of the stored records (dropping a record left with none), so a later fetch sees it.
+    var websiteDataRecords: [WebsiteDataRecord] = []
+    private(set) var websiteDataRecordRemovals: [(kinds: Set<WebsiteDataKind>, recordNames: [String])] = []
+
+    func fetchWebsiteDataRecords(completion: @escaping ([WebsiteDataRecord]) -> Void) {
+        completion(websiteDataRecords)
+    }
+
+    func removeWebsiteData(
+        ofKinds kinds: Set<WebsiteDataKind>, forRecordsNamed names: [String], completion: @escaping () -> Void
+    ) {
+        websiteDataRecordRemovals.append((kinds, names))
+        websiteDataRecords = websiteDataRecords.compactMap { record in
+            guard names.contains(record.displayName) else { return record }
+            let remaining = record.kinds.subtracting(kinds)
+            return remaining.isEmpty ? nil : WebsiteDataRecord(displayName: record.displayName, kinds: remaining)
+        }
+        completion()
+    }
+
     func createTrayIcon(items: [TrayMenuItem]) {
         createTrayIconCallCount += 1
         trayMenuItems = items

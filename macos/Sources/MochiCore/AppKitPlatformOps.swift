@@ -2551,6 +2551,34 @@ public final class AppKitPlatformOps: PlatformOps {
         }
     }
 
+    // #106: 管理网站和数据…
+    public func fetchWebsiteDataRecords(completion: @escaping ([WebsiteDataRecord]) -> Void) {
+        WKWebsiteDataStore.default().fetchDataRecords(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes()) { records in
+            completion(records.map { record in
+                WebsiteDataRecord(displayName: record.displayName, kinds: Set(record.dataTypes.map(WebsiteDataKind.init(webKitType:))))
+            })
+        }
+    }
+
+    /// Re-fetches the records rather than holding on to `WKWebsiteDataRecord`s between the list
+    /// being shown and the user deleting from it. The favicon cache isn't WebKit data; it is
+    /// cleared whole, since it is only a cache of what pages link to.
+    public func removeWebsiteData(
+        ofKinds kinds: Set<WebsiteDataKind>, forRecordsNamed names: [String], completion: @escaping () -> Void
+    ) {
+        let store = WKWebsiteDataStore.default()
+        let types = WKWebsiteDataStore.allWebsiteDataTypes().filter { kinds.contains(WebsiteDataKind(webKitType: $0)) }
+        let names = Set(names)
+        store.fetchDataRecords(ofTypes: types) { [weak self] records in
+            store.removeData(ofTypes: types, for: records.filter { names.contains($0.displayName) }) {
+                for handle in self?.liveHandles.allObjects ?? [] {
+                    handle.clearFaviconCache()
+                }
+                completion()
+            }
+        }
+    }
+
     /// Drops the HTTP cache when the User-Agent suffix changed since the last run, then calls
     /// `completion` — on the main thread, before which no web view may load (ADR-0025). Only the
     /// cache goes: cookies, local storage and logins stay. Calls straight through when nothing
@@ -2782,5 +2810,22 @@ public final class AppKitPlatformOps: PlatformOps {
 
     private func handle(for window: WidgetWindowHandle) -> AppKitWidgetWindowHandle? {
         window as? AppKitWidgetWindowHandle
+    }
+}
+
+// #106: WebKit's data types, folded into the kinds 管理网站和数据… shows.
+extension WebsiteDataKind {
+    init(webKitType: String) {
+        switch webKitType {
+        case WKWebsiteDataTypeCookies: self = .cookies
+        case WKWebsiteDataTypeLocalStorage, WKWebsiteDataTypeSessionStorage: self = .localStorage
+        case WKWebsiteDataTypeIndexedDBDatabases, WKWebsiteDataTypeWebSQLDatabases, WKWebsiteDataTypeFileSystem:
+            self = .databases
+        case WKWebsiteDataTypeDiskCache, WKWebsiteDataTypeMemoryCache, WKWebsiteDataTypeFetchCache,
+            WKWebsiteDataTypeOfflineWebApplicationCache:
+            self = .cache
+        case WKWebsiteDataTypeServiceWorkerRegistrations: self = .serviceWorkers
+        default: self = .other
+        }
     }
 }

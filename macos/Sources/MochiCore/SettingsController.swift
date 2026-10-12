@@ -147,6 +147,51 @@ public final class SettingsController {
         }
     }
 
+    // MARK: 管理网站和数据… (#106, ADR-0027) — deleting data and resetting 网页权限 are separate.
+
+    /// The websites with data or exceptions, grouped by `ManagedWebsites.grouping` against the
+    /// config in effect when the records arrive.
+    public func fetchManagedWebsites(completion: @escaping ([ManagedWebsite]) -> Void) {
+        platformOps.fetchWebsiteDataRecords { [currentConfig] records in
+            completion(ManagedWebsites.grouping(records, exceptionsIn: currentConfig()))
+        }
+    }
+
+    /// 删除数据: every kind of data of the websites that have any; their exceptions stay. Not a
+    /// config edit, and the page isn't reloaded.
+    public func removeWebsiteData(of websites: [ManagedWebsite], completion: @escaping () -> Void) {
+        removeAllKindsOfData(forRecordsNamed: websites.filter(\.hasData).map(\.domain), completion: completion)
+    }
+
+    /// 全部删除: the data of every website WebKit has a record for. Exceptions stay, as for
+    /// 删除数据; the UI asks for confirmation before calling this.
+    public func removeDataOfAllWebsites(completion: @escaping () -> Void) {
+        platformOps.fetchWebsiteDataRecords { [weak self] records in
+            guard let self else { return completion() }
+            removeAllKindsOfData(forRecordsNamed: records.map(\.displayName), completion: completion)
+        }
+    }
+
+    private func removeAllKindsOfData(forRecordsNamed names: [String], completion: @escaping () -> Void) {
+        guard !names.isEmpty else { return completion() }
+        platformOps.removeWebsiteData(ofKinds: Set(WebsiteDataKind.allCases), forRecordsNamed: names, completion: completion)
+    }
+
+    /// 重置权限: removes both permissions' exceptions for every host listed under `websites`,
+    /// sending them back to 「访问其他网站时」; their data stays.
+    public func resetPagePermissions(of websites: [ManagedWebsite]) {
+        let hosts = websites.flatMap { $0.exceptions.map(\.host) }
+        guard !hosts.isEmpty else { return }
+        let now = currentDate()
+        persistAndNotify { config in
+            hosts.reduce(config) { config, host in
+                PagePermission.allCases.reduce(config) {
+                    $0.updatingPagePermissionException($1, host: host, setting: nil, modifiedAt: now)
+                }
+            }
+        }
+    }
+
     public func updateSearchEngine(_ engine: SearchEngine) {
         persistAndNotify { $0.updatingSearchEngine(engine) }
     }

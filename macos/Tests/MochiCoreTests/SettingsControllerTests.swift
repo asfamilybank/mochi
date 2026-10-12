@@ -993,6 +993,111 @@ import Testing
         #expect(store.writeCount == 0)
     }
 
+    // MARK: 管理网站和数据… (#106)
+
+    private func configWithMeetExceptions() -> WidgetConfig {
+        WidgetConfig(url: nil)
+            .updatingPagePermissionException(.camera, host: "meet.google.com", setting: .allow, modifiedAt: Date())
+            .updatingPagePermissionException(.microphone, host: "meet.google.com", setting: .deny, modifiedAt: Date())
+            .updatingPagePermissionException(.camera, host: "zoom.us", setting: .allow, modifiedAt: Date())
+    }
+
+    private func managedWebsites(of controller: SettingsController) -> [ManagedWebsite] {
+        var result: [ManagedWebsite] = []
+        controller.fetchManagedWebsites { result = $0 }
+        return result
+    }
+
+    @Test func managedWebsitesGroupThePlatformsRecordsWithTheConfigsExceptions() {
+        let store = PersistedStore(configWithMeetExceptions())
+        let fake = FakePlatformOps()
+        fake.websiteDataRecords = [WebsiteDataRecord(displayName: "google.com", kinds: [.cookies])]
+        let controller = makeController(store: store, platformOps: fake)
+
+        #expect(managedWebsites(of: controller).map(\.domain) == ["google.com", "zoom.us"])
+    }
+
+    @Test func removingWebsiteDataRemovesTheRecordsWithoutTouchingTheExceptions() {
+        let store = PersistedStore(configWithMeetExceptions())
+        let fake = FakePlatformOps()
+        fake.websiteDataRecords = [
+            WebsiteDataRecord(displayName: "google.com", kinds: [.cookies]),
+            WebsiteDataRecord(displayName: "example.com", kinds: [.cache]),
+        ]
+        var notified = 0
+        let controller = makeController(store: store, platformOps: fake, configDidChange: { notified += 1 })
+        let google = managedWebsites(of: controller).filter { $0.domain == "google.com" || $0.domain == "zoom.us" }
+        var completed = false
+
+        controller.removeWebsiteData(of: google) { completed = true }
+
+        #expect(fake.websiteDataRecordRemovals.map(\.recordNames) == [["google.com"]])
+        #expect(fake.websiteDataRecordRemovals.map(\.kinds) == [Set(WebsiteDataKind.allCases)])
+        #expect(completed)
+        #expect(store.writeCount == 0)
+        #expect(notified == 0)
+        #expect(store.config.pagePermissionExceptions(.camera).map(\.host) == ["meet.google.com", "zoom.us"])
+    }
+
+    @Test func removingTheDataOfWebsitesWithNoneSkipsThePlatform() {
+        let store = PersistedStore(configWithMeetExceptions())
+        let fake = FakePlatformOps()
+        let controller = makeController(store: store, platformOps: fake)
+        var completed = false
+
+        controller.removeWebsiteData(of: managedWebsites(of: controller)) { completed = true }
+
+        #expect(fake.websiteDataRecordRemovals.isEmpty)
+        #expect(completed)
+    }
+
+    @Test func resettingPagePermissionsRemovesEveryExceptionOfTheWebsitesHostsOnly() {
+        let store = PersistedStore(configWithMeetExceptions())
+        let fake = FakePlatformOps()
+        fake.websiteDataRecords = [WebsiteDataRecord(displayName: "google.com", kinds: [.cookies])]
+        var notified = 0
+        let controller = makeController(store: store, platformOps: fake, configDidChange: { notified += 1 })
+        let google = managedWebsites(of: controller).filter { $0.domain == "google.com" }
+
+        controller.resetPagePermissions(of: google)
+
+        #expect(store.config.pagePermissionExceptions(.camera).map(\.host) == ["zoom.us"])
+        #expect(store.config.pagePermissionExceptions(.microphone).isEmpty)
+        #expect(fake.websiteDataRecordRemovals.isEmpty)
+        #expect(fake.removeAllWebsiteDataCallCount == 0)
+        #expect(notified == 1)
+    }
+
+    @Test func resettingThePermissionsOfWebsitesWithoutExceptionsWritesNothing() {
+        let store = PersistedStore(WidgetConfig(url: nil))
+        let fake = FakePlatformOps()
+        fake.websiteDataRecords = [WebsiteDataRecord(displayName: "google.com", kinds: [.cookies])]
+        let controller = makeController(store: store, platformOps: fake)
+
+        controller.resetPagePermissions(of: managedWebsites(of: controller))
+
+        #expect(store.writeCount == 0)
+    }
+
+    @Test func removingAllWebsitesDataRemovesEveryRecordAndKeepsTheExceptions() {
+        let store = PersistedStore(configWithMeetExceptions())
+        let fake = FakePlatformOps()
+        fake.websiteDataRecords = [
+            WebsiteDataRecord(displayName: "google.com", kinds: [.cookies]),
+            WebsiteDataRecord(displayName: "example.com", kinds: [.cache]),
+        ]
+        let controller = makeController(store: store, platformOps: fake)
+        var completed = false
+
+        controller.removeDataOfAllWebsites { completed = true }
+
+        #expect(fake.websiteDataRecordRemovals.map(\.recordNames) == [["google.com", "example.com"]])
+        #expect(fake.websiteDataRecordRemovals.map(\.kinds) == [Set(WebsiteDataKind.allCases)])
+        #expect(completed)
+        #expect(store.writeCount == 0)
+        #expect(managedWebsites(of: controller).map(\.domain) == ["meet.google.com", "zoom.us"])
+    }
+
     @Test func aWebInspectorEditReachesTheLiveWindowWhenWiredToTheOrchestrator() {
         let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
         let fake = FakePlatformOps()

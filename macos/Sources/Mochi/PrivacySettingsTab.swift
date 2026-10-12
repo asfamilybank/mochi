@@ -6,14 +6,15 @@ import SwiftUI
 /// (管理网站和数据…, 清除浏览数据…, history retention) as further rows or sections.
 struct PrivacySettingsTab: View {
     @ObservedObject var viewModel: SettingsViewModel
-    @State private var isConfirmingDataRemoval = false
     @State private var isClearingBrowsingData = false
+    @State private var isManagingWebsites = false
 
     var body: some View {
         Form {
             Section("网站数据") {
-                Button("移除所有网站数据…") { isConfirmingDataRemoval = true }
-                Text("清除 Cookie、缓存、本地存储与网站图标。")
+                // #106: replaces 移除所有网站数据…, whose job is the sheet's 全部删除.
+                Button("管理网站和数据…") { isManagingWebsites = true }
+                Text("按网站查看并删除 Cookie、缓存等数据，或重置网页权限。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -23,11 +24,8 @@ struct PrivacySettingsTab: View {
                         ClearBrowsingDataSheet { kinds, range in viewModel.clearBrowsingData(kinds, from: range) }
                     }
             }
-            .alert("确定要移除所有网站数据吗？", isPresented: $isConfirmingDataRemoval) {
-                Button("移除", role: .destructive) { viewModel.removeAllWebsiteData() }
-                Button("取消", role: .cancel) {}
-            } message: {
-                Text("这会让你退出所有网站的登录。")
+            .sheet(isPresented: $isManagingWebsites) {
+                ManageWebsitesSheet(settings: viewModel)
             }
 
             Section("安全性") {

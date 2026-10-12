@@ -284,6 +284,17 @@ public protocol PlatformOps: AnyObject {
     /// `removeAllWebsiteData`; never reloads a page. Confirmation is the caller's job.
     func removeData(ofTypes types: Set<WebsiteDataCategory>, modifiedSince: Date)
 
+    /// 管理网站和数据… (#106): every website data record WebKit holds, one per registrable domain.
+    /// App-global, like `removeAllWebsiteData`. `completion` runs on the main thread.
+    func fetchWebsiteDataRecords(completion: @escaping ([WebsiteDataRecord]) -> Void)
+
+    /// Removes the `kinds` of data held by the records named `names` — whole records are WebKit's
+    /// unit, so a host's data goes with its domain's. Never touches `config.toml` (网页权限
+    /// exceptions are reset separately), and never reloads the page. `completion` runs on the
+    /// main thread once WebKit is done.
+    func removeWebsiteData(
+        ofKinds kinds: Set<WebsiteDataKind>, forRecordsNamed names: [String], completion: @escaping () -> Void)
+
     /// Creates the app's persistent menu-bar (tray) icon (#9) — present for the app's entire
     /// lifetime regardless of Normal/Ghost Mode — populated with `items` in order. Not tied to a
     /// `WidgetWindowHandle` since the tray icon is app-global, not per-window. Called once, at
