@@ -272,7 +272,7 @@ enum TrayScenario: Sendable {
         orchestrator.start()
 
         #expect(fake.trayMenuItems.map { $0.isSeparator ? "—" : $0.title }
-            == ["打开窗口", "幽灵模式", "隐藏窗口", "—", "视频控制需要辅助功能权限…", "设置…", "关于 Mochi", "—", "退出"])
+            == ["打开窗口", "幽灵模式", "隐藏窗口", "—", "视频控制需要输入监控权限…", "设置…", "关于 Mochi", "—", "退出"])
         #expect(fake.trayMenuItems.map(\.icon) == [
             .symbol(DesignTokens.Symbol.openWidget), .ghost, .symbol(DesignTokens.Symbol.hideWidget), nil,
             .symbol(DesignTokens.Symbol.systemPermissionMissing),
@@ -381,39 +381,56 @@ enum TrayScenario: Sendable {
         }
     }
 
-    // #103: the tray's note that 视频控制 lacks Accessibility — there only while it is missing
-    // and something needs it, read live each time the menu opens.
+    // #111: the tray's note that 视频控制 lacks input monitoring — there only while it is missing
+    // and a key needs it, read live each time the menu opens.
 
-    @Test func trayAccessibilityNoteComesAndGoesWithThePermissionAndTheBindings() {
+    @Test func trayInputMonitoringNoteComesAndGoesWithThePermissionAndTheBindings() {
         let fake = FakePlatformOps()
         var config = WidgetConfig(url: nil)
         let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
         orchestrator.start()
-        let note = fake.trayItem("视频控制需要辅助功能权限…")
+        let note = fake.trayItem(Self.inputMonitoringNote)
 
+        fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .denied
         #expect(!note.isVisible())
 
-        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
+        config = config.updatingVideoControlTrigger(Self.optionP, for: .seekForward)
         #expect(note.isVisible())
 
-        config = VideoControlAction.allCases.reduce(config) { $0.updatingVideoControlTrigger(nil, for: $1) }
+        fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .authorized
+        #expect(!note.isVisible())
+
+        fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .notDetermined
+        config = config.updatingVideoControlTrigger(nil, for: .seekForward)
         #expect(!note.isVisible())
         withExtendedLifetime(orchestrator) {}
     }
 
-    @Test func trayAccessibilityNoteOpensSystemSettings() {
+    /// Like the settings panel's button: 未询问 asks, 已拒绝 opens System Settings.
+    @Test(arguments: [
+        (status: SystemPermissionStatus.notDetermined, requested: [SystemPermission.inputMonitoring], opened: [SystemPermission]()),
+        (status: .denied, requested: [], opened: [.inputMonitoring]),
+    ])
+    func trayInputMonitoringNoteRequestsOrOpensSystemSettings(
+        _ row: (status: SystemPermissionStatus, requested: [SystemPermission], opened: [SystemPermission])
+    ) {
         let fake = FakePlatformOps()
-        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
-        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { WidgetConfig(url: nil) })
+        fake.stubbedSystemPermissionStatuses[.inputMonitoring] = row.status
+        let config = WidgetConfig(url: nil).updatingVideoControlTrigger(Self.optionP, for: .seekForward)
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
         orchestrator.start()
 
         withExtendedLifetime(orchestrator) {
-            fake.trayItem("视频控制需要辅助功能权限…").action()
+            fake.trayItem(Self.inputMonitoringNote).action()
         }
 
-        #expect(fake.openedSystemSettings == [.accessibility])
-        #expect(fake.systemPermissionRequests.isEmpty)
+        #expect(fake.systemPermissionRequests == row.requested)
+        #expect(fake.openedSystemSettings == row.opened)
     }
+
+    private static let inputMonitoringNote = "视频控制需要输入监控权限…"
+    /// ⌥P — a combo with neither ⌃ nor ⌘, so it needs input monitoring (ADR-0028).
+    private static let optionP = TriggerKey.keystroke(Hotkey(keyCode: 0x23, modifierFlags: 0x0800))
 
     @Test func trayGhostModeEntryEntersGhostModeFromNormalMode() {
         let fake = FakePlatformOps()

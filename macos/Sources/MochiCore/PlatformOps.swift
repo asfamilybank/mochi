@@ -327,14 +327,14 @@ public protocol PlatformOps: AnyObject {
     // MARK: 系统权限 (#98, ADR-0026) — one set of calls for every `SystemPermission`.
 
     /// Where `permission` stands right now — read fresh at every use, since the user changes it in
-    /// System Settings, behind Mochi's back. Accessibility reads only `.authorized` or `.denied`;
-    /// the Downloads folder always reads `.unqueryable`.
+    /// System Settings, behind Mochi's back. Input monitoring also reads `.authorized` while
+    /// Accessibility is granted (ADR-0028); the Downloads folder always reads `.unqueryable`.
     func systemPermissionStatus(_ permission: SystemPermission) -> SystemPermissionStatus
 
-    /// Asks the system for `permission`: for Accessibility the system's own dialog pointing at
-    /// System Settings, for the camera and microphone the system's access request. The system
-    /// itself never stops a dialog from coming back, so how often to ask is the caller's to decide
-    /// (see `VideoControl`). A no-op for the Downloads folder, which has no request of its own.
+    /// Asks the system for `permission`: for input monitoring the system's own dialog pointing at
+    /// System Settings, for the camera and microphone the system's access request — each followed
+    /// by `onSystemPermissionsMayHaveChanged`. The system itself never stops a dialog from coming
+    /// back, so how often to ask is the caller's to decide (see `VideoControl`). A no-op for the Downloads folder, which has no request of its own.
     func requestSystemPermission(_ permission: SystemPermission)
 
     /// Opens System Settings at `permission`'s page in 隐私与安全性 (the Downloads folder's is
@@ -356,7 +356,7 @@ public protocol PlatformOps: AnyObject {
     /// Hands `keystroke` to `window`'s web view as a real key event (#93, ADR-0025): the page sees
     /// an `isTrusted: true` keydown/keyup at whatever element has focus inside it, iframes
     /// included, while the window stays non-key and Mochi stays in the background — Ghost Mode's
-    /// never-focus rule holds. Needs no Accessibility permission. Whatever the page leaves
+    /// never-focus rule holds. Needs no 系统权限. Whatever the page leaves
     /// unhandled goes no further: no menu key equivalent, no 视频控制 listener ever sees it.
     func forwardKeystroke(_ keystroke: Hotkey, in window: WidgetWindowHandle)
 
@@ -435,8 +435,9 @@ public protocol PlatformOps: AnyObject {
 
     /// Starts reporting raw keyboard and mouse input to `handler` — from every app, and from
     /// Mochi's own windows too — strictly listen-only: no event is ever consumed or altered, so
-    /// every app still gets every key exactly as if Mochi weren't running. Needs Accessibility to
-    /// see other apps' input; without it only Mochi's own input arrives. App-global; a second
+    /// every app still gets every key exactly as if Mochi weren't running. Other apps' combos
+    /// with neither ⌃ nor ⌘ (⌥P) arrive only with input monitoring (ADR-0028); modifier changes
+    /// and ⌃/⌘ combos arrive without it, as does all of Mochi's own input. App-global; a second
     /// start without a stop in between is a caller bug.
     func startObservingInput(perform handler: @escaping (RawInputEvent) -> Void)
 

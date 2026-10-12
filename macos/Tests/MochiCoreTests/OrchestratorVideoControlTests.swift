@@ -221,9 +221,9 @@ import Testing
         #expect(fake.stopObservingInputCallCount == 1)
     }
 
-    @Test func withNothingBoundGhostModeNeitherListensNorAsksForAccessibility() {
+    @Test func withNothingBoundGhostModeNeitherListensNorAsksForInputMonitoring() {
         let fake = FakePlatformOps()
-        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
+        fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .notDetermined
         let config = VideoControlAction.allCases.reduce(WidgetConfig(url: nil)) {
             $0.updatingVideoControlTrigger(nil, for: $1)
         }
@@ -283,28 +283,46 @@ import Testing
         #expect(fake.stopObservingInputCallCount == 0)
     }
 
-    // MARK: Accessibility
+    // MARK: 输入监控 (#111, ADR-0028)
 
-    @Test func asksForAccessibilityOnceWithoutAnAlertAndStillEntersGhostMode() {
+    /// The defaults — taps and double taps — reach the listener without any permission: entering
+    /// Ghost Mode asks for nothing, prompts nothing and never looks for the permission.
+    @Test func theDefaultsNeitherAskNorPromptForInputMonitoring() {
         let fake = FakePlatformOps()
-        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
-        let orchestrator = startedInGhostMode(fake)
+        fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .notDetermined
+        let orchestrator = startedInGhostMode(fake, config: WidgetConfig(url: nil))
+
+        withExtendedLifetime(orchestrator) {
+            #expect(!fake.trayItem(Self.trayNote).isVisible())
+        }
+
+        #expect(fake.isObservingInput)
+        #expect(fake.systemPermissionRequests.isEmpty)
+        #expect(fake.systemPermissionMarkers.isEmpty)
+        #expect(fake.pendingScheduledWorkCount == 0)
+    }
+
+    @Test func asksForInputMonitoringOnceWithoutAnAlertAndStillEntersGhostMode() {
+        let fake = FakePlatformOps()
+        fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .notDetermined
+        let orchestrator = startedInGhostMode(fake, config: .optionPBound)
 
         withExtendedLifetime(orchestrator) {
             fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
             fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
         }
 
-        #expect(fake.systemPermissionRequests == [.accessibility])
+        #expect(fake.systemPermissionRequests == [.inputMonitoring])
+        #expect(fake.systemPermissionMarkers == [.inputMonitoringAutoRequested])
         #expect(fake.openedSystemSettings.isEmpty)
         #expect(fake.presentedAlerts.isEmpty)
         #expect(fake.mousePassthroughChanges.map(\.enabled) == [true, false, true])
     }
 
-    @Test func asksForAccessibilityOnlyOnceEvenAcrossAWidgetReopen() {
+    @Test func asksForInputMonitoringOnlyOnceEvenAcrossAWidgetReopen() {
         let fake = FakePlatformOps()
-        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
-        let orchestrator = startedInGhostMode(fake)
+        fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .denied
+        let orchestrator = startedInGhostMode(fake, config: .optionPBound)
 
         withExtendedLifetime(orchestrator) {
             fake.simulateWindowWillClose()
@@ -312,41 +330,54 @@ import Testing
             fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
         }
 
-        #expect(fake.systemPermissionRequests == [.accessibility])
+        #expect(fake.systemPermissionRequests == [.inputMonitoring])
         #expect(fake.isObservingInput)
     }
 
-    // #103, ADR-0026: once in Mochi's lifetime, not once per launch.
+    // ADR-0026: once in Mochi's lifetime, not once per launch.
 
-    @Test func askingForAccessibilityIsRememberedAcrossLaunches() {
+    @Test func askingForInputMonitoringIsRememberedAcrossLaunches() {
         let firstLaunch = FakePlatformOps()
-        firstLaunch.stubbedSystemPermissionStatuses[.accessibility] = .denied
-        withExtendedLifetime(startedInGhostMode(firstLaunch)) {}
+        firstLaunch.stubbedSystemPermissionStatuses[.inputMonitoring] = .notDetermined
+        withExtendedLifetime(startedInGhostMode(firstLaunch, config: .optionPBound)) {}
 
         // A relaunch: a new `Orchestrator` over the same `UserDefaults`.
         let relaunch = FakePlatformOps()
-        relaunch.stubbedSystemPermissionStatuses[.accessibility] = .denied
+        relaunch.stubbedSystemPermissionStatuses[.inputMonitoring] = .denied
         relaunch.systemPermissionMarkers = firstLaunch.systemPermissionMarkers
-        let orchestrator = startedInGhostMode(relaunch)
+        let orchestrator = startedInGhostMode(relaunch, config: .optionPBound)
 
         withExtendedLifetime(orchestrator) {}
 
-        #expect(firstLaunch.systemPermissionRequests == [.accessibility])
-        #expect(firstLaunch.systemPermissionMarkers == [.accessibilityAutoRequested])
+        #expect(firstLaunch.systemPermissionRequests == [.inputMonitoring])
+        #expect(firstLaunch.systemPermissionMarkers == [.inputMonitoringAutoRequested])
         #expect(relaunch.systemPermissionRequests.isEmpty)
         // Still listens: the user may grant it from the tray or the settings panel.
         #expect(relaunch.isObservingInput)
     }
 
-    /// Hotkey Forwarding mappings set off by a combo go through Carbon, which needs no permission.
-    @Test func onlyComboTriggersNeverAskForAccessibility() {
+    /// Granted — input monitoring itself or Accessibility, which the platform reports the same
+    /// way — means no request and no prompt.
+    @Test func neitherAsksNorPromptsWhenAlreadyGranted() {
         let fake = FakePlatformOps()
-        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
-        let config = VideoControlAction.allCases.reduce(WidgetConfig(url: nil)) {
-            $0.updatingVideoControlTrigger(nil, for: $1)
-        }.updatingHotkeyMappings([
-            HotkeyMapping(trigger: Hotkey(keyCode: 0x0E, modifierFlags: 0x0800), pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0)),
-        ])
+        fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .authorized
+        let orchestrator = startedInGhostMode(fake, config: .optionPBound)
+
+        withExtendedLifetime(orchestrator) {
+            #expect(!fake.trayItem(Self.trayNote).isVisible())
+        }
+
+        #expect(fake.systemPermissionRequests.isEmpty)
+        #expect(fake.pendingScheduledWorkCount == 0)
+    }
+
+    /// A combo with ⌃ or ⌘ gets through without the permission (ADR-0028).
+    @Test(arguments: [UInt32(0x1000 | 0x0800), 0x0100 | 0x0800, 0x1000])
+    func aComboWithControlOrCommandNeverAsks(_ modifiers: UInt32) {
+        let fake = FakePlatformOps()
+        fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .notDetermined
+        let config = WidgetConfig.tapsOnlyVideoKeys
+            .updatingVideoControlTrigger(.keystroke(Hotkey(keyCode: 0x23, modifierFlags: modifiers)), for: .seekForward)
         let orchestrator = startedInGhostMode(fake, config: config)
 
         withExtendedLifetime(orchestrator) {}
@@ -355,18 +386,61 @@ import Testing
         #expect(fake.systemPermissionMarkers.isEmpty)
     }
 
-    /// Granting Accessibility in System Settings takes effect on coming back to Mochi: the
-    /// listener installed without it is installed afresh.
-    @Test func grantingAccessibilityWhileListeningReinstallsTheListener() {
+    /// No Hotkey Forwarding mapping needs it: a combo goes through Carbon, a tap is a modifier
+    /// change — even ⌥E, which as a 视频控制 key would.
+    @Test func hotkeyForwardingMappingsNeverAsk() {
         let fake = FakePlatformOps()
-        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
-        let orchestrator = startedInGhostMode(fake)
+        fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .notDetermined
+        let config = VideoControlAction.allCases.reduce(WidgetConfig(url: nil)) {
+            $0.updatingVideoControlTrigger(nil, for: $1)
+        }.updatingHotkeyMappings([
+            HotkeyMapping(trigger: Hotkey(keyCode: 0x0E, modifierFlags: 0x0800), pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0)),
+            HotkeyMapping(trigger: .modifierTap(.rightShift), pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0)),
+        ])
+        let orchestrator = startedInGhostMode(fake, config: config)
+
+        withExtendedLifetime(orchestrator) {}
+
+        #expect(fake.isObservingInput)
+        #expect(fake.systemPermissionRequests.isEmpty)
+        #expect(fake.systemPermissionMarkers.isEmpty)
+        #expect(fake.pendingScheduledWorkCount == 0)
+    }
+
+    /// Binding ⌥P while already listening in Ghost Mode asks then — the first moment it is needed.
+    @Test func bindingAKeyThatNeedsItInGhostModeAsksThen() {
+        let fake = FakePlatformOps()
+        fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .notDetermined
+        let store = VideoConfigStore()
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { store.config })
+
+        withExtendedLifetime(orchestrator) {
+            orchestrator.start()
+            fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+            #expect(fake.systemPermissionRequests.isEmpty)
+
+            store.config = .optionPBound
+            orchestrator.reapplyConfiguration()
+            orchestrator.reapplyConfiguration()
+        }
+
+        #expect(fake.systemPermissionRequests == [.inputMonitoring])
+        #expect(fake.startObservingInputCallCount == 1)
+        #expect(fake.pendingScheduledWorkCount == 1)
+    }
+
+    /// Granting input monitoring in System Settings takes effect on coming back to Mochi: the
+    /// listener installed without it is installed afresh.
+    @Test func grantingInputMonitoringWhileListeningReinstallsTheListener() {
+        let fake = FakePlatformOps()
+        fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .denied
+        let orchestrator = startedInGhostMode(fake, config: .optionPBound)
 
         withExtendedLifetime(orchestrator) {
             fake.simulateSystemPermissionsMayHaveChanged()
             #expect(fake.startObservingInputCallCount == 1)
 
-            fake.stubbedSystemPermissionStatuses[.accessibility] = .authorized
+            fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .authorized
             fake.simulateSystemPermissionsMayHaveChanged()
             fake.simulateSystemPermissionsMayHaveChanged()
             fake.simulateModifierTap(.rightOption)
@@ -380,18 +454,19 @@ import Testing
 
     /// In Ghost Mode Mochi hands focus away and is never activated again, so the
     /// `onSystemPermissionsMayHaveChanged` signal never comes (spec #95, story 12): while
-    /// listening without Accessibility, `VideoControl` checks for it on its own until it arrives.
-    @Test func grantingAccessibilityInGhostModeTakesEffectWithoutMochiBeingActivated() {
+    /// listening without input monitoring and needing it, `VideoControl` checks for it on its own
+    /// until it arrives.
+    @Test func grantingInputMonitoringInGhostModeTakesEffectWithoutMochiBeingActivated() {
         let fake = FakePlatformOps()
-        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
-        let orchestrator = startedInGhostMode(fake)
+        fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .denied
+        let orchestrator = startedInGhostMode(fake, config: .optionPBound)
 
         withExtendedLifetime(orchestrator) {
             fake.runScheduledWork()
             #expect(fake.startObservingInputCallCount == 1)
             #expect(fake.pendingScheduledWorkCount == 1)
 
-            fake.stubbedSystemPermissionStatuses[.accessibility] = .authorized
+            fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .authorized
             fake.runScheduledWork()
             fake.simulateModifierTap(.rightOption)
         }
@@ -403,10 +478,10 @@ import Testing
         #expect(fake.videoCommands.map(\.command) == [.togglePlayback])
     }
 
-    @Test func leavingGhostModeStopsCheckingForAccessibility() {
+    @Test func leavingGhostModeStopsCheckingForInputMonitoring() {
         let fake = FakePlatformOps()
-        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
-        let orchestrator = startedInGhostMode(fake)
+        fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .denied
+        let orchestrator = startedInGhostMode(fake, config: .optionPBound)
 
         withExtendedLifetime(orchestrator) {
             fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
@@ -416,13 +491,35 @@ import Testing
         #expect(!fake.isObservingInput)
     }
 
-    @Test func accessibilityArrivingWithActivationStopsTheCheck() {
+    /// Unbinding the last key that needs it stops the check; the listener carries on.
+    @Test func unbindingTheKeyThatNeedsItStopsCheckingForInputMonitoring() {
         let fake = FakePlatformOps()
-        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
-        let orchestrator = startedInGhostMode(fake)
+        fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .denied
+        let store = VideoConfigStore()
+        store.config = .optionPBound
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { store.config })
 
         withExtendedLifetime(orchestrator) {
-            fake.stubbedSystemPermissionStatuses[.accessibility] = .authorized
+            orchestrator.start()
+            fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+            #expect(fake.pendingScheduledWorkCount == 1)
+
+            store.config = .tapsOnlyVideoKeys
+            orchestrator.reapplyConfiguration()
+        }
+
+        #expect(fake.pendingScheduledWorkCount == 0)
+        #expect(fake.isObservingInput)
+        #expect(fake.startObservingInputCallCount == 1)
+    }
+
+    @Test func inputMonitoringArrivingWithActivationStopsTheCheck() {
+        let fake = FakePlatformOps()
+        fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .denied
+        let orchestrator = startedInGhostMode(fake, config: .optionPBound)
+
+        withExtendedLifetime(orchestrator) {
+            fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .authorized
             fake.simulateSystemPermissionsMayHaveChanged()
         }
 
@@ -430,9 +527,9 @@ import Testing
         #expect(fake.pendingScheduledWorkCount == 0)
     }
 
-    @Test func listeningWithAccessibilityNeverChecksForIt() {
+    @Test func listeningWithInputMonitoringNeverChecksForIt() {
         let fake = FakePlatformOps()
-        let orchestrator = startedInGhostMode(fake)
+        let orchestrator = startedInGhostMode(fake, config: .optionPBound)
 
         withExtendedLifetime(orchestrator) {}
 
@@ -446,13 +543,13 @@ import Testing
     ])
     func aPermissionChangeLeavesTheListenerAlone(_ row: (name: String, ghostMode: Bool, deniedAtFirst: Bool)) {
         let fake = FakePlatformOps()
-        fake.stubbedSystemPermissionStatuses[.accessibility] = row.deniedAtFirst ? .denied : .authorized
-        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { .tapsOnlyVideoKeys })
+        fake.stubbedSystemPermissionStatuses[.inputMonitoring] = row.deniedAtFirst ? .denied : .authorized
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { .optionPBound })
 
         withExtendedLifetime(orchestrator) {
             orchestrator.start()
             if row.ghostMode { fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode) }
-            fake.stubbedSystemPermissionStatuses[.accessibility] = .authorized
+            fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .authorized
             fake.simulateSystemPermissionsMayHaveChanged()
         }
 
@@ -460,14 +557,7 @@ import Testing
         #expect(fake.stopObservingInputCallCount == 0)
     }
 
-    @Test func doesNotAskForAccessibilityWhenAlreadyTrusted() {
-        let fake = FakePlatformOps()
-        let orchestrator = startedInGhostMode(fake)
-
-        withExtendedLifetime(orchestrator) {}
-
-        #expect(fake.systemPermissionRequests.isEmpty)
-    }
+    private static let trayNote = "视频控制需要输入监控权限…"
 }
 
 /// Stands in for `AppDelegate`'s live config, so a test can change it between two key presses.
@@ -481,6 +571,11 @@ extension WidgetConfig {
     static let tapsOnlyVideoKeys = WidgetConfig(url: nil)
         .updatingVideoControlTrigger(.modifierTap(.rightCommand), for: .seekBackward)
         .updatingVideoControlTrigger(nil, for: .seekForward)
+
+    /// `tapsOnlyVideoKeys` with 前进 on ⌥P — a combo with neither ⌃ nor ⌘, so it needs input
+    /// monitoring (#111, ADR-0028). `0x23` is `kVK_ANSI_P`.
+    static let optionPBound = tapsOnlyVideoKeys
+        .updatingVideoControlTrigger(.keystroke(Hotkey(keyCode: 0x23, modifierFlags: 0x0800)), for: .seekForward)
 }
 
 /// Raw event sequences for the tap-recognition table. Times are seconds, as `NSEvent.timestamp`.

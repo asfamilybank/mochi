@@ -25,6 +25,12 @@ extension Hotkey {
         return !(modifierFlags & Self.shift != 0 && Self.functionKeyCodes.contains(keyCode))
     }
 
+    /// Whether ⌃ or ⌘ is held: without either, the system takes the combo for typing and keeps
+    /// it from a listener lacking input monitoring (ADR-0028).
+    public var hasControlOrCommand: Bool {
+        modifierFlags & (Self.control | Self.command) != 0
+    }
+
     private static let control: UInt32 = 0x1000
     private static let option: UInt32 = 0x0800
     private static let shift: UInt32 = 0x0200

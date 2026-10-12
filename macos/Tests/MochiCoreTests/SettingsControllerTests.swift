@@ -1635,27 +1635,30 @@ import Testing
 
     // MARK: 系统权限 (#98)
 
-    @Test func promptsForAccessibilityOnlyWhileItIsNotGranted() {
+    @Test func promptsForInputMonitoringOnlyWhileItIsNotGranted() {
         let fake = FakePlatformOps()
-        let controller = makeController(store: PersistedStore(WidgetConfig()), platformOps: fake)
+        let config = WidgetConfig().updatingVideoControlTrigger(
+            .keystroke(Hotkey(keyCode: 0x23, modifierFlags: 0x0800)), for: .seekForward)  // ⌥P
+        let controller = makeController(store: PersistedStore(config), platformOps: fake)
 
         #expect(controller.systemPermissionPrompts.isEmpty)
-        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
+        fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .notDetermined
 
-        #expect(controller.systemPermissionPrompts.filter { $0.placement == .ghostModePanelTop }.map(\.permission)
-            == [.accessibility])
+        #expect(controller.systemPermissionPrompts.filter { $0.placement == .ghostModePanelTop }
+            == [SystemPermissionPrompt(permission: .inputMonitoring, placement: .ghostModePanelTop, action: .request)])
     }
 
-    /// The prompts follow the config the panel is editing (#103): unbinding everything that needs
-    /// Accessibility takes its prompt away.
-    @Test func accessibilityPromptGoesOnceNothingNeedsIt() {
+    /// The prompts follow the config the panel is editing (#111): rebinding the one key that
+    /// needs input monitoring to a tap takes its prompt away.
+    @Test func inputMonitoringPromptGoesOnceNothingNeedsIt() {
         let fake = FakePlatformOps()
-        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
-        let controller = makeController(store: PersistedStore(WidgetConfig()), platformOps: fake)
+        fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .denied
+        let config = WidgetConfig().updatingVideoControlTrigger(
+            .keystroke(Hotkey(keyCode: 0x23, modifierFlags: 0x0800)), for: .seekForward)  // ⌥P
+        let controller = makeController(store: PersistedStore(config), platformOps: fake)
+        #expect(!controller.systemPermissionPrompts.isEmpty)
 
-        for action in VideoControlAction.allCases {
-            _ = controller.updateVideoControlTrigger(nil, for: action)
-        }
+        _ = controller.updateVideoControlTrigger(.modifierDoubleTap(.rightOption), for: .seekForward)
 
         #expect(controller.systemPermissionPrompts.isEmpty)
     }

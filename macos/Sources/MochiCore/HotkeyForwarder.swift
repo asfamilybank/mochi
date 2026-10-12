@@ -3,9 +3,9 @@ import Foundation
 /// Drives Hotkey Forwarding (#11): on every press of a configured mapping's trigger, forwards its
 /// `pageKeystroke` into the widget's page — only while Ghost Mode is active, per the domain doc.
 /// Since #93 (ADR-0025) the keystroke is handed straight to the widget's web view rather than
-/// posted through the system, so there is no Accessibility permission to check or ask for here;
-/// a mapping set off by a tap or double tap still needs it, but for *hearing* the trigger, which
-/// is `VideoControl`'s to ask for.
+/// posted through the system, so there is no 系统权限 to check or ask for here. Hearing a
+/// trigger needs none either (ADR-0028): a combo goes through Carbon, a tap or double tap
+/// reaches `VideoControl`'s listener as a modifier change.
 ///
 /// Since #46 this type no longer registers the triggers itself: every global hotkey Mochi holds —
 /// the two action hotkeys and every mapping trigger — is registered by `Orchestrator` at launch

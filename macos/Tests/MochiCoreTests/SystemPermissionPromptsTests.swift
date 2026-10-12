@@ -7,51 +7,85 @@ import Testing
 /// reports for each permission, the prompts and nothing else — a permission already granted
 /// shows nothing at all.
 @Suite struct SystemPermissionPromptsTests {
-    /// #103: Accessibility is asked about only where something needs it — a 视频控制 key, or a
-    /// Hotkey Forwarding mapping set off by a tap or a double tap, both heard by listening to
-    /// other apps' keys. Then, until it is granted, one prompt at the top of the 幽灵模式 panel
-    /// and one in the tray; the system answers nothing finer than "trusted or not", so the
-    /// button is always 打开系统设置.
+    /// #111, ADR-0028: input monitoring is needed only for a 视频控制 key bound to a combo with
+    /// neither ⌃ nor ⌘ — the kind the system takes for typing and holds back from a listener
+    /// without the permission. Taps and double taps (modifier changes) and ⌃/⌘ combos get through
+    /// anyway. No Hotkey Forwarding mapping counts: its combos go through Carbon, its taps arrive
+    /// as modifier changes.
     @Test(arguments: [
-        (videoKeys: true, mapping: TriggerKind?.none, accessibility: SystemPermissionStatus.denied, prompted: true),
-        (videoKeys: true, mapping: nil, accessibility: .notDetermined, prompted: true),
-        (videoKeys: true, mapping: nil, accessibility: .restricted, prompted: true),
-        (videoKeys: true, mapping: nil, accessibility: .authorized, prompted: false),
-        (videoKeys: false, mapping: .tap, accessibility: .denied, prompted: true),
-        (videoKeys: false, mapping: .tap, accessibility: .authorized, prompted: false),
-        (videoKeys: false, mapping: .doubleTap, accessibility: .denied, prompted: true),
-        (videoKeys: false, mapping: .doubleTap, accessibility: .authorized, prompted: false),
-        // A combo mapping goes through Carbon, which needs no permission.
-        (videoKeys: false, mapping: .combo, accessibility: .denied, prompted: false),
-        (videoKeys: false, mapping: nil, accessibility: .denied, prompted: false),
-        (videoKeys: true, mapping: .tap, accessibility: .denied, prompted: true),
-        (videoKeys: true, mapping: .tap, accessibility: .authorized, prompted: false),
+        (video: TriggerKey?.none, mapping: TriggerKey?.none, needed: false),
+        (video: .modifierTap(.rightOption), mapping: nil, needed: false),
+        (video: .modifierDoubleTap(.rightOption), mapping: nil, needed: false),
+        (video: .combo(control | option), mapping: nil, needed: false),
+        (video: .combo(command | option), mapping: nil, needed: false),
+        (video: .combo(control), mapping: nil, needed: false),
+        (video: .combo(command | shift), mapping: nil, needed: false),
+        (video: .combo(option), mapping: nil, needed: true),
+        (video: .shiftF5, mapping: nil, needed: true),
+        (video: .combo(option | shift), mapping: nil, needed: true),
+        (video: nil, mapping: .modifierTap(.rightShift), needed: false),
+        (video: nil, mapping: .modifierDoubleTap(.rightShift), needed: false),
+        (video: nil, mapping: .combo(option), needed: false),
+        (video: nil, mapping: .shiftF5, needed: false),
+        (video: nil, mapping: .combo(control | option), needed: false),
+        (video: .modifierTap(.rightOption), mapping: .combo(option), needed: false),
     ])
-    func accessibility(
-        _ row: (videoKeys: Bool, mapping: TriggerKind?, accessibility: SystemPermissionStatus, prompted: Bool)
-    ) {
-        var config = row.videoKeys ? WidgetConfig(url: nil) : .noVideoKeys
-        if let kind = row.mapping {
-            config = config.updatingHotkeyMappings([HotkeyMapping(trigger: .example(of: kind), pageKeystroke: .space)])
+    func needsInputMonitoring(_ row: (video: TriggerKey?, mapping: TriggerKey?, needed: Bool)) {
+        var config = WidgetConfig.noVideoKeys.updatingVideoControlTrigger(row.video, for: .seekForward)
+        if let trigger = row.mapping {
+            config = config.updatingHotkeyMappings([HotkeyMapping(trigger: trigger, pageKeystroke: .space)])
         }
 
-        let prompts = SystemPermissionPrompts.prompts(for: config) {
-            $0 == .accessibility ? row.accessibility : .authorized
-        }
-
-        #expect(prompts == (row.prompted ? [.accessibilityAtGhostModePanelTop, .accessibilityInTray] : []))
+        #expect(VideoControl.needsInputMonitoring(for: config) == row.needed)
     }
 
-    /// A 视频控制 key bound to a combo is still heard by listening, not through Carbon — it needs
-    /// Accessibility as much as a tap does.
-    @Test func aVideoKeyBoundToACombo() {
-        let config = WidgetConfig.noVideoKeys
-            .updatingVideoControlTrigger(.example(of: .combo), for: .togglePlayback)
+    /// One key that needs it is enough, whichever action it is bound to.
+    @Test(arguments: VideoControlAction.allCases)
+    func anyVideoKeyCanNeedInputMonitoring(_ action: VideoControlAction) {
+        let config = WidgetConfig(url: nil).updatingVideoControlTrigger(.combo(option), for: action)
 
-        let prompts = SystemPermissionPrompts.prompts(for: config) { _ in .denied }
+        #expect(VideoControl.needsInputMonitoring(for: config))
+    }
 
-        #expect(prompts.filter { $0.permission == .accessibility }
-            == [.accessibilityAtGhostModePanelTop, .accessibilityInTray])
+    /// The defaults — right ⌥ tapped, right ⌥ / right ⌘ tapped twice (ADR-0024) — need nothing.
+    @Test func theDefaultsNeedNoPermission() {
+        let prompts = SystemPermissionPrompts.prompts(for: WidgetConfig(url: nil)) {
+            $0 == .inputMonitoring ? .notDetermined : .authorized
+        }
+
+        #expect(!VideoControl.needsInputMonitoring(for: WidgetConfig(url: nil)))
+        #expect(prompts.isEmpty)
+    }
+
+    /// While something needs input monitoring and it is not granted: one prompt at the top of the
+    /// 幽灵模式 panel and one in the tray, its button like the camera's — 请求权限 while the
+    /// system has never asked, 打开系统设置 once it has refused (#111). Granted, or not needed,
+    /// nothing.
+    @Test(arguments: [
+        (needed: true, status: SystemPermissionStatus.notDetermined, shown: true, action: SystemPermissionPrompt.Action?.some(.request)),
+        (needed: true, status: .denied, shown: true, action: .openSystemSettings),
+        (needed: true, status: .restricted, shown: true, action: nil),
+        (needed: true, status: .authorized, shown: false, action: nil),
+        (needed: false, status: .notDetermined, shown: false, action: nil),
+        (needed: false, status: .denied, shown: false, action: nil),
+        (needed: false, status: .authorized, shown: false, action: nil),
+    ])
+    func inputMonitoring(
+        _ row: (needed: Bool, status: SystemPermissionStatus, shown: Bool, action: SystemPermissionPrompt.Action?)
+    ) {
+        let config = WidgetConfig(url: nil)
+            .updatingVideoControlTrigger(.combo(row.needed ? option : control | option), for: .seekForward)
+
+        let prompts = SystemPermissionPrompts.prompts(for: config) {
+            $0 == .inputMonitoring ? row.status : .authorized
+        }
+
+        let expected = row.shown
+            ? [SystemPermissionPrompt.Placement.ghostModePanelTop, .trayMenu].map {
+                SystemPermissionPrompt(permission: .inputMonitoring, placement: $0, action: row.action)
+            }
+            : []
+        #expect(prompts == expected)
     }
 
     /// Other permissions have no prompt of their own yet — whatever they read, they add nothing.
@@ -160,13 +194,6 @@ import Testing
     }
 }
 
-private extension SystemPermissionPrompt {
-    static let accessibilityAtGhostModePanelTop = SystemPermissionPrompt(
-        permission: .accessibility, placement: .ghostModePanelTop, action: .openSystemSettings)
-    static let accessibilityInTray = SystemPermissionPrompt(
-        permission: .accessibility, placement: .trayMenu, action: .openSystemSettings)
-}
-
 private extension WidgetConfig {
     /// Every 视频控制 key unbound.
     static let noVideoKeys = VideoControlAction.allCases.reduce(WidgetConfig(url: nil)) {
@@ -175,14 +202,20 @@ private extension WidgetConfig {
 }
 
 private extension TriggerKey {
-    static func example(of kind: TriggerKind) -> TriggerKey {
-        switch kind {
-        case .tap: .modifierTap(.rightShift)
-        case .doubleTap: .modifierDoubleTap(.rightShift)
-        case .combo: .keystroke(Hotkey(keyCode: 0x0E, modifierFlags: 0x0800))  // ⌥E
-        }
+    /// P with `modifiers` (Carbon bits). `0x23` is `kVK_ANSI_P`.
+    static func combo(_ modifiers: UInt32) -> TriggerKey {
+        .keystroke(Hotkey(keyCode: 0x23, modifierFlags: modifiers))
     }
+
+    /// ⇧F5 — ⇧ alone is allowed with the F-keys (ADR-0023). `0x60` is `kVK_F5`.
+    static let shiftF5 = TriggerKey.keystroke(Hotkey(keyCode: 0x60, modifierFlags: shift))
 }
+
+/// Carbon's modifier bits, as `Hotkey.modifierFlags` holds them.
+private let control: UInt32 = 0x1000
+private let option: UInt32 = 0x0800
+private let shift: UInt32 = 0x0200
+private let command: UInt32 = 0x0100
 
 private extension Hotkey {
     static let space = Hotkey(keyCode: 0x31, modifierFlags: 0)

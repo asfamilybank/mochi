@@ -139,13 +139,20 @@ public final class Orchestrator {
                 self?.perform(HotkeyAction.hideWidget)
             },
             .separator,
-            // Only while Accessibility is missing and something needs it (#103, ADR-0026): in
-            // Ghost Mode the tray is the one place left to say why the video keys do nothing.
+            // Only while input monitoring is missing and a 视频控制 key needs it (#111, ADR-0028):
+            // in Ghost Mode the tray is the one place left to say why that key does nothing. Its
+            // click does what the settings panel's button would — ask while the system never has,
+            // System Settings once it has refused.
             TrayMenuItem(
-                title: "视频控制需要辅助功能权限…", icon: .symbol(DesignTokens.Symbol.systemPermissionMissing),
-                isVisible: { [weak self] in self?.trayPrompt(for: .accessibility) != nil }
+                title: "视频控制需要输入监控权限…", icon: .symbol(DesignTokens.Symbol.systemPermissionMissing),
+                isVisible: { [weak self] in self?.trayPrompt(for: .inputMonitoring) != nil }
             ) { [weak self] in
-                self?.platformOps.openSystemSettings(for: .accessibility)
+                guard let self, let prompt = trayPrompt(for: .inputMonitoring) else { return }
+                if prompt.action == .request {
+                    platformOps.requestSystemPermission(.inputMonitoring)
+                } else {
+                    platformOps.openSystemSettings(for: .inputMonitoring)
+                }
             },
             TrayMenuItem(
                 title: "设置…", icon: .symbol(DesignTokens.Symbol.settings),

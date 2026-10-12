@@ -3,6 +3,7 @@ import AppKit
 import AVFoundation
 import CoreGraphics
 import Foundation
+import IOKit.hid
 import SwiftUI
 import WebKit
 
@@ -2619,10 +2620,22 @@ public final class AppKitPlatformOps: PlatformOps {
 
     public func systemPermissionStatus(_ permission: SystemPermission) -> SystemPermissionStatus {
         switch permission {
-        case .accessibility: AXIsProcessTrusted() ? .authorized : .denied
+        case .inputMonitoring: Self.inputMonitoringStatus()
         case .camera: Self.status(of: AVCaptureDevice.authorizationStatus(for: .video))
         case .microphone: Self.status(of: AVCaptureDevice.authorizationStatus(for: .audio))
         case .downloadsFolder: .unqueryable
+        }
+    }
+
+    /// Input monitoring as the HID system reports it (#111, ADR-0028) — 未询问 / 已拒绝 / 已授权.
+    /// Accessibility lets a listener through just the same, so a user who granted it before #111
+    /// reads as granted and is not asked again: the one place Mochi still looks at Accessibility.
+    private static func inputMonitoringStatus() -> SystemPermissionStatus {
+        if AXIsProcessTrusted() { return .authorized }
+        switch IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) {
+        case kIOHIDAccessTypeGranted: return .authorized
+        case kIOHIDAccessTypeDenied: return .denied
+        default: return .notDetermined
         }
     }
 
@@ -2638,9 +2651,11 @@ public final class AppKitPlatformOps: PlatformOps {
 
     public func requestSystemPermission(_ permission: SystemPermission) {
         switch permission {
-        case .accessibility:
-            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as NSString: true] as CFDictionary
-            AXIsProcessTrustedWithOptions(options)
+        case .inputMonitoring:
+            // Brings up the system's dialog the first time; after that it only answers. Either
+            // way the status may have moved on from 未询问, so the panel reads it again.
+            _ = CGRequestListenEventAccess()
+            DispatchQueue.main.async { [weak self] in self?.systemPermissionsMayHaveChangedHandlers.forEach { $0() } }
         case .camera, .microphone:
             AVCaptureDevice.requestAccess(for: permission == .camera ? .video : .audio) { [weak self] _ in
                 DispatchQueue.main.async { self?.systemPermissionsMayHaveChangedHandlers.forEach { $0() } }
@@ -2652,7 +2667,7 @@ public final class AppKitPlatformOps: PlatformOps {
 
     public func openSystemSettings(for permission: SystemPermission) {
         let anchor = switch permission {
-        case .accessibility: "Privacy_Accessibility"
+        case .inputMonitoring: "Privacy_ListenEvent"
         case .camera: "Privacy_Camera"
         case .microphone: "Privacy_Microphone"
         case .downloadsFolder: "Privacy_FilesAndFolders"
@@ -2758,8 +2773,9 @@ public final class AppKitPlatformOps: PlatformOps {
 
     // MARK: 视频控制 (#74)
 
-    /// Both listeners: the global one sees every other app's input (with Accessibility), the local
-    /// one sees Mochi's own — a global monitor never receives events meant for its own app. The
+    /// Both listeners: the global one sees every other app's input — all of it with input
+    /// monitoring, everything but ⌥/⇧ combos without (ADR-0028) — the local one sees Mochi's own:
+    /// a global monitor never receives events meant for its own app. The
     /// local one hands every event back untouched; neither can consume anything.
     private var inputMonitors: [Any] = []
 

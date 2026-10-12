@@ -43,9 +43,10 @@ public enum VideoCommand: Equatable, Sendable {
 /// are never registered with Carbon — handing their page keystroke to `HotkeyForwarder`; one
 /// recognizer serves both, so a key bound both ways across the two waits the same way.
 ///
-/// App-global like `HotkeyForwarder`, built once by `Orchestrator.start()`. It asks for
-/// Accessibility on its own at most once in Mochi's lifetime (#103, ADR-0026) — remembered in
-/// `SystemPermissionMarker.accessibilityAutoRequested`, not in memory. Whether to listen is
+/// App-global like `HotkeyForwarder`, built once by `Orchestrator.start()`. It asks for input
+/// monitoring on its own at most once in Mochi's lifetime, and only once a key needs it (#111,
+/// ADR-0026, ADR-0028) — remembered in `SystemPermissionMarker.inputMonitoringAutoRequested`, not
+/// in memory. Whether to listen is
 /// recomputed by `refreshObservation()` whenever its inputs change — the mode, the window's
 /// existence, the bindings — and every key is resolved against the config read at the moment it
 /// is pressed.
@@ -57,16 +58,17 @@ public final class VideoControl {
     /// Hands a tap-triggered mapping's page keystroke to Hotkey Forwarding (#92).
     private let forward: (Hotkey) -> Void
     private var isObserving = false
-    /// Whether the current listener went in before Accessibility was granted (#103).
-    private var isObservingWithoutAccessibility = false
+    /// Whether the current listener went in before input monitoring was granted (#103, #111).
+    private var isObservingWithoutInputMonitoring = false
     private var tapRecognizer = TriggerTapRecognizer()
     /// Cancels the wait on `tapRecognizer`'s held-back tap, while there is one.
     private var cancelHeldBackTapRelease: (() -> Void)?
-    /// Cancels the next look at whether Accessibility has arrived, while listening without it.
-    private var cancelAccessibilityCheck: (() -> Void)?
+    /// Cancels the next look at whether input monitoring has arrived, while listening without it
+    /// and a key needs it.
+    private var cancelInputMonitoringCheck: (() -> Void)?
 
-    /// How often a listener without Accessibility looks for it (#103).
-    static let accessibilityCheckInterval: TimeInterval = 2
+    /// How often a listener without input monitoring looks for it (#103, #111).
+    static let inputMonitoringCheckInterval: TimeInterval = 2
 
     public init(
         platformOps: PlatformOps,
@@ -81,41 +83,53 @@ public final class VideoControl {
         self.currentWindow = currentWindow
         self.forward = forward
         platformOps.onSystemPermissionsMayHaveChanged { [weak self] in
-            self?.reinstallObservationIfAccessibilityArrived()
+            self?.reinstallObservationIfInputMonitoringArrived()
         }
     }
 
     /// Starts or stops listening to match the current state: only in Ghost Mode, only with a
     /// widget, only with at least one key bound — with nothing bound there is nothing to listen
-    /// for, and no reason to ask for Accessibility either. Idempotent, so every caller can just
-    /// call it: a mode change, a widget close, and every settings edit
+    /// for. Input monitoring is asked for the first time a key needs it while listening — on
+    /// entering Ghost Mode, or on binding one there. Idempotent, so every caller can just call
+    /// it: a mode change, a widget close, and every settings edit
     /// (`Orchestrator.reapplyConfiguration()`).
     public func refreshObservation() {
         let config = currentConfig()
         let anythingBound = !Self.listenedTriggers(in: config).isEmpty
         let shouldObserve = isGhostModeActive() && currentWindow() != nil && anythingBound
+        let needsInputMonitoring = Self.needsInputMonitoring(for: config)
+        if shouldObserve, needsInputMonitoring,
+           platformOps.systemPermissionStatus(.inputMonitoring) != .authorized,
+           !platformOps.isSystemPermissionMarkerSet(.inputMonitoringAutoRequested) {
+            platformOps.setSystemPermissionMarker(.inputMonitoringAutoRequested, true)
+            platformOps.requestSystemPermission(.inputMonitoring)
+        }
         if shouldObserve, !isObserving {
-            if platformOps.systemPermissionStatus(.accessibility) != .authorized,
-               !platformOps.isSystemPermissionMarkerSet(.accessibilityAutoRequested) {
-                platformOps.setSystemPermissionMarker(.accessibilityAutoRequested, true)
-                platformOps.requestSystemPermission(.accessibility)
-            }
             isObserving = true
             startObservingInput()
         } else if !shouldObserve, isObserving {
             isObserving = false
             stopObservingInput()
+        } else if isObserving {
+            // Still listening, but a settings edit may have bound or unbound the one key that
+            // needed the permission: look for it exactly while something needs it.
+            if needsInputMonitoring, isObservingWithoutInputMonitoring {
+                if cancelInputMonitoringCheck == nil { scheduleInputMonitoringCheck() }
+            } else {
+                cancelInputMonitoringCheck?()
+                cancelInputMonitoringCheck = nil
+            }
         }
     }
 
     private func startObservingInput() {
-        isObservingWithoutAccessibility = platformOps.systemPermissionStatus(.accessibility) != .authorized
+        isObservingWithoutInputMonitoring = platformOps.systemPermissionStatus(.inputMonitoring) != .authorized
         tapRecognizer = TriggerTapRecognizer()
         platformOps.startObservingInput { [weak self] event in
             self?.handle(event)
         }
-        if isObservingWithoutAccessibility {
-            scheduleAccessibilityCheck()
+        if isObservingWithoutInputMonitoring, Self.needsInputMonitoring(for: currentConfig()) {
+            scheduleInputMonitoringCheck()
         }
     }
 
@@ -123,36 +137,37 @@ public final class VideoControl {
         platformOps.stopObservingInput()
         cancelHeldBackTapRelease?()
         cancelHeldBackTapRelease = nil
-        cancelAccessibilityCheck?()
-        cancelAccessibilityCheck = nil
+        cancelInputMonitoringCheck?()
+        cancelInputMonitoringCheck = nil
     }
 
-    /// Granting Accessibility takes effect without a relaunch or a trip out of Ghost Mode (#103):
-    /// a listener that went in without it is put in afresh once it arrives. Whether the old one
-    /// would have started hearing other apps on its own is the system's business; reinstalling
-    /// is right either way.
+    /// Granting input monitoring takes effect without a relaunch or a trip out of Ghost Mode
+    /// (#103, #111): a listener that went in without it is put in afresh once it arrives. Whether
+    /// the old one would have started hearing other apps on its own is the system's business;
+    /// reinstalling is right either way.
     ///
     /// Two things look: `onSystemPermissionsMayHaveChanged`, when Mochi becomes active again, and
-    /// a check every `accessibilityCheckInterval` — in Ghost Mode Mochi hands focus away and is
-    /// never activated, so the first alone would leave the user granting it in System Settings
-    /// with nothing happening (spec #95, story 12).
-    private func reinstallObservationIfAccessibilityArrived() {
-        guard isObserving, isObservingWithoutAccessibility,
-              platformOps.systemPermissionStatus(.accessibility) == .authorized else { return }
+    /// — while a key needs it — a check every `inputMonitoringCheckInterval`: in Ghost Mode Mochi
+    /// hands focus away and is never activated, so the first alone would leave the user granting
+    /// it in System Settings with nothing happening (spec #95, story 12).
+    private func reinstallObservationIfInputMonitoringArrived() {
+        guard isObserving, isObservingWithoutInputMonitoring,
+              platformOps.systemPermissionStatus(.inputMonitoring) == .authorized else { return }
         stopObservingInput()
         startObservingInput()
     }
 
-    private func scheduleAccessibilityCheck() {
-        cancelAccessibilityCheck?()
-        cancelAccessibilityCheck = platformOps.schedule(after: Self.accessibilityCheckInterval) { [weak self] in
+    private func scheduleInputMonitoringCheck() {
+        cancelInputMonitoringCheck?()
+        cancelInputMonitoringCheck = platformOps.schedule(after: Self.inputMonitoringCheckInterval) { [weak self] in
             guard let self else { return }
-            cancelAccessibilityCheck = nil
-            guard isObserving, isObservingWithoutAccessibility else { return }
-            if platformOps.systemPermissionStatus(.accessibility) == .authorized {
-                reinstallObservationIfAccessibilityArrived()
+            cancelInputMonitoringCheck = nil
+            guard isObserving, isObservingWithoutInputMonitoring,
+                  Self.needsInputMonitoring(for: currentConfig()) else { return }
+            if platformOps.systemPermissionStatus(.inputMonitoring) == .authorized {
+                reinstallObservationIfInputMonitoringArrived()
             } else {
-                scheduleAccessibilityCheck()
+                scheduleInputMonitoringCheck()
             }
         }
     }
@@ -204,12 +219,18 @@ public final class VideoControl {
         }
     }
 
-    /// Whether anything in `config` is heard by this listener — and so needs Accessibility,
-    /// without which no key pressed in another app reaches it (#103). Every bound video key
-    /// counts, a combo too; of the Hotkey Forwarding mappings only those set off by a tap or a
-    /// double tap — a combo mapping goes through Carbon, which needs no permission.
-    public static func needsAccessibility(for config: WidgetConfig) -> Bool {
-        !listenedTriggers(in: config).isEmpty
+    /// Whether a key in `config` needs input monitoring to reach this listener from another app
+    /// (#111, ADR-0028): a 视频控制 key bound to a combo with neither ⌃ nor ⌘ — ⌥P, ⇧F5 — which
+    /// the system, without the permission, takes for typing and holds back. Taps and double taps
+    /// arrive as modifier changes and ⌃/⌘ combos get through anyway; no Hotkey Forwarding mapping
+    /// counts, since a combo one goes through Carbon and a tap one is a modifier change. The rule
+    /// was found by trying, not promised by Apple: if a macOS release changes it, this is the one
+    /// place to follow.
+    public static func needsInputMonitoring(for config: WidgetConfig) -> Bool {
+        VideoControlAction.allCases.contains { action in
+            guard case .keystroke(let hotkey) = config.videoControlTrigger(for: action) else { return false }
+            return !hotkey.hasControlOrCommand
+        }
     }
 
     /// Every trigger key this listener answers for: the bound video keys, and since #92 the
