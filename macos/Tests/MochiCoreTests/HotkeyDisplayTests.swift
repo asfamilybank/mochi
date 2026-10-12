@@ -43,6 +43,41 @@ import Testing
         #expect(HotkeyDisplay.keys(of: Hotkey(keyCode: 0x31, modifierFlags: 0)) == ["Space"])
     }
 
+    /// #112: the F-keys have names — ⇧ plus an F-key is a valid trigger (ADR-0023), so one is
+    /// recorded, shown in the tray and on the Empty Page, never as "Key 96". Keycodes are
+    /// `kVK_F1` … `kVK_F20` from Carbon's Events.h, which are not in order.
+    @Test(arguments: [
+        (keyCode: UInt32(0x7A), name: "F1"), (keyCode: 0x78, name: "F2"), (keyCode: 0x63, name: "F3"),
+        (keyCode: 0x76, name: "F4"), (keyCode: 0x60, name: "F5"), (keyCode: 0x61, name: "F6"),
+        (keyCode: 0x62, name: "F7"), (keyCode: 0x64, name: "F8"), (keyCode: 0x65, name: "F9"),
+        (keyCode: 0x6D, name: "F10"), (keyCode: 0x67, name: "F11"), (keyCode: 0x6F, name: "F12"),
+        (keyCode: 0x69, name: "F13"), (keyCode: 0x6B, name: "F14"), (keyCode: 0x71, name: "F15"),
+        (keyCode: 0x6A, name: "F16"), (keyCode: 0x40, name: "F17"), (keyCode: 0x4F, name: "F18"),
+        (keyCode: 0x50, name: "F19"), (keyCode: 0x5A, name: "F20"),
+    ])
+    func describesTheFunctionKeys(_ row: (keyCode: UInt32, name: String)) {
+        let shifted = Hotkey(keyCode: row.keyCode, modifierFlags: 0x0200)
+        #expect(HotkeyDisplay.describe(Hotkey(keyCode: row.keyCode, modifierFlags: 0)) == row.name)
+        #expect(HotkeyDisplay.describe(shifted) == "⇧\(row.name)")
+        #expect(HotkeyDisplay.keys(of: shifted) == ["⇧", row.name])
+        #expect(HotkeyDisplay.describe(TriggerKey.keystroke(shifted)) == "⇧\(row.name)")
+        // The F-keys are exactly the keys ⇧ alone may go with.
+        #expect(!shifted.isMissingModifier)
+    }
+
+    @Test func describesFunctionKeysWithOtherModifiers() {
+        #expect(HotkeyDisplay.describe(Hotkey(keyCode: 0x60, modifierFlags: 0x0800 | 0x0200)) == "⌥⇧F5")
+        #expect(HotkeyDisplay.describe(Hotkey(keyCode: 0x6F, modifierFlags: 0x1000)) == "⌃F12")
+    }
+
+    /// The tray draws an F-key hint with AppKit's function-key characters, `NSF1FunctionKey`
+    /// (U+F704) … `NSF20FunctionKey` (U+F717), not with its two-letter name.
+    @Test func menuKeyEquivalentOfAFunctionKeyIsAppKitsFunctionKeyCharacter() {
+        #expect(HotkeyDisplay.menuKeyEquivalent(for: Hotkey(keyCode: 0x7A, modifierFlags: 0x0200)) == "\u{F704}")
+        #expect(HotkeyDisplay.menuKeyEquivalent(for: Hotkey(keyCode: 0x60, modifierFlags: 0x0200)) == "\u{F708}")
+        #expect(HotkeyDisplay.menuKeyEquivalent(for: Hotkey(keyCode: 0x5A, modifierFlags: 0)) == "\u{F717}")
+    }
+
     @Test func fallsBackToANumericLabelForAnUnmappedKeyCode() {
         let hotkey = Hotkey(keyCode: 999, modifierFlags: 0)
         #expect(HotkeyDisplay.describe(hotkey) == "Key 999")

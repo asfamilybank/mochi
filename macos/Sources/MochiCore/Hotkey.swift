@@ -36,8 +36,9 @@ extension Hotkey {
     private static let shift: UInt32 = 0x0200
     private static let command: UInt32 = 0x0100
 
-    /// `kVK_F1` … `kVK_F20`.
-    private static let functionKeyCodes: Set<UInt32> = [
+    /// `kVK_F1` … `kVK_F20`, in that order — F*n* is at index *n* − 1. The one list of F-keys:
+    /// `HotkeyDisplay` names them from it too (#112).
+    static let functionKeyCodes: [UInt32] = [
         0x7A, 0x78, 0x63, 0x76, 0x60, 0x61, 0x62, 0x64, 0x65, 0x6D,
         0x67, 0x6F, 0x69, 0x6B, 0x71, 0x6A, 0x40, 0x4F, 0x50, 0x5A,
     ]

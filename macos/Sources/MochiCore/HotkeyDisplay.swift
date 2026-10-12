@@ -64,10 +64,13 @@ public enum HotkeyDisplay {
     /// Keys whose display glyph is a word or an arrow rather than the character itself.
     /// The arrows are `NSUpArrowFunctionKey` and friends (U+F700…U+F703), spelled out here so
     /// this file stays free of AppKit.
+    /// The F-keys are `NSF1FunctionKey` (U+F704) onwards, one code point per key.
     private static let menuSpecialKeysByCode: [UInt32: String] = [
         0x31: " ", 0x24: "\r", 0x30: "\t", 0x33: "\u{8}", 0x35: "\u{1b}",
         0x7E: "\u{F700}", 0x7D: "\u{F701}", 0x7B: "\u{F702}", 0x7C: "\u{F703}",
-    ]
+    ].merging(Hotkey.functionKeyCodes.enumerated().map { index, keyCode in
+        (keyCode, String(UnicodeScalar(0xF704 + UInt32(index))!))
+    }) { named, _ in named }
 
     private static func modifierGlyphs(for modifierFlags: UInt32) -> [String] {
         var glyphs: [String] = []
@@ -78,9 +81,9 @@ public enum HotkeyDisplay {
         return glyphs
     }
 
-    /// Covers the common ANSI virtual keycodes (letters, digits, a handful of named keys) a user
-    /// is realistically going to pick for a mapping; anything else falls back to a numeric label
-    /// rather than guessing at a glyph.
+    /// Covers the common ANSI virtual keycodes (letters, digits, a handful of named keys) and the
+    /// F-keys (#112) a user is realistically going to pick for a mapping; anything else falls
+    /// back to a numeric label rather than guessing at a glyph.
     private static func keyGlyph(for keyCode: UInt32) -> String {
         keyGlyphsByCode[keyCode] ?? "Key \(keyCode)"
     }
@@ -96,5 +99,5 @@ public enum HotkeyDisplay {
         0x7B: "←", 0x7C: "→", 0x7D: "↓", 0x7E: "↑",
         0x18: "=", 0x1B: "-", 0x2B: ",", 0x2F: ".",
         0x32: "`", 0x21: "[", 0x1E: "]", 0x29: ";", 0x27: "'", 0x2C: "/", 0x2A: "\\",
-    ]
+    ].merging(Hotkey.functionKeyCodes.enumerated().map { index, keyCode in (keyCode, "F\(index + 1)") }) { named, _ in named }
 }
