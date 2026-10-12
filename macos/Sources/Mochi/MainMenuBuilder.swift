@@ -10,6 +10,8 @@ import MochiCore
 /// lifetime, and this instance is it (`AppDelegate` holds a strong reference).
 final class MainMenuBuilder {
     private var targets: [MenuItemActionTarget] = []
+    /// #102: the 历史记录 menu's delegate — `NSMenu.delegate` is weak.
+    private var historyMenuController: HistoryMenuController?
 
     /// - Parameters:
     ///   - orchestrator: supplies everything the menus do. Widget-bound items go through its
@@ -147,8 +149,9 @@ final class MainMenuBuilder {
 
     // MARK: - History menu
 
-    /// 返回/前进 only for now (#59) — the same steps as the toolbar's back/forward segments,
-    /// Empty Page included. A real history list can grow in here later.
+    /// 返回/前进 (#59) — the same steps as the toolbar's back/forward segments, Empty Page
+    /// included — and below them the history list (#102), rebuilt by `HistoryMenuController`
+    /// every time the menu opens.
     private func historyMenuItem(orchestrator: Orchestrator) -> NSMenuItem {
         let menu = NSMenu(title: "历史记录")
 
@@ -156,6 +159,11 @@ final class MainMenuBuilder {
             widgetCommand(.goBack, "返回", symbol: "chevron.backward", keyEquivalent: "[", orchestrator: orchestrator))
         menu.addItem(
             widgetCommand(.goForward, "前进", symbol: "chevron.forward", keyEquivalent: "]", orchestrator: orchestrator))
+
+        // #102
+        let historyMenuController = HistoryMenuController(orchestrator: orchestrator)
+        historyMenuController.attach(to: menu)
+        self.historyMenuController = historyMenuController
 
         let item = NSMenuItem()
         item.submenu = menu

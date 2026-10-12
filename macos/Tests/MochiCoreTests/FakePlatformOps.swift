@@ -568,6 +568,21 @@ final class FakePlatformOps: PlatformOps {
         mediaPausedWindowIDs.append((window as! FakeWidgetWindowHandle).id)
     }
 
+    // #102: 历史记录
+    private var mainFrameURLChangedHandlers: [Int: (URL) -> Void] = [:]
+    /// The window of every `onMainFrameURLChanged` registration, in order.
+    private(set) var mainFrameURLChangeRegistrations: [Int] = []
+
+    func onMainFrameURLChanged(_ window: WidgetWindowHandle, perform handler: @escaping (URL) -> Void) {
+        let handle = window as! FakeWidgetWindowHandle
+        mainFrameURLChangeRegistrations.append(handle.id)
+        mainFrameURLChangedHandlers[handle.id] = handler
+    }
+
+    func simulateMainFrameURLChanged(_ url: URL, windowID: Int = 1) {
+        mainFrameURLChangedHandlers[windowID]?(url)
+    }
+
     /// Delivers one raw event, as the platform's listener would. Dropped while not observing —
     /// exactly what a real listener that was never installed (or was removed) does.
     func simulateInput(_ event: RawInputEvent) {

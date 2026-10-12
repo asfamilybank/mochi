@@ -69,6 +69,10 @@ public enum DefaultHotkeys {
     /// can show it as a hint. `0x0C` is `kVK_ANSI_Q`.
     public static let quit = Hotkey(keyCode: 0x0C, modifierFlags: cmd)
 
+    /// ⌘Y — the History menu's 显示全部历史记录 (#97). Reserved since #102, ahead of the item
+    /// itself, so no mapping settles on it in the meantime. `0x10` is `kVK_ANSI_Y`.
+    public static let showAllHistory = Hotkey(keyCode: 0x10, modifierFlags: cmd)
+
     /// The fixed local menu shortcuts #37 built into `MainMenuBuilder` (⌘R/⌘+/⌘-/⌘0/⌘,) — never
     /// routed through `GlobalHotkeyRegistry` at all (a local `NSMenuItem` key equivalent only
     /// dispatches through the responder chain while Mochi is the key window), but still listed
@@ -91,6 +95,7 @@ public enum DefaultHotkeys {
         // ⌥⌘H 隐藏其他 (#62). Also the combo #58 moved Mochi's own default off of: a mapping
         // claiming it would steal 隐藏其他 from every app all over again.
         Hotkey(keyCode: 0x04, modifierFlags: cmd | option),
+        showAllHistory,                             // ⌘Y 显示全部历史记录 (#102)
     ]
 }
 

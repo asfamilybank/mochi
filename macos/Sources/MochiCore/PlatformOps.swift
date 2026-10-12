@@ -181,6 +181,13 @@ public protocol PlatformOps: AnyObject {
     /// display, which reads the same underlying signal directly inside the AppKit view.
     func onPageTitleChanged(_ window: WidgetWindowHandle, perform handler: @escaping (String?) -> Void)
 
+    /// Registers a handler invoked whenever the widget's *main page* moves to a new address
+    /// (#102, 历史记录): a new document committing, and a same-document change such as
+    /// `pushState` (a video site switching videos) once the page has finished loading. Never for
+    /// an iframe, a redirect hop that doesn't commit, or a Popup Window — those have no handler.
+    /// A fragment-only change isn't reported either: it is still the same page.
+    func onMainFrameURLChanged(_ window: WidgetWindowHandle, perform handler: @escaping (URL) -> Void)
+
     /// Registers a handler invoked whenever the Empty Page (#16) is shown or hidden — including
     /// by back/forward, which the view handles on its own (`EmptyPageHistory`) without a core
     /// round trip. The window title (`AddressBarController`) needs it: while the Empty Page is

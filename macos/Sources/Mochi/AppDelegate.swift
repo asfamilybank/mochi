@@ -54,7 +54,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             persistWindowState: { windowState in persist { $0.updatingWindowState(windowState) } },
             persistURL: { url in persist { $0.updatingURL(url) } },
             openSettings: { [unowned self] in self.settingsWindowController?.show() },
-            openAbout: { AboutPanel.show() }
+            openAbout: { AboutPanel.show() },
+            // #102: opened once, for the app's lifetime; a damaged file is moved aside, never fatal.
+            historyStore: HistoryStore(databaseURL: HistoryStore.defaultDatabaseURL)
         )
         self.orchestrator = orchestrator
 

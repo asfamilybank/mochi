@@ -1132,6 +1132,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
                 guard let self else { return }
                 self.currentURL = change.newValue ?? self.currentURL
                 self.updateAddressFieldDisplay()
+                self.mainFrameURLDidChange(to: change.newValue ?? nil)
             },
             webView.observe(\.title, options: [.new]) { [weak self] _, change in
                 guard let self else { return }
@@ -1807,6 +1808,42 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         loadingProgressChangedHandler = handler
     }
 
+    // MARK: 历史记录 (#102)
+
+    private var mainFrameURLChangedHandler: ((URL) -> Void)?
+    /// The last address reported, so KVO repeating it (or only moving the fragment) isn't taken
+    /// for a move to another page.
+    private var lastReportedMainFrameURL: URL?
+
+    func setMainFrameURLChangedHandler(_ handler: @escaping (URL) -> Void) {
+        mainFrameURLChangedHandler = handler
+    }
+
+    /// A new document in the main frame (WebKit sends this for the main frame only) — after its
+    /// redirects, so none of the hops in between is ever reported.
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        guard let url = webView.url else { return }
+        reportMainFrameURL(url)
+    }
+
+    /// `webView.url` KVO. While a navigation is under way (`isLoading`), the address moves through
+    /// the requested URL and its redirects, and `didCommit` reports where it settled. Once the page
+    /// has loaded, a change can only be the page moving itself — `pushState`/`replaceState`, a
+    /// video site switching videos. WebKit applies `url` and `isLoading` in one transaction, so
+    /// `isLoading` read here is already the new state.
+    private func mainFrameURLDidChange(to url: URL?) {
+        guard let url, !webView.isLoading else { return }
+        if let last = lastReportedMainFrameURL, HistoryStore.address(of: url) == HistoryStore.address(of: last) {
+            return
+        }
+        reportMainFrameURL(url)
+    }
+
+    private func reportMainFrameURL(_ url: URL) {
+        lastReportedMainFrameURL = url
+        mainFrameURLChangedHandler?(url)
+    }
+
     func setWindowTitle(_ title: String) {
         window.title = title
     }
@@ -2329,6 +2366,12 @@ public final class AppKitPlatformOps: PlatformOps {
     public func onLoadingProgressChanged(_ window: WidgetWindowHandle, perform handler: @escaping (Double) -> Void) {
         guard let handle = handle(for: window) else { return }
         handle.setLoadingProgressChangedHandler(handler)
+    }
+
+    // #102
+    public func onMainFrameURLChanged(_ window: WidgetWindowHandle, perform handler: @escaping (URL) -> Void) {
+        guard let handle = handle(for: window) else { return }
+        handle.setMainFrameURLChangedHandler(handler)
     }
 
     // MARK: 网页交互请求 (#66)

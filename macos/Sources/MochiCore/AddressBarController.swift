@@ -13,7 +13,10 @@ public final class AddressBarController {
     private var host: String?
     /// While the Empty Page is up, the page behind it (still held for forward) keeps its title
     /// and host here, so forward can put them straight back.
-    private var isShowingEmptyPage = false
+    private(set) var isShowingEmptyPage = false
+    /// #102: history listens to the page title too. The platform holds a single handler per signal
+    /// and this controller owns it, so the title is passed on from here.
+    var onPageTitleChanged: ((String?) -> Void)?
 
     public init(platformOps: PlatformOps, window: WidgetWindowHandle) {
         self.platformOps = platformOps
@@ -21,6 +24,7 @@ public final class AddressBarController {
         platformOps.onPageTitleChanged(window) { [weak self] title in
             self?.pageTitle = title
             self?.updateWindowTitle()
+            self?.onPageTitleChanged?(title)
         }
         platformOps.onEmptyPageVisibilityChanged(window) { [weak self] visible in
             self?.isShowingEmptyPage = visible

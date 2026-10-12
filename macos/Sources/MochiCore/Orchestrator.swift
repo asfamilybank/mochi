@@ -35,6 +35,8 @@ public final class Orchestrator {
     private let persistURL: (URL) -> Void
     private let openSettings: () -> Void
     private let openAbout: () -> Void
+    /// #102: `nil` keeps no history at all (most tests).
+    private let historyStore: HistoryStore?
     private var window: WidgetWindowHandle?
     private var ghostModeController: GhostModeController?
     private var addressBarController: AddressBarController?
@@ -56,7 +58,8 @@ public final class Orchestrator {
         persistWindowState: @escaping (WindowState) -> Void = { _ in },
         persistURL: @escaping (URL) -> Void = { _ in },
         openSettings: @escaping () -> Void = {},
-        openAbout: @escaping () -> Void = {}
+        openAbout: @escaping () -> Void = {},
+        historyStore: HistoryStore? = nil
     ) {
         self.platformOps = platformOps
         self.currentConfig = currentConfig
@@ -64,6 +67,7 @@ public final class Orchestrator {
         self.persistURL = persistURL
         self.openSettings = openSettings
         self.openAbout = openAbout
+        self.historyStore = historyStore
     }
 
     /// Launch. Everything app-global — and therefore done exactly once, never again on a reopen
@@ -209,6 +213,7 @@ public final class Orchestrator {
             self?.handleNavigationFailed(message)
         }
         registerWebInteractionRequestHandlers(for: window)
+        registerHistoryRecording(for: window, addressBarController: addressBarController)
 
         let ghostModeController = GhostModeController(platformOps: platformOps, window: window, currentConfig: currentConfig)
         self.ghostModeController = ghostModeController
@@ -471,6 +476,60 @@ public final class Orchestrator {
         let clamped = min(max(currentZoom + step, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
         currentZoom = clamped
         platformOps.applyZoom(currentZoom, in: window)
+    }
+
+    // MARK: 历史记录 (#102)
+
+    /// The address of the entry the page's title belongs to — the last one recorded, `nil` once
+    /// the page has moved somewhere that isn't recorded.
+    private var historyAddress: URL?
+
+    /// Records the widget's main-page visits: `http`/`https` only, nothing while the Empty Page
+    /// is up, Ghost Mode included (a video autoplaying the next one is still a visit). Popup
+    /// Windows are never registered, so they never reach here.
+    private func registerHistoryRecording(for window: WidgetWindowHandle, addressBarController: AddressBarController) {
+        historyAddress = nil
+        platformOps.onMainFrameURLChanged(window) { [weak self, weak addressBarController] url in
+            self?.recordHistoryVisit(to: url, isShowingEmptyPage: addressBarController?.isShowingEmptyPage ?? false)
+        }
+        addressBarController.onPageTitleChanged = { [weak self] title in
+            self?.updateHistoryTitle(title)
+        }
+    }
+
+    private func recordHistoryVisit(to url: URL, isShowingEmptyPage: Bool) {
+        guard let historyStore, !isShowingEmptyPage, let scheme = url.scheme?.lowercased(),
+            scheme == "http" || scheme == "https"
+        else {
+            historyAddress = nil
+            return
+        }
+        historyStore.recordVisit(to: url)
+        historyAddress = url
+    }
+
+    private func updateHistoryTitle(_ title: String?) {
+        guard let historyAddress, let title = title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty
+        else { return }
+        historyStore?.updateTitle(title, for: historyAddress)
+    }
+
+    /// The main menu's 历史记录 list, rebuilt from the store each time the menu opens — at the
+    /// store's own "now", so the day boundaries are the ones the store groups by.
+    public func historyMenu() -> HistoryMenu {
+        guard let historyStore else { return HistoryMenu(today: [], earlierDays: []) }
+        let now = historyStore.now()
+        let earliest = HistoryMenu.earliestDay(now: now, calendar: historyStore.calendar)
+        return HistoryMenu.build(entries: historyStore.entries(since: earliest), now: now, calendar: historyStore.calendar)
+    }
+
+    /// Opens a page picked from history in the widget — reopening the widget first when it is
+    /// closed. An explicit choice, so a Ghost Mode widget follows it *without* leaving Ghost Mode
+    /// (`CONTEXT.md`): only the hotkey and the tray decide that, and `openWidget()` is not called
+    /// on an existing widget for exactly that reason. Then the same path as typing the address.
+    public func openFromHistory(_ url: URL) {
+        if window == nil { openWidget() }
+        handleURLSubmitted(url)
     }
 
     // MARK: 网页交互请求 (#66)
