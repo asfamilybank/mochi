@@ -118,6 +118,46 @@ import Testing
             SystemPermissionPrompt(permission: .microphone, placement: .websitesPermissionPage, action: .openSystemSettings),
         ])
     }
+
+    // MARK: 网站例外 (#109)
+
+    /// With website exceptions a page gets past the 网页权限 whenever the default **or any
+    /// exception** is not 拒绝 — so a 拒绝 default with one website allowed (or asked) still needs
+    /// the system's gate, and only a 拒绝 default with nothing but 拒绝 exceptions shows nothing.
+    @Test(arguments: [SystemPermission.camera, .microphone], [
+        (default: WidgetConfig.MediaCapturePermission.deny, exceptions: [WidgetConfig.MediaCapturePermission.allow], shown: true),
+        (default: .deny, exceptions: [.ask], shown: true),
+        (default: .deny, exceptions: [.deny, .allow], shown: true),
+        (default: .deny, exceptions: [.deny], shown: false),
+        (default: .deny, exceptions: [.deny, .deny], shown: false),
+        (default: .deny, exceptions: [], shown: false),
+        (default: .ask, exceptions: [.deny], shown: true),
+        (default: .allow, exceptions: [.deny, .deny], shown: true),
+    ])
+    func websiteExceptions(
+        _ device: SystemPermission,
+        _ row: (default: WidgetConfig.MediaCapturePermission, exceptions: [WidgetConfig.MediaCapturePermission], shown: Bool)
+    ) {
+        let permission: PagePermission = device == .camera ? .camera : .microphone
+        let other: PagePermission = device == .camera ? .microphone : .camera
+        var config = WidgetConfig()
+            .updatingCameraPermission(permission == .camera ? row.default : .deny)
+            .updatingMicrophonePermission(permission == .microphone ? row.default : .deny)
+        for (index, setting) in row.exceptions.enumerated() {
+            config = config.updatingPagePermissionException(
+                permission, host: "site\(index).example.com", setting: setting, modifiedAt: Date(timeIntervalSince1970: 0))
+        }
+        // The other device's exceptions say nothing about this one's prompt.
+        config = config.updatingPagePermissionException(
+            other, host: "other.example.com", setting: .allow, modifiedAt: Date(timeIntervalSince1970: 0))
+
+        let prompts = SystemPermissionPrompts.prompts(for: config) { $0 == device ? .denied : .authorized }
+
+        let expected = row.shown
+            ? [SystemPermissionPrompt(permission: device, placement: .websitesPermissionPage, action: .openSystemSettings)]
+            : []
+        #expect(prompts == expected)
+    }
 }
 
 private extension SystemPermissionPrompt {

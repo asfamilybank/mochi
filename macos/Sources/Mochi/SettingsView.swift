@@ -58,7 +58,8 @@ enum SettingsPane: CaseIterable {
             switch self {
             case .general: GeneralSettingsTab(viewModel: viewModel)
             case .ghostMode: GhostModeSettingsTab(viewModel: viewModel).frame(height: 830)
-            case .websites: WebsitesSettingsTab(viewModel: viewModel).frame(height: 260)
+            // #109: tall enough for the 系统权限 hint, ~6 exception rows and the bottom row.
+            case .websites: WebsitesSettingsTab(viewModel: viewModel).frame(height: 380)
             case .privacy: PrivacySettingsTab(viewModel: viewModel)
             case .scripts: ScriptsTab(viewModel: viewModel).frame(height: 560)
             case .advanced: AdvancedSettingsTab(viewModel: viewModel)

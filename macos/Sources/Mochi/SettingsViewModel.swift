@@ -110,6 +110,22 @@ final class SettingsViewModel: ObservableObject {
         refreshSystemPermissions()
     }
 
+    // #109: 网站 → 摄像头 / 麦克风's exceptions table. An exception that lets pages through may
+    // bring the page's 系统权限 prompt back, so it is re-read after each edit, like the default.
+    func updatePagePermissionException(
+        _ permission: PagePermission, host: String, setting: WidgetConfig.MediaCapturePermission
+    ) {
+        controller.updatePagePermissionException(permission, host: host, setting: setting)
+        config = controller.config
+        refreshSystemPermissions()
+    }
+
+    func removePagePermissionExceptions(_ permission: PagePermission, hosts: Set<String>) {
+        controller.removePagePermissionExceptions(permission, hosts: hosts)
+        config = controller.config
+        refreshSystemPermissions()
+    }
+
     // #67
     func updatePopupWindowPolicy(_ policy: WidgetConfig.PopupWindowPolicy) {
         controller.updatePopupWindowPolicy(policy)

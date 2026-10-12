@@ -1387,4 +1387,87 @@ import Testing
         prompts.forEach(controller.perform)
         #expect(fake.openedSystemSettings == [.downloadsFolder])
     }
+
+    // MARK: 网站 → 摄像头 / 麦克风's exceptions (#109)
+
+    private static let earlier = Date(timeIntervalSince1970: 1_700_000_000)
+    private static let editedAt = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private func configWithExceptions() -> WidgetConfig {
+        WidgetConfig()
+            .updatingPagePermissionException(.camera, host: "meet.example.com", setting: .allow, modifiedAt: Self.earlier)
+            .updatingPagePermissionException(.camera, host: "chat.example.com", setting: .ask, modifiedAt: Self.earlier)
+            .updatingPagePermissionException(.camera, host: "video.example.org", setting: .deny, modifiedAt: Self.earlier)
+            .updatingPagePermissionException(.microphone, host: "meet.example.com", setting: .allow, modifiedAt: Self.earlier)
+    }
+
+    /// Changing an exception's setting in the table writes it back to that website's exception and
+    /// stamps it — the time 清除浏览数据 goes by — leaving the others and the other device alone.
+    @Test(arguments: PagePermission.allCases)
+    func changingAnExceptionsSettingWritesItBackStampedWithTheTimeOfTheEdit(_ permission: PagePermission) {
+        let store = PersistedStore(configWithExceptions())
+        var notified = 0
+        let controller = makeController(store: store, configDidChange: { notified += 1 })
+        controller.currentDate = { Self.editedAt }
+        let other: PagePermission = permission == .camera ? .microphone : .camera
+        let othersBefore = store.config.pagePermissionExceptions(other)
+
+        controller.updatePagePermissionException(permission, host: "meet.example.com", setting: .deny)
+
+        let edited = store.config.pagePermissionExceptions(permission).first { $0.host == "meet.example.com" }
+        #expect(edited == WidgetConfig.PagePermissionException(host: "meet.example.com", setting: .deny, lastModified: Self.editedAt))
+        #expect(store.config.pagePermissionSetting(permission, forHost: "meet.example.com") == .deny)
+        #expect(store.config.pagePermissionExceptions(permission).filter { $0.host != "meet.example.com" }
+            .allSatisfy { $0.lastModified == Self.earlier })
+        #expect(store.config.pagePermissionExceptions(other) == othersBefore)
+        #expect(store.writeCount == 1)
+        #expect(notified == 1)
+    }
+
+    /// 移除 deletes the selected websites' exceptions in one write, sending them back to the default.
+    @Test func removingExceptionsDeletesThemAndSendsThoseWebsitesBackToTheDefault() {
+        let store = PersistedStore(configWithExceptions().updatingCameraPermission(.ask))
+        var notified = 0
+        let controller = makeController(store: store, configDidChange: { notified += 1 })
+
+        controller.removePagePermissionExceptions(.camera, hosts: ["meet.example.com", "video.example.org"])
+
+        #expect(store.config.pagePermissionExceptions(.camera).map(\.host) == ["chat.example.com"])
+        #expect(store.config.pagePermissionSetting(.camera, forHost: "video.example.org") == .ask)
+        #expect(store.config.pagePermissionExceptions(.microphone).map(\.host) == ["meet.example.com"])
+        #expect(store.writeCount == 1)
+        #expect(notified == 1)
+    }
+
+    /// Removing nothing writes nothing.
+    @Test func removingNoExceptionsTouchesNothing() {
+        let store = PersistedStore(configWithExceptions())
+        var notified = 0
+        let controller = makeController(store: store, configDidChange: { notified += 1 })
+
+        controller.removePagePermissionExceptions(.camera, hosts: [])
+
+        #expect(store.writeCount == 0)
+        #expect(notified == 0)
+    }
+
+    /// The page's 系统权限 prompt follows the exceptions too: allowing one website while the default
+    /// is 拒绝 brings the prompt back, and removing that exception takes it away again.
+    @Test func anExceptionEditBringsTheSystemPermissionPromptBackOrTakesItAway() {
+        let fake = FakePlatformOps()
+        fake.stubbedSystemPermissionStatuses = [.camera: .denied, .microphone: .authorized]
+        let store = PersistedStore(WidgetConfig().updatingCameraPermission(.deny)
+            .updatingPagePermissionException(.camera, host: "meet.example.com", setting: .deny, modifiedAt: Self.earlier))
+        let controller = makeController(store: store, platformOps: fake)
+        let before = controller.systemPermissionPrompts.filter { $0.permission == .camera }
+
+        controller.updatePagePermissionException(.camera, host: "meet.example.com", setting: .allow)
+        let shown = controller.systemPermissionPrompts.filter { $0.permission == .camera }
+        controller.removePagePermissionExceptions(.camera, hosts: ["meet.example.com"])
+        let hiddenAgain = controller.systemPermissionPrompts.filter { $0.permission == .camera }
+
+        #expect(before.isEmpty)
+        #expect(shown.map(\.action) == [.openSystemSettings])
+        #expect(hiddenAgain.isEmpty)
+    }
 }

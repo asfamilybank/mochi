@@ -38,7 +38,10 @@ struct WebsitesSettingsTab: View {
                             set: { viewModel.updateCameraPermission($0) }
                         ),
                         systemPermissionPrompt: viewModel.websitesPermissionPagePrompt(for: .camera),
-                        perform: viewModel.perform)
+                        perform: viewModel.perform,
+                        exceptions: viewModel.config.pagePermissionExceptions(.camera),
+                        updateException: { viewModel.updatePagePermissionException(.camera, host: $0, setting: $1) },
+                        removeExceptions: { viewModel.removePagePermissionExceptions(.camera, hosts: $0) })
                 case .microphone:
                     PagePermissionPage(
                         permission: Binding(
@@ -46,7 +49,10 @@ struct WebsitesSettingsTab: View {
                             set: { viewModel.updateMicrophonePermission($0) }
                         ),
                         systemPermissionPrompt: viewModel.websitesPermissionPagePrompt(for: .microphone),
-                        perform: viewModel.perform)
+                        perform: viewModel.perform,
+                        exceptions: viewModel.config.pagePermissionExceptions(.microphone),
+                        updateException: { viewModel.updatePagePermissionException(.microphone, host: $0, setting: $1) },
+                        removeExceptions: { viewModel.removePagePermissionExceptions(.microphone, hosts: $0) })
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -135,36 +141,114 @@ private struct WebsitesGeneralPage: View {
 /// 网站 → 摄像头 / 麦克风 (#69): one 网页权限. Its global value is the default for every website
 /// (ADR-0027), hence Safari's label. Live: read at each request; Ghost Mode denies regardless.
 ///
-/// The 系统权限 hint (#95) goes above, and the per-website exceptions table between that and the
-/// default — which stays at the bottom, as in Safari.
+/// The 系统权限 hint (#95) goes above, and the per-website exceptions table (#109) between that and
+/// the default — which stays at the bottom, beside 移除, as in Safari.
 private struct PagePermissionPage: View {
     @Binding var permission: WidgetConfig.MediaCapturePermission
     /// #104: shown above everything else while the system keeps pages from this device.
     var systemPermissionPrompt: SystemPermissionPrompt?
     var perform: (SystemPermissionPrompt) -> Void
+    /// #109: this permission's website exceptions, sorted by host.
+    var exceptions: [WidgetConfig.PagePermissionException]
+    /// A row's setting changed: live, and stamps the exception's modification time.
+    var updateException: (String, WidgetConfig.MediaCapturePermission) -> Void
+    /// 移除: the selected websites go back to the default.
+    var removeExceptions: (Set<String>) -> Void
+
+    @State private var selectedHosts: Set<String> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let systemPermissionPrompt {
                 SystemPermissionHint(prompt: systemPermissionPrompt, perform: perform)
             }
-            form
+            exceptionsTable
+            bottomRow
         }
     }
 
-    private var form: some View {
-        Form {
-            Section {
-                Picker("访问其他网站时：", selection: $permission) {
-                    ForEach(WidgetConfig.MediaCapturePermission.allCases, id: \.self) { permission in
-                        Text(permission.displayName).tag(permission)
-                    }
+    /// Selected hosts that are still in the table — a row can go away underneath the selection
+    /// (removed here, or cleared from 隐私与安全性 while this page stays open).
+    private var removableHosts: Set<String> {
+        selectedHosts.intersection(exceptions.map(\.host))
+    }
+
+    private var exceptionsTable: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("已配置的网站：")
+            Table(exceptions.map(ExceptionRow.init), selection: $selectedHosts) {
+                TableColumn("网站") { row in
+                    Text(row.id)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .help(row.id)
                 }
-                .pickerStyle(.menu)
-                .fixedSize()
+                TableColumn("设置") { row in
+                    Picker(
+                        "",
+                        selection: Binding(
+                            get: { row.setting },
+                            set: { if $0 != row.setting { updateException(row.id, $0) } }
+                        )
+                    ) {
+                        ForEach(WidgetConfig.MediaCapturePermission.allCases, id: \.self) { permission in
+                            Text(permission.displayName).tag(permission)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .fixedSize()
+                }
+                .width(80)
             }
+            .tableStyle(.bordered)
+            .onDeleteCommand { remove() }
+            .overlay {
+                if exceptions.isEmpty {
+                    Text("在网页的询问框中选择「访问此网站时允许」或「不允许」后，网站会出现在这里。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 16)
+                }
+            }
+            .frame(maxHeight: .infinity)
         }
-        .formStyle(.columns)
+    }
+
+    private var bottomRow: some View {
+        HStack {
+            Button("移除") { remove() }
+                .disabled(removableHosts.isEmpty)
+            Spacer()
+            Text("访问其他网站时：")
+            Picker("访问其他网站时：", selection: $permission) {
+                ForEach(WidgetConfig.MediaCapturePermission.allCases, id: \.self) { permission in
+                    Text(permission.displayName).tag(permission)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .fixedSize()
+        }
+    }
+
+    private func remove() {
+        let hosts = removableHosts
+        guard !hosts.isEmpty else { return }
+        removeExceptions(hosts)
+        selectedHosts.subtract(hosts)
+    }
+
+    /// One row of the table, identified by its host — one exception per host.
+    private struct ExceptionRow: Identifiable {
+        let id: String
+        let setting: WidgetConfig.MediaCapturePermission
+
+        init(_ exception: WidgetConfig.PagePermissionException) {
+            id = exception.host
+            setting = exception.setting
+        }
     }
 }
 

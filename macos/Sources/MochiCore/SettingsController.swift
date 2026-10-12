@@ -98,6 +98,33 @@ public final class SettingsController {
         persistAndNotify { $0.updatingMicrophonePermission(permission) }
     }
 
+    // #109: 网站 → 摄像头 / 麦克风's exceptions table (ADR-0027) — read at each request, so
+    // persisting is applying.
+
+    /// Stamps an exception edited in the table, for 清除浏览数据's time ranges. Tests swap in a
+    /// fixed date.
+    public var currentDate: () -> Date = { Date() }
+
+    /// Sets `host`'s exception for `permission` to `setting`, stamped with the time of the edit.
+    public func updatePagePermissionException(
+        _ permission: PagePermission, host: String, setting: WidgetConfig.MediaCapturePermission
+    ) {
+        let modifiedAt = currentDate()
+        persistAndNotify { $0.updatingPagePermissionException(permission, host: host, setting: setting, modifiedAt: modifiedAt) }
+    }
+
+    /// 移除: deletes the exceptions of `hosts` in one write, sending those websites back to the
+    /// default. Removing nothing writes nothing.
+    public func removePagePermissionExceptions(_ permission: PagePermission, hosts: Set<String>) {
+        guard !hosts.isEmpty else { return }
+        let modifiedAt = currentDate()
+        persistAndNotify { config in
+            hosts.reduce(config) {
+                $0.updatingPagePermissionException(permission, host: $1, setting: nil, modifiedAt: modifiedAt)
+            }
+        }
+    }
+
     /// Not a config edit: nothing is persisted and `configDidChange` doesn't fire. The UI asks for
     /// confirmation before calling this.
     public func removeAllWebsiteData() {
