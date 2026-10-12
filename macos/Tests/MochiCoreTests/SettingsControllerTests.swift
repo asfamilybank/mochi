@@ -993,6 +993,117 @@ import Testing
         #expect(store.writeCount == 0)
     }
 
+    // MARK: - #110: 历史记录 in 清除浏览数据… and 移除历史记录项目
+
+    /// A real in-memory history at `clearingNow`'s clock: one page visited 40 days ago, one 3 days
+    /// ago, one 2 hours ago and one 30 minutes ago.
+    private func makeHistory() -> HistoryStore {
+        let clock = TestClock(Self.clearingNow)
+        let history = HistoryStore(databaseURL: nil, now: { clock.now }, calendar: historyTestCalendar)
+        for (path, secondsAgo) in [("/40-days", 40 * 86_400.0), ("/3-days", 3 * 86_400), ("/2-hours", 7_200), ("/30-minutes", 1_800)] {
+            clock.now = Self.clearingNow.addingTimeInterval(-secondsAgo)
+            history.recordVisit(to: URL(string: "https://example.com\(path)")!)
+        }
+        clock.now = Self.clearingNow
+        return history
+    }
+
+    private func paths(in history: HistoryStore) -> [String] {
+        history.entries(since: .distantPast).map(\.url.path)
+    }
+
+    private func makeHistoryController(
+        store: PersistedStore, platformOps: FakePlatformOps = FakePlatformOps(), history: HistoryStore
+    ) -> SettingsController {
+        let controller = SettingsController(
+            platformOps: platformOps, currentConfig: { store.config }, persist: store.persist, historyStore: history)
+        controller.currentDate = { Self.clearingNow }
+        return controller
+    }
+
+    @Test(arguments: [
+        (range: BrowsingDataTimeRange.pastHour, kept: ["/2-hours", "/3-days", "/40-days"]),
+        (range: .past24Hours, kept: ["/3-days", "/40-days"]),
+        (range: .past7Days, kept: ["/40-days"]),
+        (range: .allTime, kept: []),
+    ])
+    func clearingHistoryRemovesThePagesVisitedWithinTheRange(_ row: (range: BrowsingDataTimeRange, kept: [String])) {
+        let history = makeHistory()
+        let controller = makeHistoryController(store: PersistedStore(WidgetConfig()), history: history)
+
+        controller.clearBrowsingData([.history], from: row.range)
+
+        #expect(paths(in: history) == row.kept)
+    }
+
+    /// 只想清历史、不想退出登录: ticking only 历史记录 never asks the platform to remove website
+    /// data, and isn't a config edit either.
+    @Test func clearingOnlyHistoryLeavesWebsiteDataAndTheConfigAlone() {
+        let store = PersistedStore(WidgetConfig())
+        let fake = FakePlatformOps()
+        let controller = makeHistoryController(store: store, platformOps: fake, history: makeHistory())
+
+        controller.clearBrowsingData([.history], from: .allTime)
+
+        #expect(fake.websiteDataRemovals.isEmpty)
+        #expect(fake.removeAllWebsiteDataCallCount == 0)
+        #expect(store.writeCount == 0)
+    }
+
+    @Test func historyIsLeftAloneWhenItIsNotTicked() {
+        let history = makeHistory()
+        let fake = FakePlatformOps()
+        let controller = makeHistoryController(store: PersistedStore(WidgetConfig()), platformOps: fake, history: history)
+
+        controller.clearBrowsingData([.websiteData, .cache], from: .allTime)
+
+        #expect(paths(in: history).count == 4)
+        #expect(fake.websiteDataRemovals.count == 1)
+    }
+
+    @Test func historyIsClearedAlongWithWebsiteData() {
+        let history = makeHistory()
+        let fake = FakePlatformOps()
+        let controller = makeHistoryController(store: PersistedStore(WidgetConfig()), platformOps: fake, history: history)
+
+        controller.clearBrowsingData(BrowsingDataKind.defaultSelection, from: .pastHour)
+
+        #expect(paths(in: history) == ["/2-hours", "/3-days", "/40-days"])
+        #expect(fake.websiteDataRemovals.map(\.types) == [[.cookiesAndOtherData, .cache]])
+    }
+
+    /// 改短保留期限: what's now past the limit goes at once, not at the next launch.
+    @Test(arguments: [
+        (retention: HistoryRetention.oneDay, kept: ["/30-minutes", "/2-hours"]),
+        (retention: .oneWeek, kept: ["/30-minutes", "/2-hours", "/3-days"]),
+        (retention: .oneMonth, kept: ["/30-minutes", "/2-hours", "/3-days"]),
+        (retention: .oneYear, kept: ["/30-minutes", "/2-hours", "/3-days", "/40-days"]),
+        (retention: .manual, kept: ["/30-minutes", "/2-hours", "/3-days", "/40-days"]),
+    ])
+    func changingTheRetentionRemovesWhatIsNowExpired(_ row: (retention: HistoryRetention, kept: [String])) {
+        let store = PersistedStore(WidgetConfig())
+        let history = makeHistory()
+        let controller = makeHistoryController(store: store, history: history)
+
+        controller.updateHistoryRetention(row.retention)
+
+        #expect(store.config.historyRetention == row.retention)
+        #expect(paths(in: history) == row.kept)
+    }
+
+    @Test func changingTheRetentionNotifiesLikeEveryOtherEdit() {
+        let store = PersistedStore(WidgetConfig())
+        var notified = 0
+        let controller = SettingsController(
+            platformOps: FakePlatformOps(), currentConfig: { store.config }, persist: store.persist,
+            configDidChange: { notified += 1 }, historyStore: makeHistory())
+
+        controller.updateHistoryRetention(.oneWeek)
+
+        #expect(notified == 1)
+        #expect(store.writeCount == 1)
+    }
+
     // MARK: 管理网站和数据… (#106)
 
     private func configWithMeetExceptions() -> WidgetConfig {

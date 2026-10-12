@@ -12,18 +12,33 @@ import SwiftUI
 /// pane. The window is deliberately not `.resizable` — the width is fixed and each pane's height
 /// is its content's, exactly like Safari's settings window.
 final class SettingsWindowController: NSWindowController {
+    private var viewModel: SettingsViewModel?
+
     convenience init(viewModel: SettingsViewModel) {
         let tabViewController = SettingsTabViewController(viewModel: viewModel)
         let window = NSWindow(contentViewController: tabViewController)
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.toolbarStyle = .preference
         self.init(window: window)
+        self.viewModel = viewModel
         tabViewController.fitWindowToSelectedPane(animated: false)
     }
 
     func show() {
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// The 历史记录 menu's 清除浏览数据… (#110): the very sheet 隐私与安全性 shows, over that pane —
+    /// one dialog, one place it lives, rather than a second copy in a window of its own.
+    func showClearBrowsingData() {
+        if let tabViewController = window?.contentViewController as? SettingsTabViewController,
+            let index = SettingsPane.allCases.firstIndex(of: .privacy)
+        {
+            tabViewController.selectedTabViewItemIndex = index
+        }
+        show()
+        viewModel?.isClearingBrowsingData = true
     }
 }
 

@@ -212,4 +212,27 @@ import Testing
         #expect(fake.trayItem("幽灵模式").isChecked())
         #expect(fake.shownWindowIDs == [1])
     }
+
+    // MARK: 移除历史记录项目 (#110)
+
+    /// What expired while Mochi wasn't running goes at launch.
+    @Test(arguments: [
+        (retention: HistoryRetention.oneWeek, kept: ["/2-days"]),
+        (retention: .manual, kept: ["/2-days", "/2-weeks"]),
+    ])
+    func launchRemovesWhatIsPastTheRetention(_ row: (retention: HistoryRetention, kept: [String])) {
+        let clock = clock
+        let store = HistoryStore(databaseURL: nil, now: { clock.now }, calendar: historyTestCalendar)
+        clock.now = historyTestDate("2026-09-28 09:00")
+        store.recordVisit(to: URL(string: "https://example.com/2-weeks")!)
+        clock.now = historyTestDate("2026-10-10 09:00")
+        store.recordVisit(to: URL(string: "https://example.com/2-days")!)
+        clock.now = historyTestDate("2026-10-12 10:00")
+        let config = WidgetConfig(url: URL(string: "https://start.example.com")!).updatingHistoryRetention(row.retention)
+        let orchestrator = Orchestrator(platformOps: FakePlatformOps(), currentConfig: { config }, historyStore: store)
+
+        orchestrator.start()
+
+        #expect(store.entries(since: .distantPast).map(\.url.path) == row.kept)
+    }
 }

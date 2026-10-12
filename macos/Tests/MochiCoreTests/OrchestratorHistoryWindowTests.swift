@@ -90,6 +90,28 @@ import Testing
         #expect(orchestrator.historyMenu().earlierDays.isEmpty)
     }
 
+    /// #110: opening the window first removes what has expired since — at the retention in the
+    /// config *now*, not when the window was first made.
+    @Test func openingTheWindowRemovesWhatIsPastTheCurrentRetention() throws {
+        let fake = FakePlatformOps()
+        let clock = clock
+        let store = HistoryStore(databaseURL: nil, now: { clock.now }, calendar: historyTestCalendar)
+        var config = WidgetConfig(url: URL(string: "https://start.example.com")!).updatingHistoryRetention(.manual)
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config }, historyStore: store)
+        orchestrator.start()
+        fake.simulateMainFrameURLChanged(URL(string: "https://example.com/old")!)
+        clock.now = historyTestDate("2026-10-14 10:00")
+        fake.simulateMainFrameURLChanged(page)
+        let browser = try #require(orchestrator.makeHistoryBrowser())
+
+        browser.removeExpiredEntries()
+        #expect(store.entries(since: .distantPast).count == 2)
+
+        config = config.updatingHistoryRetention(.oneDay)
+        browser.removeExpiredEntries()
+        #expect(store.entries(since: .distantPast).map(\.url) == [page])
+    }
+
     private func section(with url: URL) -> HistoryBrowser.Section {
         HistoryBrowser.Section(
             day: historyTestDate("2026-10-12 00:00"), title: "今天",

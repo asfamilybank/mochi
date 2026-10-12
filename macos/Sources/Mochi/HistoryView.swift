@@ -29,6 +29,11 @@ final class HistoryViewModel: ObservableObject {
         if !selection.isSubset(of: shown) { selection.formIntersection(shown) }
     }
 
+    /// #110 — the caller reloads afterwards.
+    func removeExpiredEntries() {
+        browser.removeExpiredEntries()
+    }
+
     func delete(_ urls: Set<URL>) {
         guard !urls.isEmpty else { return }
         browser.delete(urls)

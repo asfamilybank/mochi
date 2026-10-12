@@ -110,6 +110,10 @@ public struct WidgetConfig: Equatable {
     /// `Orchestrator.reapplyConfiguration`.
     public var popupWindowPolicy: PopupWindowPolicy = .block
 
+    /// 隐私与安全性 → 移除历史记录项目 (#110), 一年后 by default. Read wherever expired history is
+    /// removed — launch, a settings edit, the 历史记录 window opening — never cached.
+    public var historyRetention: HistoryRetention = .defaultRetention
+
     /// 视频控制 (#74): the user's explicit bindings, keyed by action. Like `hotkeyOverrides`, only
     /// what differs from the default is stored and an absent key means the action's default — but
     /// here a stored `nil` means the user *cleared* the action, kept apart from "default" so
@@ -208,6 +212,9 @@ extension WidgetConfig {
         }
         // #67
         config.popupWindowPolicy = table["popup_windows"]?.string.flatMap(PopupWindowPolicy.init(rawValue:)) ?? .block
+        // #110
+        config.historyRetention =
+            table["history_retention"]?.string.flatMap(HistoryRetention.init(rawValue:)) ?? .defaultRetention
         // #72
         config.isHTTPWarningEnabled = table["http_warning_enabled"]?.bool ?? false
         config.isWebInspectorEnabled = table["web_inspector_enabled"]?.bool ?? false
@@ -537,6 +544,10 @@ extension WidgetConfig {
         if popupWindowPolicy != .block {
             table["popup_windows"] = popupWindowPolicy.rawValue
         }
+        // #110 — only a departure from the default is written.
+        if historyRetention != .defaultRetention {
+            table["history_retention"] = historyRetention.rawValue
+        }
         return table.convert()
     }
 
@@ -617,6 +628,12 @@ extension WidgetConfig {
     public func updatingPopupWindowPolicy(_ policy: PopupWindowPolicy) -> WidgetConfig {
         var copy = self
         copy.popupWindowPolicy = policy
+        return copy
+    }
+
+    public func updatingHistoryRetention(_ retention: HistoryRetention) -> WidgetConfig {
+        var copy = self
+        copy.historyRetention = retention
         return copy
     }
 

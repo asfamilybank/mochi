@@ -46,6 +46,8 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSToo
         if window.isVisible, window.isKeyWindow, NSApp.isActive {
             window.performClose(nil)
         } else {
+            // #110: 移除历史记录项目 applies as the window opens, before anything is listed.
+            model.removeExpiredEntries()
             model.reload()
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)

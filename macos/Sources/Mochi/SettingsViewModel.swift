@@ -174,6 +174,16 @@ final class SettingsViewModel: ObservableObject {
         config = controller.config
     }
 
+    /// Whether 清除浏览数据… is showing over 隐私与安全性 — here rather than in the pane's own
+    /// state so the 历史记录 menu's 清除浏览数据… can open the same sheet (#110).
+    @Published var isClearingBrowsingData = false
+
+    // #110
+    func updateHistoryRetention(_ retention: HistoryRetention) {
+        controller.updateHistoryRetention(retention)
+        config = controller.config
+    }
+
     func reloadPageNow() {
         reloadPage()
     }

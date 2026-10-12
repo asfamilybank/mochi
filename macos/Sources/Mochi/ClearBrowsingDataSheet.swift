@@ -71,6 +71,7 @@ struct ClearBrowsingDataSheet: View {
 
     private static func detail(of kind: BrowsingDataKind) -> String {
         switch kind {
+        case .history: "这段时间内访问过的网页，不会退出登录。"
         case .websiteData: "会让你退出这段时间内登录过的网站。"
         case .cache: "不会退出登录；网站下次打开时可能稍慢。"
         case .pagePermissionExceptions: "这段时间内新建或改过的摄像头、麦克风网站例外。"

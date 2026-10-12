@@ -43,12 +43,25 @@ public final class HistoryBrowser {
 
     private let store: HistoryStore
     private let openInWidget: (URL) -> Void
+    private let retention: () -> HistoryRetention
 
-    /// - Parameter open: `Orchestrator.openFromHistory` — reopens a closed widget, leaves Ghost
-    ///   Mode alone.
-    public init(store: HistoryStore, open: @escaping (URL) -> Void) {
+    /// - Parameters:
+    ///   - retention: 移除历史记录项目 as configured right now (#110) — read, not cached, at each
+    ///     `removeExpiredEntries()`. 手动 unless given.
+    ///   - open: `Orchestrator.openFromHistory` — reopens a closed widget, leaves Ghost Mode alone.
+    public init(
+        store: HistoryStore, retention: @escaping () -> HistoryRetention = { .manual },
+        open: @escaping (URL) -> Void
+    ) {
         self.store = store
+        self.retention = retention
         self.openInWidget = open
+    }
+
+    /// #110: called as the window opens, before it lists anything, so nothing past the retention
+    /// is ever shown.
+    public func removeExpiredEntries() {
+        store.removeEntries(olderThan: retention())
     }
 
     /// Everything whose title or address contains `query` (case-insensitively, surrounding

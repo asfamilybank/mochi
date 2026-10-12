@@ -24,6 +24,9 @@ public final class SettingsController {
     private let persist: (@escaping (WidgetConfig) -> WidgetConfig) -> Void
     private let onGlobalHotkeyPressed: (Hotkey) -> Void
     private let configDidChange: () -> Void
+    /// #110: the history that 移除历史记录项目 and 清除浏览数据… act on — the same store
+    /// `Orchestrator` records into. `nil` keeps no history (most tests).
+    private let historyStore: HistoryStore?
 
     public var config: WidgetConfig { currentConfig() }
 
@@ -33,17 +36,20 @@ public final class SettingsController {
     ///     use, so a combo bound here behaves identically to one bound at launch.
     ///   - configDidChange: a core-to-core notification (not a `PlatformOps` method) fired after
     ///     each persisted edit, for the settings that must be actively re-applied (#46).
+    ///   - historyStore: the app's one `HistoryStore` (#110).
     public init(
         platformOps: PlatformOps, currentConfig: @escaping () -> WidgetConfig,
         persist: @escaping (@escaping (WidgetConfig) -> WidgetConfig) -> Void,
         onGlobalHotkeyPressed: @escaping (Hotkey) -> Void = { _ in },
-        configDidChange: @escaping () -> Void = {}
+        configDidChange: @escaping () -> Void = {},
+        historyStore: HistoryStore? = nil
     ) {
         self.platformOps = platformOps
         self.currentConfig = currentConfig
         self.persist = persist
         self.onGlobalHotkeyPressed = onGlobalHotkeyPressed
         self.configDidChange = configDidChange
+        self.historyStore = historyStore
     }
 
     /// Every edit goes through here so `configDidChange` can never be forgotten for a new setting
@@ -125,6 +131,13 @@ public final class SettingsController {
         }
     }
 
+    /// #110: 移除历史记录项目. Shortening it removes what is now past it at once, not at the next
+    /// launch.
+    public func updateHistoryRetention(_ retention: HistoryRetention) {
+        persistAndNotify { $0.updatingHistoryRetention(retention) }
+        historyStore?.removeEntries(olderThan: currentConfig().historyRetention)
+    }
+
     /// Not a config edit: nothing is persisted and `configDidChange` doesn't fire. The UI asks for
     /// confirmation before calling this.
     public func removeAllWebsiteData() {
@@ -133,11 +146,15 @@ public final class SettingsController {
 
     // MARK: - #107: 清除浏览数据…
 
-    /// Clears `kinds` modified within `range`: the website data ones through the platform, the
-    /// 网页权限例外 through the config (by their modification time). The page isn't reloaded. The
-    /// UI asks for confirmation before calling this.
+    /// Clears `kinds` modified within `range`: 历史记录 from the history (the pages last visited
+    /// since the start, #110), the website data ones through the platform, the 网页权限例外
+    /// through the config (by their modification time). The page isn't reloaded. The UI asks for
+    /// confirmation before calling this.
     public func clearBrowsingData(_ kinds: Set<BrowsingDataKind>, from range: BrowsingDataTimeRange) {
         let start = range.startDate(now: currentDate())
+        if kinds.contains(.history) {
+            historyStore?.removeEntries(visitedSince: start)
+        }
         let categories = BrowsingDataKind.websiteDataCategories(for: kinds)
         if !categories.isEmpty {
             platformOps.removeData(ofTypes: categories, modifiedSince: start)

@@ -35,20 +35,23 @@ public enum BrowsingDataTimeRange: String, CaseIterable, Sendable {
     }
 }
 
-/// One tickable kind of 浏览数据 (#107). Only the first two are 网站数据 (WebKit's); the exceptions
-/// live in `config.toml`. 「历史记录」 joins as one more case (#110) — `SettingsController
+/// One tickable kind of 浏览数据 (#107). 历史记录 (#110) lives in `HistoryStore`, the next two are
+/// 网站数据 (WebKit's), and the exceptions live in `config.toml` — `SettingsController
 /// .clearBrowsingData` is the one place that says what clearing each kind means.
 public enum BrowsingDataKind: String, CaseIterable, Sendable {
+    case history
     case websiteData
     case cache
     case pagePermissionExceptions
 
-    /// Logging out of every site is what the first two cost, so they're on by default; the
-    /// exceptions are choices the user made deliberately and stay unless asked for.
-    public static let defaultSelection: Set<BrowsingDataKind> = [.websiteData, .cache]
+    /// History and the two kinds of website data are on by default — logging out of every site is
+    /// what clearing them costs, which the sheet says; the exceptions are choices the user made
+    /// deliberately and stay unless asked for.
+    public static let defaultSelection: Set<BrowsingDataKind> = [.history, .websiteData, .cache]
 
     public var displayName: String {
         switch self {
+        case .history: "历史记录"
         case .websiteData: "Cookie 和网站数据"
         case .cache: "缓存的图片和文件"
         case .pagePermissionExceptions: "网页权限例外"
@@ -62,7 +65,7 @@ public enum BrowsingDataKind: String, CaseIterable, Sendable {
             switch kind {
             case .websiteData: .cookiesAndOtherData
             case .cache: .cache
-            case .pagePermissionExceptions: nil
+            case .history, .pagePermissionExceptions: nil
             }
         })
     }

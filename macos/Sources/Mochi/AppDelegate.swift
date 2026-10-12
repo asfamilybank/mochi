@@ -48,6 +48,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         platformOps.searchEngineProvider = { currentConfig.searchEngine }
 
+        // #102: opened once, for the app's lifetime; a damaged file is moved aside, never fatal.
+        // #110: shared with `SettingsController`, which clears it and applies its retention.
+        let historyStore = HistoryStore(databaseURL: HistoryStore.defaultDatabaseURL)
+
         let orchestrator = Orchestrator(
             platformOps: platformOps,
             currentConfig: { currentConfig },
@@ -56,15 +60,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             persist: persist,
             openSettings: { [unowned self] in self.settingsWindowController?.show() },
             openAbout: { AboutPanel.show() },
-            // #102: opened once, for the app's lifetime; a damaged file is moved aside, never fatal.
-            historyStore: HistoryStore(databaseURL: HistoryStore.defaultDatabaseURL)
+            historyStore: historyStore
         )
         self.orchestrator = orchestrator
 
         let settingsController = SettingsController(
             platformOps: platformOps, currentConfig: { currentConfig }, persist: persist,
             onGlobalHotkeyPressed: { orchestrator.handleGlobalHotkeyPressed($0) },
-            configDidChange: { orchestrator.reapplyConfiguration() }
+            configDidChange: { orchestrator.reapplyConfiguration() },
+            historyStore: historyStore
         )
         let settingsViewModel = SettingsViewModel(controller: settingsController, reloadPage: { orchestrator.reloadPage() })
         settingsViewModel.reopenWidget = { orchestrator.reopenWidget() }
@@ -72,7 +76,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let mainMenuBuilder = MainMenuBuilder()
         self.mainMenuBuilder = mainMenuBuilder
-        NSApp.mainMenu = mainMenuBuilder.build(orchestrator: orchestrator)
+        NSApp.mainMenu = mainMenuBuilder.build(orchestrator: orchestrator) { [unowned self] in
+            self.settingsWindowController?.showClearBrowsingData()
+        }
 
         // A stale HTTP cache replays requests under an old User-Agent (ADR-0025), so it goes
         // before the widget's first load.

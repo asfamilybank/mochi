@@ -29,10 +29,10 @@ import Testing
             == ["过去 1 小时", "过去 24 小时", "过去 7 天", "过去 4 周", "时间不限"])
     }
 
-    @Test func cookiesAndCacheAreTickedByDefaultButPagePermissionExceptionsAreNot() {
-        #expect(BrowsingDataKind.defaultSelection == [.websiteData, .cache])
+    @Test func historyCookiesAndCacheAreTickedByDefaultButPagePermissionExceptionsAreNot() {
+        #expect(BrowsingDataKind.defaultSelection == [.history, .websiteData, .cache])
         #expect(BrowsingDataKind.allCases.map(\.displayName)
-            == ["Cookie 和网站数据", "缓存的图片和文件", "网页权限例外"])
+            == ["历史记录", "Cookie 和网站数据", "缓存的图片和文件", "网页权限例外"])
     }
 
     @Test(arguments: [
@@ -42,6 +42,8 @@ import Testing
         (kinds: [.websiteData, .cache], categories: [.cookiesAndOtherData, .cache]),
         (kinds: [.pagePermissionExceptions], categories: []),
         (kinds: [.cache, .pagePermissionExceptions], categories: [.cache]),
+        (kinds: [.history], categories: []),
+        (kinds: [.history, .websiteData], categories: [.cookiesAndOtherData]),
     ])
     func eachKindStandsForItsOwnWebsiteData(
         _ row: (kinds: [BrowsingDataKind], categories: [WebsiteDataCategory])

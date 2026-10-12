@@ -98,6 +98,8 @@ public final class Orchestrator {
         platformOps.onReopenRequested { [weak self] in
             self?.openWidget()
         }
+        // #110: what expired while Mochi wasn't running.
+        removeExpiredHistory()
         openWidget()
     }
 
@@ -555,10 +557,19 @@ public final class Orchestrator {
 
     /// #108: what the 历史记录 window (⌘Y) shows and does — the same store the menu is rebuilt
     /// from, so the menu follows whatever the window deletes, and the same `openFromHistory`.
-    /// `nil` without a store.
+    /// `nil` without a store. Its expired entries are judged by the retention configured at the
+    /// moment it asks (#110).
     public func makeHistoryBrowser() -> HistoryBrowser? {
         guard let historyStore else { return nil }
-        return HistoryBrowser(store: historyStore) { [weak self] url in self?.openFromHistory(url) }
+        return HistoryBrowser(store: historyStore, retention: { [currentConfig] in currentConfig().historyRetention }) {
+            [weak self] url in self?.openFromHistory(url)
+        }
+    }
+
+    /// 移除历史记录项目 (#110) at launch; a settings edit and the 历史记录 window opening do the
+    /// same through `SettingsController` and `HistoryBrowser`.
+    private func removeExpiredHistory() {
+        historyStore?.removeEntries(olderThan: currentConfig().historyRetention)
     }
 
     // MARK: 网页交互请求 (#66)

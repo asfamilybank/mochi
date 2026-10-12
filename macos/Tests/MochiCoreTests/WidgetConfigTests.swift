@@ -1140,3 +1140,44 @@ import Testing
         #expect(WidgetConfig().updatingVideoSeekStep(61).videoSeekStep == 60)
     }
 }
+
+/// 隐私与安全性 → 移除历史记录项目 (#110).
+@Suite struct WidgetConfigHistoryRetentionTests {
+    @Test func defaultsToOneYearWhenAbsent() throws {
+        #expect(try WidgetConfig.parse("").historyRetention == .oneYear)
+        #expect(WidgetConfig().historyRetention == .oneYear)
+    }
+
+    @Test(arguments: [
+        (raw: "'one_day'", expected: HistoryRetention.oneDay),
+        (raw: "'one_week'", expected: .oneWeek),
+        (raw: "'two_weeks'", expected: .twoWeeks),
+        (raw: "'one_month'", expected: .oneMonth),
+        (raw: "'one_year'", expected: .oneYear),
+        (raw: "'manual'", expected: .manual),
+        (raw: "'forever'", expected: .oneYear),
+        (raw: "'ONE_DAY'", expected: .oneYear),
+        (raw: "7", expected: .oneYear),
+    ])
+    func parsesRetentionFallingBackToOneYear(_ row: (raw: String, expected: HistoryRetention)) throws {
+        #expect(try WidgetConfig.parse("history_retention = \(row.raw)").historyRetention == row.expected)
+    }
+
+    @Test(arguments: HistoryRetention.allCases)
+    func roundTripsEveryRetention(_ retention: HistoryRetention) throws {
+        let config = WidgetConfig(url: URL(string: "https://example.com")!).updatingHistoryRetention(retention)
+        #expect(try WidgetConfig.parse(config.serialized()) == config)
+    }
+
+    @Test func onlyADepartureFromTheDefaultIsWritten() {
+        #expect(!WidgetConfig().serialized().contains("history_retention"))
+        #expect(WidgetConfig().updatingHistoryRetention(.manual).serialized().contains("history_retention = 'manual'"))
+    }
+
+    @Test func updatingRetentionChangesOnlyThatField() {
+        let config = WidgetConfig(url: URL(string: "https://example.com")!, isSnapEnabled: false)
+        let updated = config.updatingHistoryRetention(.oneWeek)
+        #expect(updated.historyRetention == .oneWeek)
+        #expect(updated.url == config.url && updated.isSnapEnabled == false)
+    }
+}

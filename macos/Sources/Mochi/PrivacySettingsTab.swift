@@ -6,11 +6,26 @@ import SwiftUI
 /// (管理网站和数据…, 清除浏览数据…, history retention) as further rows or sections.
 struct PrivacySettingsTab: View {
     @ObservedObject var viewModel: SettingsViewModel
-    @State private var isClearingBrowsingData = false
     @State private var isManagingWebsites = false
 
     var body: some View {
         Form {
+            // #110: Safari's wording. Shortening it removes the expired pages at once.
+            Section("历史记录") {
+                Picker(
+                    "移除历史记录项目：",
+                    selection: Binding(
+                        get: { viewModel.config.historyRetention },
+                        set: { viewModel.updateHistoryRetention($0) }
+                    )
+                ) {
+                    ForEach(HistoryRetention.allCases, id: \.self) { retention in
+                        Text(retention.displayName).tag(retention)
+                    }
+                }
+                .fixedSize()
+            }
+
             Section("网站数据") {
                 // #106: replaces 移除所有网站数据…, whose job is the sheet's 全部删除.
                 Button("管理网站和数据…") { isManagingWebsites = true }
@@ -18,9 +33,9 @@ struct PrivacySettingsTab: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                // #107
-                Button("清除浏览数据…") { isClearingBrowsingData = true }
-                    .sheet(isPresented: $isClearingBrowsingData) {
+                // #107; the 历史记录 menu opens it too (#110), hence the view model's flag.
+                Button("清除浏览数据…") { viewModel.isClearingBrowsingData = true }
+                    .sheet(isPresented: $viewModel.isClearingBrowsingData) {
                         ClearBrowsingDataSheet { kinds, range in viewModel.clearBrowsingData(kinds, from: range) }
                     }
             }
