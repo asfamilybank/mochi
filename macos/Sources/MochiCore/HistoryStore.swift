@@ -29,9 +29,13 @@ public struct HistoryEntry: Equatable, Sendable {
 /// "Now" and the calendar that decides where one day ends and the next begins are injected, so
 /// day grouping can be tested across midnight without waiting for one.
 ///
-/// A database that can't be opened or is damaged never blocks launch: the file is moved aside to
-/// `<name>.corrupt` and an empty history is started in its place — and if even that fails, the
-/// store runs in memory for this session.
+/// A database that can't be used never blocks launch. Only a *damaged* one — SQLite reports it
+/// corrupt or not a database, or `quick_check` finds a fault — is moved aside to `<name>.corrupt`
+/// and an empty history started in its place. Anything else (the file locked by another
+/// connection past the busy timeout, a permission problem, …) says nothing about the history
+/// itself, so the file is left exactly as it is and this session keeps its history in memory:
+/// what is visited now is lost at quit, but nothing already recorded is. Memory is also the last
+/// resort when even a fresh file can't be made.
 ///
 /// Main thread only, like everything else that touches it.
 public final class HistoryStore {
@@ -44,23 +48,36 @@ public final class HistoryStore {
         WidgetConfig.defaultConfigURL.deletingLastPathComponent().appendingPathComponent("History.db")
     }
 
-    /// - Parameter databaseURL: the database file, created along with its folder when missing;
-    ///   `nil` keeps the history in memory (tests).
-    public init(databaseURL: URL?, now: @escaping () -> Date = Date.init, calendar: Calendar = .current) {
+    /// - Parameters:
+    ///   - databaseURL: the database file, created along with its folder when missing; `nil`
+    ///     keeps the history in memory (tests).
+    ///   - busyTimeout: how long to wait for another connection's lock before giving up on the
+    ///     file for this session.
+    public init(
+        databaseURL: URL?, now: @escaping () -> Date = Date.init, calendar: Calendar = .current,
+        busyTimeout: TimeInterval = 2
+    ) {
         self.now = now
         self.calendar = calendar
         guard let databaseURL else {
-            db = Self.open(path: ":memory:")
+            db = Self.openInMemory()
             return
         }
         try? FileManager.default.createDirectory(
             at: databaseURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if let opened = Self.open(path: databaseURL.path) {
+        switch Self.open(path: databaseURL.path, busyTimeout: busyTimeout) {
+        case .opened(let opened):
             db = opened
-            return
+        case .unavailable:
+            db = Self.openInMemory()
+        case .damaged:
+            Self.moveAside(databaseURL)
+            if case .opened(let opened) = Self.open(path: databaseURL.path, busyTimeout: busyTimeout) {
+                db = opened
+            } else {
+                db = Self.openInMemory()
+            }
         }
-        Self.moveAside(databaseURL)
-        db = Self.open(path: databaseURL.path) ?? Self.open(path: ":memory:")
     }
 
     deinit {
@@ -172,14 +189,37 @@ public final class HistoryStore {
     /// import it: SQLite copies the bound bytes before the call returns.
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-    /// Opens (creating if needed) and prepares the schema, or returns `nil` when the file isn't a
-    /// usable database. `quick_check` catches a file whose header is fine but whose pages aren't.
-    private static func open(path: String) -> OpaquePointer? {
-        var db: OpaquePointer?
-        guard sqlite3_open_v2(path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil) == SQLITE_OK else {
-            sqlite3_close(db)
-            return nil
+    private enum OpenResult {
+        case opened(OpaquePointer)
+        /// The file itself is broken: worth moving aside.
+        case damaged
+        /// Couldn't be used this time — locked, unreadable, … — which says nothing about its
+        /// contents.
+        case unavailable
+    }
+
+    /// Only these result codes mean the file's contents are broken.
+    private static func result(for code: Int32) -> OpenResult {
+        switch code & 0xFF {
+        case SQLITE_CORRUPT, SQLITE_NOTADB: .damaged
+        default: .unavailable
         }
+    }
+
+    private static func openInMemory() -> OpaquePointer? {
+        if case .opened(let db) = open(path: ":memory:", busyTimeout: 0) { db } else { nil }
+    }
+
+    /// Opens (creating if needed) and prepares the schema, waiting up to `busyTimeout` for a lock.
+    /// `quick_check` catches a file whose header is fine but whose pages aren't.
+    private static func open(path: String, busyTimeout: TimeInterval) -> OpenResult {
+        var db: OpaquePointer?
+        let openCode = sqlite3_open_v2(path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil)
+        guard openCode == SQLITE_OK, let db else {
+            sqlite3_close(db)
+            return result(for: openCode)
+        }
+        sqlite3_busy_timeout(db, Int32(busyTimeout * 1000))
         let schema = """
             CREATE TABLE IF NOT EXISTS history (
                 url TEXT PRIMARY KEY NOT NULL,
@@ -190,20 +230,29 @@ public final class HistoryStore {
             CREATE INDEX IF NOT EXISTS history_last_visited ON history (last_visited);
             PRAGMA user_version = 1;
             """
-        guard sqlite3_exec(db, schema, nil, nil, nil) == SQLITE_OK, quickCheckPasses(db) else {
+        let schemaCode = sqlite3_exec(db, schema, nil, nil, nil)
+        guard schemaCode == SQLITE_OK else {
             sqlite3_close(db)
-            return nil
+            return result(for: schemaCode)
         }
-        return db
+        if let failure = quickCheckFailure(db) {
+            sqlite3_close(db)
+            return failure
+        }
+        return .opened(db)
     }
 
-    private static func quickCheckPasses(_ db: OpaquePointer?) -> Bool {
+    /// `nil` when `quick_check` reports `ok`; `.damaged` when it reports anything else or SQLite
+    /// finds the file corrupt while checking; `.unavailable` when the check couldn't run.
+    private static func quickCheckFailure(_ db: OpaquePointer) -> OpenResult? {
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
-        guard sqlite3_prepare_v2(db, "PRAGMA quick_check", -1, &statement, nil) == SQLITE_OK,
-            sqlite3_step(statement) == SQLITE_ROW, let text = sqlite3_column_text(statement, 0)
-        else { return false }
-        return String(cString: text) == "ok"
+        let prepareCode = sqlite3_prepare_v2(db, "PRAGMA quick_check", -1, &statement, nil)
+        guard prepareCode == SQLITE_OK else { return result(for: prepareCode) }
+        let stepCode = sqlite3_step(statement)
+        guard stepCode == SQLITE_ROW else { return result(for: stepCode) }
+        guard let text = sqlite3_column_text(statement, 0), String(cString: text) == "ok" else { return .damaged }
+        return nil
     }
 
     /// Moves the damaged file (and any journal SQLite left beside it) to `<name>.corrupt`,

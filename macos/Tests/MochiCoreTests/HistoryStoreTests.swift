@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 import Testing
 
 @testable import MochiCore
@@ -282,5 +283,58 @@ func historyTestDate(_ string: String) -> Date {
         let movedAside = directory.appendingPathComponent("History.db.corrupt")
         #expect(try Data(contentsOf: movedAside) == garbage)
         #expect(try Data(contentsOf: file) != garbage)
+    }
+
+    /// Only damage moves the file aside. A healthy history another connection happens to hold
+    /// locked — a second Mochi, a backup tool — is left exactly as it is: this session keeps its
+    /// history in memory, and the next launch finds every entry still there.
+    @Test func aLockedFileIsLeftAloneAndThisSessionKeepsHistoryInMemory() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("History.db")
+        do {
+            HistoryStore(databaseURL: file, now: { Date() }, calendar: historyTestCalendar)
+                .recordVisit(to: url("https://example.com/kept"))
+        }
+        let before = try Data(contentsOf: file)
+        var other: OpaquePointer?
+        #expect(sqlite3_open_v2(file.path, &other, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK)
+        #expect(sqlite3_exec(other, "BEGIN EXCLUSIVE", nil, nil, nil) == SQLITE_OK)
+
+        let store = HistoryStore(
+            databaseURL: file, now: { Date() }, calendar: historyTestCalendar, busyTimeout: 0.05)
+        store.recordVisit(to: url("https://example.com/this-session"))
+
+        #expect(store.entries(since: .distantPast).map(\.url) == [url("https://example.com/this-session")])
+        #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("History.db.corrupt").path))
+        #expect(try Data(contentsOf: file) == before)
+
+        sqlite3_exec(other, "ROLLBACK", nil, nil, nil)
+        sqlite3_close(other)
+        let nextLaunch = HistoryStore(databaseURL: file, now: { Date() }, calendar: historyTestCalendar)
+        #expect(nextLaunch.entries(since: .distantPast).map(\.url) == [url("https://example.com/kept")])
+    }
+
+    /// A lock held only briefly is waited out rather than given up on.
+    @Test func aBrieflyHeldLockIsWaitedOut() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("History.db")
+        do {
+            HistoryStore(databaseURL: file, now: { Date() }, calendar: historyTestCalendar)
+                .recordVisit(to: url("https://example.com/kept"))
+        }
+        var other: OpaquePointer?
+        #expect(sqlite3_open_v2(file.path, &other, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK)
+        #expect(sqlite3_exec(other, "BEGIN EXCLUSIVE", nil, nil, nil) == SQLITE_OK)
+        let lockHolder = other
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) {
+            sqlite3_exec(lockHolder, "ROLLBACK", nil, nil, nil)
+            sqlite3_close(lockHolder)
+        }
+
+        let store = HistoryStore(databaseURL: file, now: { Date() }, calendar: historyTestCalendar, busyTimeout: 5)
+
+        #expect(store.entries(since: .distantPast).map(\.url) == [url("https://example.com/kept")])
     }
 }
