@@ -7,7 +7,8 @@ import SwiftUI
 /// settings #64 adds each have a home: 网页内容 and 高级 start out empty and are filled by later
 /// tickets, which add items to a pane rather than inventing panes of their own. #88 folded 热键
 /// and 窗口 into 幽灵模式: nearly every hotkey only works in Ghost Mode, and its opacity sat a pane
-/// away from them; 窗口's one remaining switch, Snap, moved to 通用.
+/// away from them; 窗口's one remaining switch, Snap, moved to 通用. #100 renamed 网页内容 to 网站
+/// and gave HTTP 警告 and 网站数据 their own 隐私与安全性 pane, following Safari's 网站 and 隐私.
 ///
 /// Every pane is backed by `SettingsViewModel` so each edit flows through `SettingsController`'s
 /// persistence path — view-local `@State` only ever holds a value mid-edit (text being typed, a
@@ -18,7 +19,7 @@ import SwiftUI
 /// already-executed JavaScript can't be undone — so that pane says "next page load" and offers the
 /// load as a button.
 enum SettingsPane: CaseIterable {
-    case general, ghostMode, webContent, scripts, advanced
+    case general, ghostMode, websites, privacy, scripts, advanced
 
     /// Fixed for every pane, like Safari's: only the height follows the content, so switching
     /// panes never makes the window jump sideways.
@@ -28,7 +29,8 @@ enum SettingsPane: CaseIterable {
         switch self {
         case .general: "通用"
         case .ghostMode: "幽灵模式"
-        case .webContent: "网页内容"
+        case .websites: "网站"
+        case .privacy: "隐私与安全性"
         case .scripts: "脚本"
         case .advanced: "高级"
         }
@@ -40,22 +42,24 @@ enum SettingsPane: CaseIterable {
         // An SF Symbol rather than the hand-drawn ghost (ADR-0013); `eye.slash` would read as
         // Hidden, which is one thing inside Ghost Mode, not the mode itself.
         case .ghostMode: "rectangle.dashed"
-        case .webContent: "globe"
+        case .websites: "globe"
+        case .privacy: "hand.raised"
         case .scripts: "curlybraces"
         case .advanced: "gearshape.2"
         }
     }
 
-    /// The pane's content at its natural height and the shared fixed width. The two list-driven
-    /// panes (幽灵模式's mapping table, scripts' editor) have no natural height of their own — a
-    /// `List`/`TextEditor` takes whatever it is offered — so they get an explicit one.
+    /// The pane's content at its natural height and the shared fixed width. The list-driven
+    /// panes (幽灵模式's mapping table, 网站's sidebar, scripts' editor) have no natural height of
+    /// their own — a `List`/`TextEditor` takes whatever it is offered — so they get an explicit one.
     @ViewBuilder
     func content(viewModel: SettingsViewModel) -> some View {
         Group {
             switch self {
             case .general: GeneralSettingsTab(viewModel: viewModel)
             case .ghostMode: GhostModeSettingsTab(viewModel: viewModel).frame(height: 790)
-            case .webContent: WebContentSettingsTab(viewModel: viewModel)
+            case .websites: WebsitesSettingsTab(viewModel: viewModel).frame(height: 260)
+            case .privacy: PrivacySettingsTab(viewModel: viewModel)
             case .scripts: ScriptsTab(viewModel: viewModel).frame(height: 560)
             case .advanced: AdvancedSettingsTab(viewModel: viewModel)
             }
@@ -65,97 +69,13 @@ enum SettingsPane: CaseIterable {
     }
 }
 
-/// 网页内容 (#70). A `Form` of `Section`s so later #64 tickets can append their own sections.
-struct WebContentSettingsTab: View {
-    @ObservedObject var viewModel: SettingsViewModel
-
-    var body: some View {
-        Form {
-            Section {
-                Picker(
-                    "自动播放：",
-                    selection: Binding(
-                        get: { viewModel.config.autoplayPolicy },
-                        set: { viewModel.updateAutoplayPolicy($0) }
-                    )
-                ) {
-                    ForEach(WidgetConfig.AutoplayPolicy.allCases, id: \.self) { policy in
-                        Text(policy.displayName).tag(policy)
-                    }
-                }
-                .pickerStyle(.menu)
-                .fixedSize()
-                // The one setting that is not live: WebKit reads it only when the web view is
-                // created, so say so and offer the reopen that applies it.
-                HStack {
-                    Text("下次打开窗口时生效")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Button("重新打开窗口") { viewModel.reopenWidgetNow() }
-                        .controlSize(.small)
-                }
-            }
-            // #69 — live: read at each request. Ghost Mode denies regardless.
-            Section {
-                Picker(
-                    "摄像头：",
-                    selection: Binding(
-                        get: { viewModel.config.cameraPermission },
-                        set: { viewModel.updateCameraPermission($0) }
-                    )
-                ) {
-                    ForEach(WidgetConfig.MediaCapturePermission.allCases, id: \.self) { permission in
-                        Text(permission.displayName).tag(permission)
-                    }
-                }
-                .pickerStyle(.menu)
-                .fixedSize()
-                Picker(
-                    "麦克风：",
-                    selection: Binding(
-                        get: { viewModel.config.microphonePermission },
-                        set: { viewModel.updateMicrophonePermission($0) }
-                    )
-                ) {
-                    ForEach(WidgetConfig.MediaCapturePermission.allCases, id: \.self) { permission in
-                        Text(permission.displayName).tag(permission)
-                    }
-                }
-                .pickerStyle(.menu)
-                .fixedSize()
-            }
-
-            // #67: applies to the open widget immediately.
-            Section {
-                Picker(
-                    "弹出式窗口：",
-                    selection: Binding(
-                        get: { viewModel.config.popupWindowPolicy },
-                        set: { viewModel.updatePopupWindowPolicy($0) }
-                    )
-                ) {
-                    Text("允许").tag(WidgetConfig.PopupWindowPolicy.allow)
-                    Text("阻止").tag(WidgetConfig.PopupWindowPolicy.block)
-                }
-                .pickerStyle(.menu)
-                .fixedSize()
-                Text("阻止网页未经点击自行打开的窗口。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .formStyle(.columns)
-    }
-}
-
-/// 高级 (#70, #72). Same `Form`/`Section` skeleton as 网页内容; each `Section` is self-contained so
-/// later tickets can append their own.
+/// 高级 (#70, #72). Each `Section` is self-contained so later tickets can append their own. Since
+/// #100 only 辅助功能 and 开发 are left: HTTP 警告 and 网站数据 moved to 隐私与安全性.
 struct AdvancedSettingsTab: View {
     @ObservedObject var viewModel: SettingsViewModel
 
     /// The size the popup shows while the checkbox is off, so ticking it restores the last pick.
     @State private var chosenMinimumFontSize: Int
-    @State private var isConfirmingDataRemoval = false
 
     init(viewModel: SettingsViewModel) {
         self.viewModel = viewModel
@@ -194,29 +114,6 @@ struct AdvancedSettingsTab: View {
                 }
             }
 
-            Section("安全性") {
-                Toggle(
-                    "通过 HTTP 连接网站前接收警告",
-                    isOn: Binding(
-                        get: { viewModel.config.isHTTPWarningEnabled },
-                        set: { viewModel.updateHTTPWarningEnabled($0) }
-                    )
-                )
-            }
-
-            Section("网站数据") {
-                Button("移除所有网站数据…") { isConfirmingDataRemoval = true }
-                Text("清除 Cookie、缓存、本地存储与网站图标。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .alert("确定要移除所有网站数据吗？", isPresented: $isConfirmingDataRemoval) {
-                Button("移除", role: .destructive) { viewModel.removeAllWebsiteData() }
-                Button("取消", role: .cancel) {}
-            } message: {
-                Text("这会让你退出所有网站的登录。")
-            }
-
             Section("开发") {
                 Toggle(
                     "显示网页开发者功能",
@@ -228,27 +125,6 @@ struct AdvancedSettingsTab: View {
             }
         }
         .formStyle(.columns)
-    }
-}
-
-extension WidgetConfig.AutoplayPolicy {
-    fileprivate var displayName: String {
-        switch self {
-        case .allowAll: "允许全部自动播放"
-        case .stopMediaWithSound: "停止有声媒体"
-        case .never: "永不自动播放"
-        }
-    }
-}
-
-// #69 — Safari's wording.
-extension WidgetConfig.MediaCapturePermission {
-    fileprivate var displayName: String {
-        switch self {
-        case .ask: "询问"
-        case .deny: "拒绝"
-        case .allow: "允许"
-        }
     }
 }
 
