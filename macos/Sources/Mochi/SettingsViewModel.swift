@@ -9,15 +9,18 @@ import MochiCore
 ///
 /// `config` is a *published mirror* re-read from the controller after each edit, not a second
 /// source of truth: every mutation goes through the controller's persist path and this just
-/// re-publishes what got persisted (#46's "no panel-local copy of the config" rule).
+/// re-publishes what got persisted (#46's "no panel-local copy of the config" rule). Writes made
+/// outside the panel — the 询问框 remembering an exception (#109) — are re-read too, through
+/// `SettingsController.onConfigPersisted`.
 final class SettingsViewModel: ObservableObject {
     private let controller: SettingsController
     private let reloadPage: () -> Void
     /// #70's 重新打开窗口 — `Orchestrator.reopenWidget`. Defaulted so other wiring stays untouched.
     var reopenWidget: () -> Void = {}
     @Published private(set) var config: WidgetConfig {
-        // Whether a 系统权限 prompt belongs on screen depends on the config too (#103): unbinding
-        // every key that needs Accessibility takes its prompt away.
+        // Whether a 系统权限 prompt belongs on screen depends on the config too: unbinding every
+        // key that needs Accessibility takes its prompt away (#103), and a 网页权限 or exception of
+        // 拒绝 takes a page's (#104).
         didSet { refreshSystemPermissions() }
     }
 
@@ -42,6 +45,10 @@ final class SettingsViewModel: ObservableObject {
         self.reloadPage = reloadPage
         self.config = controller.config
         controller.onSystemPermissionsMayHaveChanged { [weak self] in self?.refreshSystemPermissions() }
+        controller.onConfigPersisted { [weak self] in
+            guard let self else { return }
+            config = self.controller.config
+        }
     }
 
     func updateStartupTarget(_ target: WidgetConfig.StartupTarget?) {

@@ -872,6 +872,49 @@ import Testing
         #expect(notified == 0)
     }
 
+    // MARK: - Writes made elsewhere (#109)
+
+    /// The settings window must see what was written outside it — the 询问框's 「访问此网站时允许」
+    /// (#109), the page last visited — or its exceptions table goes stale. Wired like
+    /// `AppDelegate`: one config, one `persist` shared by `Orchestrator` and the controller, which
+    /// reports every write to the controller.
+    @Test func aWriteMadeElsewhereReachesThePanel() {
+        let fake = FakePlatformOps()
+        let request = MediaCaptureRequest(device: .camera, host: "meet.example.com")
+        var config = WidgetConfig(url: URL(string: "https://example.com")!)
+        var controller: SettingsController?
+        let persist: (@escaping (WidgetConfig) -> WidgetConfig) -> Void = { transform in
+            config = transform(config)
+            controller?.configWasPersisted()
+        }
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config }, persist: persist)
+        controller = SettingsController(platformOps: fake, currentConfig: { config }, persist: persist)
+        var seen: [[WidgetConfig.PagePermissionException]] = []
+        controller?.onConfigPersisted { seen.append(controller?.config.cameraExceptions ?? []) }
+
+        withExtendedLifetime(orchestrator) {
+            orchestrator.start()
+            _ = fake.simulateMediaCaptureRequested(request)
+            _ = fake.simulateMediaCapturePromptAnswered(.allowOnThisSite, to: request)
+        }
+
+        #expect(seen.last?.map(\.host) == ["meet.example.com"])
+        #expect(seen.last?.map(\.setting) == [.allow])
+    }
+
+    @Test func everyHandlerHearsOfEveryWrite() {
+        let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
+        let controller = makeController(store: store)
+        var heard = [0, 0]
+        controller.onConfigPersisted { heard[0] += 1 }
+        controller.onConfigPersisted { heard[1] += 1 }
+
+        controller.configWasPersisted()
+        controller.configWasPersisted()
+
+        #expect(heard == [2, 2])
+    }
+
     // MARK: - #107: 清除浏览数据…
 
     private static let clearingNow = Date(timeIntervalSince1970: 1_800_000_000)

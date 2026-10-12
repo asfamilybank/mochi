@@ -52,6 +52,24 @@ public final class SettingsController {
         self.historyStore = historyStore
     }
 
+    // MARK: Writes from anywhere (#109)
+
+    private var configPersistedHandlers: [() -> Void] = []
+
+    /// Told by whoever owns the app's one `persist` (`AppDelegate`) after every write — this
+    /// controller's own edits and those made elsewhere alike: the 询问框's 「访问此网站时允许」 (#109),
+    /// the page last visited, the window's geometry. Not a config edit itself: nothing is persisted
+    /// and `configDidChange` doesn't fire.
+    public func configWasPersisted() {
+        configPersistedHandlers.forEach { $0() }
+    }
+
+    /// For the panel to read `config` again after any write (see `configWasPersisted`) — reading
+    /// it fresh rather than keeping a copy that someone else's write would leave stale.
+    public func onConfigPersisted(perform handler: @escaping () -> Void) {
+        configPersistedHandlers.append(handler)
+    }
+
     /// Every edit goes through here so `configDidChange` can never be forgotten for a new setting
     /// — hot-reload is the default, not something each setting opts into (#46).
     private func persistAndNotify(_ transform: @escaping (WidgetConfig) -> WidgetConfig) {

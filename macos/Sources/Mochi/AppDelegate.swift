@@ -41,9 +41,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // same read closure and the same `persist` function, never a copy — the "read at the point
         // of use" discipline that makes every settings edit take effect without a restart (#46).
         var currentConfig = initialConfig
+        // #109: every write, whoever makes it, is reported to the settings window, which re-reads
+        // the config — an exception remembered from the 询问框 shows up in its table at once.
+        var configWasPersisted: () -> Void = {}
         func persist(_ transform: (WidgetConfig) -> WidgetConfig) {
             currentConfig = transform(currentConfig)
             try? currentConfig.write(to: configURL)
+            configWasPersisted()
         }
 
         platformOps.searchEngineProvider = { currentConfig.searchEngine }
@@ -70,6 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             configDidChange: { orchestrator.reapplyConfiguration() },
             historyStore: historyStore
         )
+        configWasPersisted = { settingsController.configWasPersisted() }
         let settingsViewModel = SettingsViewModel(controller: settingsController, reloadPage: { orchestrator.reloadPage() })
         settingsViewModel.reopenWidget = { orchestrator.reopenWidget() }
         settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)
