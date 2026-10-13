@@ -212,16 +212,18 @@ import Testing
         #expect(fake.mediaCaptureGrantsForgotten.map(\.onlyIfIdle) == [false])
     }
 
-    /// A settings edit applies to the next request even where WebKit already granted one — but
-    /// a page that is capturing is left alone (forgetting would cut the call off).
-    @Test func aSettingsEditMakesWebKitForgetEveryIdleWebViewsGrants() {
-        let (fake, _, orchestrator) = makeWidget()
+    /// A page load keeps what it was granted, as a running app keeps a system permission revoked
+    /// in System Settings until it is reopened (measured on macOS 26.5): an edit taking it away
+    /// applies from the page's next load, so nothing is forgotten on the edit itself (ADR-0027).
+    @Test func aSettingsEditLeavesWebKitsGrantsToThePageLoad() {
+        let (fake, store, orchestrator) = makeWidget()
         defer { withExtendedLifetime(orchestrator) {} }
 
+        store.config = store.config.updatingPagePermissionException(
+            .camera, host: Self.meet, setting: .deny, modifiedAt: Self.answeredAt)
         orchestrator.reapplyConfiguration()
 
-        #expect(fake.mediaCaptureGrantsForgotten.map(\.source) == [nil])
-        #expect(fake.mediaCaptureGrantsForgotten.map(\.onlyIfIdle) == [true])
+        #expect(fake.mediaCaptureGrantsForgotten.isEmpty)
     }
 
     /// Ghost Mode denies the widget's page; a grant WebKit kept from Normal Mode mustn't slip by.

@@ -568,9 +568,9 @@ final class FakePlatformOps: PlatformOps {
     }
 
     // #96
-    private(set) var mediaCaptureGrantsForgotten: [(source: WebViewSource?, onlyIfIdle: Bool, windowID: Int)] = []
+    private(set) var mediaCaptureGrantsForgotten: [(source: WebViewSource, onlyIfIdle: Bool, windowID: Int)] = []
 
-    func forgetMediaCaptureGrants(in window: WidgetWindowHandle, of source: WebViewSource?, onlyIfIdle: Bool) {
+    func forgetMediaCaptureGrants(in window: WidgetWindowHandle, of source: WebViewSource, onlyIfIdle: Bool) {
         let handle = window as! FakeWidgetWindowHandle
         mediaCaptureGrantsForgotten.append((source: source, onlyIfIdle: onlyIfIdle, windowID: handle.id))
     }

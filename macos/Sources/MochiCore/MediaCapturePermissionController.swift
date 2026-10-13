@@ -44,18 +44,15 @@ final class MediaCapturePermissionController {
     private func newDocumentCommitted(in source: WebViewSource) {
         grantsThisTime[source] = nil
         // #96: WebKit's own grant would outlive the page load otherwise — a page reloading itself
-        // is never asked again. The old document is gone: nothing to interrupt.
+        // is never asked again. The old document is gone: nothing to interrupt. This is also where a
+        // settings edit taking a grant away reaches a page that already had it: a page load keeps
+        // what it was granted, as a running app keeps a system permission revoked in System
+        // Settings until it is reopened (ADR-0027). Nothing is forgotten on the edit itself.
         platformOps.forgetMediaCaptureGrants(in: window, of: source, onlyIfIdle: false)
     }
 
-    /// #96: a settings edit applies to the next request even where WebKit already granted one —
-    /// except on a page that is capturing right now, which picks it up on its next page load.
-    func settingsMayHaveChanged() {
-        platformOps.forgetMediaCaptureGrants(in: window, of: nil, onlyIfIdle: true)
-    }
-
     /// #96: Ghost Mode denies the widget's page, so a grant WebKit kept from Normal Mode must go
-    /// (a capture already running carries on, as with a settings edit).
+    /// (a capture already running carries on).
     func ghostModeEntered() {
         platformOps.forgetMediaCaptureGrants(in: window, of: .widget, onlyIfIdle: true)
     }

@@ -388,8 +388,7 @@ public final class Orchestrator {
     /// pushed to the live window, an opacity edit made *while in Ghost Mode* has to be pushed
     /// down right now (see `GhostModeController.reapplyConfiguration`), and 视频控制 has to start
     /// or stop listening when an edit binds its first key or clears its last one (#78), and the Empty
-    /// Page's quick reference has to be redrawn with the hotkeys now in effect (#83), and WebKit has
-    /// to forget the camera/microphone grants it kept on its own, so an edit isn't bypassed (#96).
+    /// Page's quick reference has to be redrawn with the hotkeys now in effect (#83).
     /// Everything else in the config is read at its point of use and needs no call here. `SettingsController`
     /// invokes this after every persisted edit; a no-op while the widget is closed.
     public func reapplyConfiguration() {
@@ -402,7 +401,6 @@ public final class Orchestrator {
         platformOps.setHotkeyQuickReference(HotkeyQuickReference.entries(for: currentConfig()), in: window)
         ghostModeController?.reapplyConfiguration()
         videoControl?.refreshObservation()
-        mediaCapturePermissions?.settingsMayHaveChanged()
     }
 
     private func handleURLSubmitted(_ url: URL) {

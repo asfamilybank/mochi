@@ -2438,7 +2438,7 @@ public final class AppKitPlatformOps: PlatformOps {
     }
 
     // #96
-    public func forgetMediaCaptureGrants(in window: WidgetWindowHandle, of source: WebViewSource?, onlyIfIdle: Bool) {
+    public func forgetMediaCaptureGrants(in window: WidgetWindowHandle, of source: WebViewSource, onlyIfIdle: Bool) {
         handle(for: window)?.forgetMediaCaptureGrants(of: source, onlyIfIdle: onlyIfIdle)
     }
 
