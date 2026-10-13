@@ -327,11 +327,11 @@ public protocol PlatformOps: AnyObject {
     // MARK: 系统权限 (#98, ADR-0026) — one set of calls for every `SystemPermission`.
 
     /// Where `permission` stands right now — read fresh at every use, since the user changes it in
-    /// System Settings, behind Mochi's back. Input monitoring also reads `.authorized` while
-    /// Accessibility is granted (ADR-0028); the Downloads folder always reads `.unqueryable`.
+    /// System Settings, behind Mochi's back. Accessibility also reads `.authorized` while
+    /// Accessibility is granted (ADR-0029); the Downloads folder always reads `.unqueryable`.
     func systemPermissionStatus(_ permission: SystemPermission) -> SystemPermissionStatus
 
-    /// Asks the system for `permission`: for input monitoring the system's own dialog pointing at
+    /// Asks the system for `permission`: for Accessibility the system's own dialog pointing at
     /// System Settings, for the camera and microphone the system's access request — each followed
     /// by `onSystemPermissionsMayHaveChanged`. The system itself never stops a dialog from coming
     /// back, so how often to ask is the caller's to decide (see `VideoControl`). A no-op for the Downloads folder, which has no request of its own.
@@ -436,7 +436,7 @@ public protocol PlatformOps: AnyObject {
     /// Starts reporting raw keyboard and mouse input to `handler` — from every app, and from
     /// Mochi's own windows too — strictly listen-only: no event is ever consumed or altered, so
     /// every app still gets every key exactly as if Mochi weren't running. Other apps' combos
-    /// with neither ⌃ nor ⌘ (⌥P) arrive only with input monitoring (ADR-0028); modifier changes
+    /// with neither ⌃ nor ⌘ (⌥P) arrive only with Accessibility (ADR-0029); modifier changes
     /// and ⌃/⌘ combos arrive without it, as does all of Mochi's own input. App-global; a second
     /// start without a stop in between is a caller bug.
     func startObservingInput(perform handler: @escaping (RawInputEvent) -> Void)

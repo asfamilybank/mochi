@@ -514,16 +514,13 @@ public final class SettingsController {
     public var systemPermissionPrompts: [SystemPermissionPrompt] {
         SystemPermissionPrompts.prompts(
             for: config, status: platformOps.systemPermissionStatus,
+            accessibilityRequested: platformOps.isSystemPermissionMarkerSet(.accessibilityRequested),
             downloadsFolderWriteDenied: platformOps.isSystemPermissionMarkerSet(.downloadsFolderWriteDenied))
     }
 
     /// What a prompt's button does; a prompt without one does nothing.
     public func perform(_ prompt: SystemPermissionPrompt) {
-        switch prompt.action {
-        case .request: platformOps.requestSystemPermission(prompt.permission)
-        case .openSystemSettings: platformOps.openSystemSettings(for: prompt.permission)
-        case nil: break
-        }
+        prompt.perform(on: platformOps)
     }
 
     /// For the panel to read `systemPermissionPrompts` again (see

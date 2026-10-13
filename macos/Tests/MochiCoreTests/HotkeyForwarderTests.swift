@@ -41,11 +41,11 @@ import Testing
     }
 
     /// The keystroke is handed straight to the widget's web view (#93, ADR-0025), not posted
-    /// through the system — nothing about that needs a 系统权限, so missing input monitoring
+    /// through the system — nothing about that needs a 系统权限, so missing Accessibility
     /// neither blocks the keystroke nor brings up the permission dialog or an alert.
-    @Test func forwardsWithoutInputMonitoringPermission() {
+    @Test func forwardsWithoutAccessibilityPermission() {
         let fake = FakePlatformOps()
-        fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .denied
+        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
         let forwarder = HotkeyForwarder(platformOps: fake, isGhostModeActive: { true }, currentWindow: { window })
 
         forwarder.forward(pageKeystroke)

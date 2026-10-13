@@ -19,7 +19,7 @@ final class SettingsViewModel: ObservableObject {
     var reopenWidget: () -> Void = {}
     @Published private(set) var config: WidgetConfig {
         // Whether a 系统权限 prompt belongs on screen depends on the config too: unbinding every
-        // key that needs input monitoring takes its prompt away (#111), and a 网页权限 or exception of
+        // key that needs Accessibility takes its prompt away (#111), and a 网页权限 or exception of
         // 拒绝 takes a page's (#104).
         didSet { refreshSystemPermissions() }
     }

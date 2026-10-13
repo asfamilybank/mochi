@@ -45,7 +45,7 @@ import Testing
     @Test func visibilityFollowsTheClosureEachTimeTheMenuOpens() {
         var visible = false
         let tray = TrayMenu(items: [
-            TrayMenuItem(title: "视频控制需要输入监控权限…", isVisible: { visible }) {},
+            TrayMenuItem(title: "视频控制需要辅助功能权限…", isVisible: { visible }) {},
             TrayMenuItem(title: "设置…") {},
         ])
         let items = tray.menu.items

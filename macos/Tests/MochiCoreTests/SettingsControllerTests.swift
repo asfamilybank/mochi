@@ -1635,24 +1635,42 @@ import Testing
 
     // MARK: 系统权限 (#98)
 
-    @Test func promptsForInputMonitoringOnlyWhileItIsNotGranted() {
+    @Test func promptsForAccessibilityOnlyWhileItIsNotGranted() {
         let fake = FakePlatformOps()
         let config = WidgetConfig().updatingVideoControlTrigger(
             .keystroke(Hotkey(keyCode: 0x23, modifierFlags: 0x0800)), for: .seekForward)  // ⌥P
         let controller = makeController(store: PersistedStore(config), platformOps: fake)
 
         #expect(controller.systemPermissionPrompts.isEmpty)
-        fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .notDetermined
+        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
 
         #expect(controller.systemPermissionPrompts.filter { $0.placement == .ghostModePanelTop }
-            == [SystemPermissionPrompt(permission: .inputMonitoring, placement: .ghostModePanelTop, action: .request)])
+            == [SystemPermissionPrompt(permission: .accessibility, placement: .ghostModePanelTop, action: .request)])
+    }
+
+    /// The system can't tell 未询问 from 已拒绝 for Accessibility (ADR-0029): asking from the panel
+    /// is noted in the same marker as 视频控制's own request, so from then on the button sends the
+    /// user to System Settings instead of asking again.
+    @Test func requestingAccessibilityFromThePanelTurnsItsButtonIntoOpenSystemSettings() throws {
+        let fake = FakePlatformOps()
+        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
+        let config = WidgetConfig().updatingVideoControlTrigger(
+            .keystroke(Hotkey(keyCode: 0x23, modifierFlags: 0x0800)), for: .seekForward)  // ⌥P
+        let controller = makeController(store: PersistedStore(config), platformOps: fake)
+        let prompt = try #require(controller.systemPermissionPrompts.first { $0.placement == .ghostModePanelTop })
+
+        controller.perform(prompt)
+
+        #expect(fake.systemPermissionRequests == [.accessibility])
+        #expect(fake.systemPermissionMarkers == [.accessibilityRequested])
+        #expect(controller.systemPermissionPrompts.map(\.action) == [.openSystemSettings, .openSystemSettings])
     }
 
     /// The prompts follow the config the panel is editing (#111): rebinding the one key that
-    /// needs input monitoring to a tap takes its prompt away.
-    @Test func inputMonitoringPromptGoesOnceNothingNeedsIt() {
+    /// needs Accessibility to a tap takes its prompt away.
+    @Test func accessibilityPromptGoesOnceNothingNeedsIt() {
         let fake = FakePlatformOps()
-        fake.stubbedSystemPermissionStatuses[.inputMonitoring] = .denied
+        fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
         let config = WidgetConfig().updatingVideoControlTrigger(
             .keystroke(Hotkey(keyCode: 0x23, modifierFlags: 0x0800)), for: .seekForward)  // ⌥P
         let controller = makeController(store: PersistedStore(config), platformOps: fake)
@@ -1677,6 +1695,7 @@ import Testing
 
         #expect(fake.systemPermissionRequests == row.requested)
         #expect(fake.openedSystemSettings == row.opened)
+        #expect(fake.systemPermissionMarkers.isEmpty)
     }
 
     @Test func aPromptWithoutAButtonDoesNothing() {

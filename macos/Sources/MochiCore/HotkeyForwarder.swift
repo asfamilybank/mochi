@@ -4,7 +4,7 @@ import Foundation
 /// `pageKeystroke` into the widget's page — only while Ghost Mode is active, per the domain doc.
 /// Since #93 (ADR-0025) the keystroke is handed straight to the widget's web view rather than
 /// posted through the system, so there is no 系统权限 to check or ask for here. Hearing a
-/// trigger needs none either (ADR-0028): a combo goes through Carbon, a tap or double tap
+/// trigger needs none either (ADR-0029): a combo goes through Carbon, a tap or double tap
 /// reaches `VideoControl`'s listener as a modifier change.
 ///
 /// Since #46 this type no longer registers the triggers itself: every global hotkey Mochi holds —

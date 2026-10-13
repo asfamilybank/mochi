@@ -2,7 +2,7 @@ import Carbon.HIToolbox
 import Foundation
 
 /// Wraps Carbon's `RegisterEventHotKey` — still the standard way to claim a system-wide hotkey on
-/// macOS without needing any 系统权限 (ADR-0028). A singleton because Carbon's
+/// macOS without needing any 系统权限 (ADR-0029). A singleton because Carbon's
 /// event handler is a single C callback shared process-wide, dispatching by the numeric hotkey ID
 /// it was registered under.
 final class GlobalHotkeyRegistry {

@@ -240,7 +240,7 @@ struct GhostModeSettingsTab: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let prompt = viewModel.systemPermissionPrompts.first(where: { $0.placement == .ghostModePanelTop }) {
-                InputMonitoringPromptBanner(action: prompt.action) { viewModel.perform(prompt) }
+                AccessibilityPromptBanner(action: prompt.action) { viewModel.perform(prompt) }
 
                 Divider()
             }
@@ -393,7 +393,7 @@ private extension VideoControlAction {
     }
 }
 
-/// 视频控制 (#79): the three video keys and the jump length. Whether input monitoring — without
+/// 视频控制 (#79): the three video keys and the jump length. Whether Accessibility — without
 /// which a combo with neither ⌃ nor ⌘ pressed in another app never reaches Mochi — is missing is
 /// said at the top of the pane (#103, #111).
 private struct VideoControlSection: View {
@@ -419,12 +419,12 @@ private struct VideoControlSection: View {
     }
 }
 
-/// The top of the 幽灵模式 pane while input monitoring is missing and a 视频控制 key needs it
-/// (#111, ADR-0028); nothing at all once it is granted. Its button is the camera's: 请求权限
+/// The top of the 幽灵模式 pane while Accessibility is missing and a 视频控制 key needs it
+/// (#111, ADR-0029); nothing at all once it is granted. Its button is the camera's: 请求权限
 /// while the system has never asked, 打开系统设置 once it has refused. Ad-hoc signing means an
 /// update leaves System Settings' switch on but no longer honoured, and Mochi cannot tell that
 /// apart from off — so the text itself says what to do about it.
-private struct InputMonitoringPromptBanner: View {
+private struct AccessibilityPromptBanner: View {
     let action: SystemPermissionPrompt.Action?
     let perform: () -> Void
 
@@ -433,7 +433,7 @@ private struct InputMonitoringPromptBanner: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
             VStack(alignment: .leading, spacing: 4) {
-                Text("需要输入监控权限").font(.headline)
+                Text("需要辅助功能权限").font(.headline)
                 Text("视频控制里不带 ⌃ 或 ⌘ 的组合键（如 ⌥P）要靠它在其他应用里听到按键。如果系统设置里已经打开，请先移除 Mochi 再重新添加（每次升级后都需要）。")
                     .font(.caption)
                     .foregroundStyle(.secondary)

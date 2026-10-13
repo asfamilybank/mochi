@@ -139,20 +139,16 @@ public final class Orchestrator {
                 self?.perform(HotkeyAction.hideWidget)
             },
             .separator,
-            // Only while input monitoring is missing and a 视频控制 key needs it (#111, ADR-0028):
+            // Only while Accessibility is missing and a 视频控制 key needs it (#111, ADR-0029):
             // in Ghost Mode the tray is the one place left to say why that key does nothing. Its
-            // click does what the settings panel's button would — ask while the system never has,
-            // System Settings once it has refused.
+            // click does what the settings panel's button would — ask while Mochi never has,
+            // System Settings once it has.
             TrayMenuItem(
-                title: "视频控制需要输入监控权限…", icon: .symbol(DesignTokens.Symbol.systemPermissionMissing),
-                isVisible: { [weak self] in self?.trayPrompt(for: .inputMonitoring) != nil }
+                title: "视频控制需要辅助功能权限…", icon: .symbol(DesignTokens.Symbol.systemPermissionMissing),
+                isVisible: { [weak self] in self?.trayPrompt(for: .accessibility) != nil }
             ) { [weak self] in
-                guard let self, let prompt = trayPrompt(for: .inputMonitoring) else { return }
-                if prompt.action == .request {
-                    platformOps.requestSystemPermission(.inputMonitoring)
-                } else {
-                    platformOps.openSystemSettings(for: .inputMonitoring)
-                }
+                guard let self else { return }
+                trayPrompt(for: .accessibility)?.perform(on: platformOps)
             },
             TrayMenuItem(
                 title: "设置…", icon: .symbol(DesignTokens.Symbol.settings),
@@ -169,10 +165,14 @@ public final class Orchestrator {
     }
 
     /// The tray's prompt for `permission`, if one belongs there right now (#103) — read from the
-    /// live config and the system's live answer each time the menu opens.
+    /// live config and the system's live answer each time the menu opens, with Mochi's own record
+    /// of having asked for Accessibility, which the system can't tell apart from a refusal (#111).
     private func trayPrompt(for permission: SystemPermission) -> SystemPermissionPrompt? {
-        SystemPermissionPrompts.prompts(for: currentConfig(), status: platformOps.systemPermissionStatus)
-            .first { $0.permission == permission && $0.placement == .trayMenu }
+        SystemPermissionPrompts.prompts(
+            for: currentConfig(), status: platformOps.systemPermissionStatus,
+            accessibilityRequested: platformOps.isSystemPermissionMarkerSet(.accessibilityRequested)
+        )
+        .first { $0.permission == permission && $0.placement == .trayMenu }
     }
 
     /// Opens the widget window (#42) — at launch and again after a `⌘W`/red-button close. A

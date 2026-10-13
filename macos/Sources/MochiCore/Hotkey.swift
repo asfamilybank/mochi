@@ -26,7 +26,7 @@ extension Hotkey {
     }
 
     /// Whether ⌃ or ⌘ is held: without either, the system takes the combo for typing and keeps
-    /// it from a listener lacking input monitoring (ADR-0028).
+    /// it from a listener lacking Accessibility (ADR-0029).
     public var hasControlOrCommand: Bool {
         modifierFlags & (Self.control | Self.command) != 0
     }

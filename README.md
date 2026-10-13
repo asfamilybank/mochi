@@ -36,15 +36,15 @@ xattr -dr com.apple.quarantine /Applications/Mochi.app
 
 **幽灵模式里，视频控制的组合键（如 ⌥P）没反应**
 
-视频控制里不带 ⌃ 或 ⌘ 的组合键（如 ⌥P、⇧F5）要靠「输入监控」权限才能在其他应用里听到按键；默认的轻按、连按两次，以及带 ⌃ 或 ⌘ 的组合键都不需要任何权限。缺这项权限时，设置的「幽灵模式」面板顶部和托盘菜单里会给出提示。
+视频控制里不带 ⌃ 或 ⌘ 的组合键（如 ⌥P、⇧F5）要靠「辅助功能」权限才能在其他应用里听到按键（系统把这类按键当成打字，只放行给受辅助功能信任的应用）；默认的轻按、连按两次，以及带 ⌃ 或 ⌘ 的组合键都不需要任何权限。缺这项权限时，设置的「幽灵模式」面板顶部和托盘菜单里会给出提示。
 
-Mochi 只做 ad-hoc 签名，系统按每一版的签名记账，所以每次升级之后，「系统设置 → 隐私与安全性 → 输入监控」里 Mochi 的开关**看着还开着，实际已经失效**。在列表里选中 Mochi，点下方的「−」把它移除，再点「+」把 `/Applications/Mochi.app` 重新添加进来并打开开关。如果之后仍没反应，退出 Mochi 再重新打开。
+Mochi 只做 ad-hoc 签名，系统按每一版的签名记账，所以每次升级之后，「系统设置 → 隐私与安全性 → 辅助功能」里 Mochi 的开关**看着还开着，实际已经失效**。在列表里选中 Mochi，点下方的「−」把它移除，再点「+」把 `/Applications/Mochi.app` 重新添加进来并打开开关。如果之后仍没反应，退出 Mochi 再重新打开。
 
 ## 卸载
 
 把 `/Applications/Mochi.app` 移到废纸篓即可。如果想连数据一起清掉，再删除 `~/Library/Application Support/Mochi`（配置文件 `config.toml`）和 `~/Library/Caches/com.daidalma.mochi`、`~/Library/WebKit/com.daidalma.mochi`、`~/Library/HTTPStorages/com.daidalma.mochi.binarycookies`（网站缓存与登录态）。
 
-授予过的系统权限（输入监控、摄像头、麦克风、下载文件夹）由系统按应用身份保管，**不会随卸载或删除数据而消失**，重新安装后仍然在。要彻底清除，在终端执行：
+授予过的系统权限（辅助功能、摄像头、麦克风、下载文件夹）由系统按应用身份保管，**不会随卸载或删除数据而消失**，重新安装后仍然在。要彻底清除，在终端执行：
 
 ```bash
 tccutil reset All com.daidalma.mochi

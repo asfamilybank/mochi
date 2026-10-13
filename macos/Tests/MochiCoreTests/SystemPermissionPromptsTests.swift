@@ -7,7 +7,7 @@ import Testing
 /// reports for each permission, the prompts and nothing else — a permission already granted
 /// shows nothing at all.
 @Suite struct SystemPermissionPromptsTests {
-    /// #111, ADR-0028: input monitoring is needed only for a 视频控制 key bound to a combo with
+    /// #111, ADR-0029: Accessibility is needed only for a 视频控制 key bound to a combo with
     /// neither ⌃ nor ⌘ — the kind the system takes for typing and holds back from a listener
     /// without the permission. Taps and double taps (modifier changes) and ⌃/⌘ combos get through
     /// anyway. No Hotkey Forwarding mapping counts: its combos go through Carbon, its taps arrive
@@ -30,59 +30,72 @@ import Testing
         (video: nil, mapping: .combo(control | option), needed: false),
         (video: .modifierTap(.rightOption), mapping: .combo(option), needed: false),
     ])
-    func needsInputMonitoring(_ row: (video: TriggerKey?, mapping: TriggerKey?, needed: Bool)) {
+    func needsAccessibility(_ row: (video: TriggerKey?, mapping: TriggerKey?, needed: Bool)) {
         var config = WidgetConfig.noVideoKeys.updatingVideoControlTrigger(row.video, for: .seekForward)
         if let trigger = row.mapping {
             config = config.updatingHotkeyMappings([HotkeyMapping(trigger: trigger, pageKeystroke: .space)])
         }
 
-        #expect(VideoControl.needsInputMonitoring(for: config) == row.needed)
+        #expect(VideoControl.needsAccessibility(for: config) == row.needed)
     }
 
     /// One key that needs it is enough, whichever action it is bound to.
     @Test(arguments: VideoControlAction.allCases)
-    func anyVideoKeyCanNeedInputMonitoring(_ action: VideoControlAction) {
+    func anyVideoKeyCanNeedAccessibility(_ action: VideoControlAction) {
         let config = WidgetConfig(url: nil).updatingVideoControlTrigger(.combo(option), for: action)
 
-        #expect(VideoControl.needsInputMonitoring(for: config))
+        #expect(VideoControl.needsAccessibility(for: config))
     }
 
     /// The defaults — right ⌥ tapped, right ⌥ / right ⌘ tapped twice (ADR-0024) — need nothing.
     @Test func theDefaultsNeedNoPermission() {
         let prompts = SystemPermissionPrompts.prompts(for: WidgetConfig(url: nil)) {
-            $0 == .inputMonitoring ? .notDetermined : .authorized
+            $0 == .accessibility ? .denied : .authorized
         }
 
-        #expect(!VideoControl.needsInputMonitoring(for: WidgetConfig(url: nil)))
+        #expect(!VideoControl.needsAccessibility(for: WidgetConfig(url: nil)))
         #expect(prompts.isEmpty)
     }
 
-    /// While something needs input monitoring and it is not granted: one prompt at the top of the
-    /// 幽灵模式 panel and one in the tray, its button like the camera's — 请求权限 while the
-    /// system has never asked, 打开系统设置 once it has refused (#111). Granted, or not needed,
-    /// nothing.
+    /// The system answers no more than "trusted or not" for Accessibility (ADR-0029), so whether
+    /// it has ever asked is Mochi's own record: not trusted and never requested is 未询问, not
+    /// trusted after a request is 已拒绝.
     @Test(arguments: [
-        (needed: true, status: SystemPermissionStatus.notDetermined, shown: true, action: SystemPermissionPrompt.Action?.some(.request)),
-        (needed: true, status: .denied, shown: true, action: .openSystemSettings),
-        (needed: true, status: .restricted, shown: true, action: nil),
-        (needed: true, status: .authorized, shown: false, action: nil),
-        (needed: false, status: .notDetermined, shown: false, action: nil),
-        (needed: false, status: .denied, shown: false, action: nil),
-        (needed: false, status: .authorized, shown: false, action: nil),
+        (trusted: false, requested: false, status: SystemPermissionStatus.notDetermined),
+        (trusted: false, requested: true, status: .denied),
+        (trusted: true, requested: false, status: .authorized),
+        (trusted: true, requested: true, status: .authorized),
     ])
-    func inputMonitoring(
-        _ row: (needed: Bool, status: SystemPermissionStatus, shown: Bool, action: SystemPermissionPrompt.Action?)
+    func accessibilityStatus(_ row: (trusted: Bool, requested: Bool, status: SystemPermissionStatus)) {
+        #expect(SystemPermissionStatus.accessibility(isTrusted: row.trusted, requested: row.requested) == row.status)
+    }
+
+    /// While something needs Accessibility and it is not granted: one prompt at the top of the
+    /// 幽灵模式 panel and one in the tray, its button like the camera's — 请求权限 while Mochi has
+    /// never asked, 打开系统设置 once it has (#111). Granted, or not needed, nothing. The platform
+    /// reads Accessibility as `.authorized` or `.denied` only: trusted or not.
+    @Test(arguments: [
+        (needed: true, trusted: false, requested: false, shown: true, action: SystemPermissionPrompt.Action?.some(.request)),
+        (needed: true, trusted: false, requested: true, shown: true, action: .openSystemSettings),
+        (needed: true, trusted: true, requested: false, shown: false, action: nil),
+        (needed: true, trusted: true, requested: true, shown: false, action: nil),
+        (needed: false, trusted: false, requested: false, shown: false, action: nil),
+        (needed: false, trusted: false, requested: true, shown: false, action: nil),
+        (needed: false, trusted: true, requested: true, shown: false, action: nil),
+    ])
+    func accessibility(
+        _ row: (needed: Bool, trusted: Bool, requested: Bool, shown: Bool, action: SystemPermissionPrompt.Action?)
     ) {
         let config = WidgetConfig(url: nil)
             .updatingVideoControlTrigger(.combo(row.needed ? option : control | option), for: .seekForward)
 
-        let prompts = SystemPermissionPrompts.prompts(for: config) {
-            $0 == .inputMonitoring ? row.status : .authorized
-        }
+        let prompts = SystemPermissionPrompts.prompts(
+            for: config, status: { $0 == .accessibility && !row.trusted ? .denied : .authorized },
+            accessibilityRequested: row.requested)
 
         let expected = row.shown
             ? [SystemPermissionPrompt.Placement.ghostModePanelTop, .trayMenu].map {
-                SystemPermissionPrompt(permission: .inputMonitoring, placement: $0, action: row.action)
+                SystemPermissionPrompt(permission: .accessibility, placement: $0, action: row.action)
             }
             : []
         #expect(prompts == expected)
