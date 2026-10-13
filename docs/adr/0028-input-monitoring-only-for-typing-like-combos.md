@@ -1,5 +1,7 @@
 # 视频控制只在绑了「像打字的组合键」时才请求输入监控
 
+> 已被 [ADR-0029](0029-accessibility-only-for-typing-like-video-combos.md) 取代：实测授予输入监控后，⌥P 在其他应用里仍然收不到——全局监听对「打字」按键的过滤只认辅助功能。「只有不带 ⌃/⌘ 的组合键才需要权限」这条判断保留。
+
 [ADR-0026](0026-system-permissions-requested-on-need.md) 以为视频控制（以及轻按/连按触发的热键传递）要靠**辅助功能**才能在其他应用里听到按键，于是默认配置的用户第一次进入 Ghost Mode 就会被弹辅助功能授权框，设置和托盘也一直挂着警告。实测（2026-10-12，macOS 26.5，Mochi 没有任何系统权限时）推翻了这两点：
 
 - 全局按键监听（`NSEvent.addGlobalMonitorForEvents`）由 WindowServer 按**输入监控**（`kTCCServiceListenEvent`）把关，不是辅助功能——以前给了辅助功能能用，只是因为受辅助功能信任的应用也被放行。
