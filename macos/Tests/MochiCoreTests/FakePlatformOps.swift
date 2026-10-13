@@ -567,6 +567,14 @@ final class FakePlatformOps: PlatformOps {
         newDocumentCommittedHandlers[windowID]?(source)
     }
 
+    // #96
+    private(set) var mediaCaptureGrantsForgotten: [(source: WebViewSource?, onlyIfIdle: Bool, windowID: Int)] = []
+
+    func forgetMediaCaptureGrants(in window: WidgetWindowHandle, of source: WebViewSource?, onlyIfIdle: Bool) {
+        let handle = window as! FakeWidgetWindowHandle
+        mediaCaptureGrantsForgotten.append((source: source, onlyIfIdle: onlyIfIdle, windowID: handle.id))
+    }
+
     // MARK: #67: new windows and Popup Windows
 
     private var newWindowRequestedHandlers: [Int: (NewWindowRequest) -> NewWindowDecision] = [:]

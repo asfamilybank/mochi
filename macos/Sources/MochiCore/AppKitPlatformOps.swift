@@ -2437,6 +2437,11 @@ public final class AppKitPlatformOps: PlatformOps {
         handle(for: window)?.newDocumentCommittedHandler = handler
     }
 
+    // #96
+    public func forgetMediaCaptureGrants(in window: WidgetWindowHandle, of source: WebViewSource?, onlyIfIdle: Bool) {
+        handle(for: window)?.forgetMediaCaptureGrants(of: source, onlyIfIdle: onlyIfIdle)
+    }
+
     // #67: new windows and Popup Windows
 
     public func onNewWindowRequested(_ window: WidgetWindowHandle, perform handler: @escaping (NewWindowRequest) -> NewWindowDecision) {

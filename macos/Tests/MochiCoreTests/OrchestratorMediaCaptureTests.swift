@@ -197,6 +197,47 @@ import Testing
         #expect(fake.simulateMediaCaptureRequested(request) == .ask)
     }
 
+    // MARK: WebKit's own grants (#96)
+
+    /// WebKit keeps a grant through a page's own reload and stops asking; a new document has to
+    /// make it forget, or 「仅这次允许」 outlives its page load. The old document is gone, so a
+    /// capture in progress is no reason to keep it.
+    @Test func aNewDocumentMakesWebKitForgetThatWebViewsGrants() {
+        let (fake, _, orchestrator) = makeWidget()
+        defer { withExtendedLifetime(orchestrator) {} }
+
+        fake.simulateNewDocumentCommitted(in: .popupWindow(id: 3))
+
+        #expect(fake.mediaCaptureGrantsForgotten.map(\.source) == [.popupWindow(id: 3)])
+        #expect(fake.mediaCaptureGrantsForgotten.map(\.onlyIfIdle) == [false])
+    }
+
+    /// A settings edit applies to the next request even where WebKit already granted one — but
+    /// a page that is capturing is left alone (forgetting would cut the call off).
+    @Test func aSettingsEditMakesWebKitForgetEveryIdleWebViewsGrants() {
+        let (fake, _, orchestrator) = makeWidget()
+        defer { withExtendedLifetime(orchestrator) {} }
+
+        orchestrator.reapplyConfiguration()
+
+        #expect(fake.mediaCaptureGrantsForgotten.map(\.source) == [nil])
+        #expect(fake.mediaCaptureGrantsForgotten.map(\.onlyIfIdle) == [true])
+    }
+
+    /// Ghost Mode denies the widget's page; a grant WebKit kept from Normal Mode mustn't slip by.
+    /// Popup Windows keep theirs: Ghost Mode doesn't change how they are decided.
+    @Test func enteringGhostModeMakesWebKitForgetTheIdleWidgetsGrants() {
+        let (fake, _, orchestrator) = makeWidget()
+        defer { withExtendedLifetime(orchestrator) {} }
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+        #expect(fake.mediaCaptureGrantsForgotten.map(\.source) == [.widget])
+        #expect(fake.mediaCaptureGrantsForgotten.map(\.onlyIfIdle) == [true])
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+        #expect(fake.mediaCaptureGrantsForgotten.count == 1, "leaving Ghost Mode loosens nothing")
+    }
+
     // MARK: Reopening
 
     /// A reopened widget still answers — and its page load starts without the old grants.

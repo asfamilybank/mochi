@@ -8,6 +8,8 @@ import Foundation
 /// The config, the mode and the clock are read at the moment of use, never cached; exceptions are
 /// written back through the same `persist` transform every other writer uses.
 final class MediaCapturePermissionController {
+    private let platformOps: PlatformOps
+    private let window: WidgetWindowHandle
     private let currentConfig: () -> WidgetConfig
     private let persist: (@escaping (WidgetConfig) -> WidgetConfig) -> Void
     private let isGhostModeActive: () -> Bool
@@ -22,6 +24,8 @@ final class MediaCapturePermissionController {
         isGhostModeActive: @escaping () -> Bool,
         now: @escaping () -> Date
     ) {
+        self.platformOps = platformOps
+        self.window = window
         self.currentConfig = currentConfig
         self.persist = persist
         self.isGhostModeActive = isGhostModeActive
@@ -33,8 +37,27 @@ final class MediaCapturePermissionController {
             self?.answer(answer, to: request) ?? false
         }
         platformOps.onNewDocumentCommitted(window) { [weak self] source in
-            self?.grantsThisTime[source] = nil
+            self?.newDocumentCommitted(in: source)
         }
+    }
+
+    private func newDocumentCommitted(in source: WebViewSource) {
+        grantsThisTime[source] = nil
+        // #96: WebKit's own grant would outlive the page load otherwise — a page reloading itself
+        // is never asked again. The old document is gone: nothing to interrupt.
+        platformOps.forgetMediaCaptureGrants(in: window, of: source, onlyIfIdle: false)
+    }
+
+    /// #96: a settings edit applies to the next request even where WebKit already granted one —
+    /// except on a page that is capturing right now, which picks it up on its next page load.
+    func settingsMayHaveChanged() {
+        platformOps.forgetMediaCaptureGrants(in: window, of: nil, onlyIfIdle: true)
+    }
+
+    /// #96: Ghost Mode denies the widget's page, so a grant WebKit kept from Normal Mode must go
+    /// (a capture already running carries on, as with a settings edit).
+    func ghostModeEntered() {
+        platformOps.forgetMediaCaptureGrants(in: window, of: .widget, onlyIfIdle: true)
     }
 
     private func decide(_ request: MediaCaptureRequest) -> MediaCaptureDecision {

@@ -123,6 +123,23 @@ extension AppKitWidgetWindowHandle: WKUIDelegate {
         return .popupWindow(id: popup.id)
     }
 
+    /// #96, `PlatformOps.forgetMediaCaptureGrants`. Setting a capture state to `.none` is the only
+    /// public way to make WebKit forget its grants (measured: either one forgets both devices'),
+    /// and it is also what stops a capture — hence `onlyIfIdle`.
+    func forgetMediaCaptureGrants(of source: WebViewSource?, onlyIfIdle: Bool) {
+        let webViews: [WKWebView] =
+            switch source {
+            case nil: [webView] + popupWindows.map(\.webView)
+            case .widget: [webView]
+            case .popupWindow(let id): popupWindows.filter { $0.id == id }.map(\.webView)
+            }
+        for webView in webViews
+        where !onlyIfIdle || (webView.cameraCaptureState == .none && webView.microphoneCaptureState == .none) {
+            webView.setCameraCaptureState(.none)
+            webView.setMicrophoneCaptureState(.none)
+        }
+    }
+
     // MARK: New windows (#67)
 
     /// `target=_blank` links and `window.open` from the widget's page *or* any of its Popup

@@ -411,6 +411,15 @@ public protocol PlatformOps: AnyObject {
     /// (`pushState`, a fragment), which keeps the page load. Ends that web view's 「仅这次允许」.
     func onNewDocumentCommitted(_ window: WidgetWindowHandle, perform handler: @escaping (WebViewSource) -> Void)
 
+    /// #96: WebKit remembers a camera/microphone grant on its own and stops asking
+    /// `onMediaCaptureRequested` while the page stays on the same website — through `pushState`,
+    /// same-origin navigations, even the page reloading itself — until the app loads or reloads
+    /// the web view, or the page moves to another website. (A denial isn't remembered.) Makes it
+    /// forget, so the next request is decided again. `source` nil means the widget's page and every
+    /// Popup Window. Forgetting also stops a capture in progress; `onlyIfIdle` leaves a web view
+    /// that is capturing alone.
+    func forgetMediaCaptureGrants(in window: WidgetWindowHandle, of source: WebViewSource?, onlyIfIdle: Bool)
+
     // #67: new windows and Popup Windows
 
     /// Registers the handler that decides a page's new-window request — from the widget's page or
