@@ -190,9 +190,10 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 - 界面验证要触发页面行为又不想动用户鼠标：测试 config 里写 `custom_script`（每次导航注入，可调 `alert`/`window.open`/`w.opener`）配合 `data:` 启动页；在设置面板里点控件会真实写入 config，所以一律先换测试 config。
 - 删 `WidgetConfig` 字段不需要写迁移：`parse` 遇到不认识的 TOML 键会直接忽略，app 退出时又会整份重写 `config.toml`，旧键自然消失。但要补一条测试钉住「带旧键的配置仍能解析、`serialized()` 里不再出现这个键」，免得以后有人把解析改成严格模式。
 - 从 Bash 工具启动的 `.build/debug/Mochi` 会继承 Claude.app 的「辅助功能」授权：`NSEvent` 全局监听真能收到按键，可以做真机端到端测试。具体做法：先 `osascript` 把 Finder 切到前台，再用 `CGEvent(...).post(tap: .cghidEventTap)` 发按键（修饰键单按要把 `type` 设成 `.flagsChanged`，flags 里带上设备位，例如右 ⌥ 是 `0x40`）；页面状态让测试页自己写进 `document.title`，再用 `CGWindowListCopyWindowInfo` 读 `kCGWindowName` 拿到。
+- 摄像头、麦克风、下载文件夹被拒过一次之后，再去系统设置里打开，**必须重开 Mochi 才生效**（系统会弹「退出并重新打开」，选「以后」就一直不生效）；只有辅助功能是打开就生效。写验证清单时把「重开」列成单独一步。自选下载文件夹放在 `~/Documents` 下，跨重启也不会弹授权框（ADR-0026「后续」）。
 - **系统权限算在发起进程头上**：终端或 Bash 启动的 Mochi 申请的权限会记到终端/Claude 名下。验证系统权限流程必须先把 Release 产物 `ditto` 到 `/Applications/Mochi.app`（旧版本先挪去备份），再用 `open` 启动。替换后 cdhash 会变，ADR-0026 的升级陷阱随之出现：辅助功能的开关显示打开但实际无效，在系统设置里关了再开没用，只能移除后重新添加。
 - `tccutil reset … com.daidalma.mochi` 只清系统那一侧的授权，清不掉 Mochi 自己记在 `UserDefaults` 里的「已自动请求过」标记（`systemPermissionAccessibilityAutoRequested`）。要重测首次弹框，还得 `defaults delete com.daidalma.mochi <键>`。`tccutil` 改的是系统隐私设置，只能让用户自己执行。
-- 看 TCC 实际做了什么判定：`log show --predicate 'subsystem == "com.apple.TCC"'`，按 msgID 把 `AUTHREQ_CTX`（service、preflight）、`AUTHREQ_SUBJECT`（哪个 app）、`AUTHREQ_RESULT`（authValue 0 拒绝 / 1 未知 / 2 允许；authReason 4 表示系统设置的、5 表示没有记录）对起来看，没有 `AUTHREQ_PROMPTING` 就说明没弹过框。`TCC.db` 没有完全磁盘访问权限读不了，别去试。
+- 看 TCC 实际做了什么判定：`log show --predicate 'subsystem == "com.apple.TCC"'`，按 msgID 把 `AUTHREQ_CTX`（service、preflight）、`AUTHREQ_SUBJECT`（哪个 app）、`AUTHREQ_RESULT`（authValue 0 拒绝 / 1 未知 / 2 允许；authReason 4 表示系统设置的、5 表示没有记录）对起来看，没有 `AUTHREQ_PROMPTING` 就说明没弹过框。`TCC.db` 没有完全磁盘访问权限读不了，别去试。zsh 里 `log` 是内建命令，要写 `/usr/bin/log show`，否则报 `too many arguments`。复盘用户手动测试时：`Publishing <TCCDEvent: type=Create/Modify/Delete, service=…>` 记的是谁在系统设置或 `tccutil` 里改了什么、什么时候改的；Mochi 每次启动都会 preflight 一次 Camera/Microphone，`AUTHREQ_ATTRIBUTION` 里的 pid 一变就说明重启过（也可以用 `ps -o lstart -p $(pgrep -x Mochi)` 看启动时间）。⌘W 只关窗口、不算重启。Bash 沙盒里访问 `~/Documents` 也会在日志里留下一条查询，别把它算到 Mochi 头上。
 - 全局按键监听（`addGlobalMonitorForEvents`）的放行规则是实测得来的（[ADR-0029](docs/adr/0029-accessibility-only-for-typing-like-video-combos.md)）：没有任何权限时，修饰键变化（轻按、连按两次）和带 ⌃ 或 ⌘ 的组合键都能收到，只带 ⌥/⇧ 的组合键会被当成打字拦下；只有辅助功能能解除这层过滤，输入监控不行。另外，系统会在不弹框的情况下自己把输入监控记成「拒绝」。
 - 端到端测试判断前台 app 用 bundle id（`com.apple.finder`），别用 `localizedName`（Finder 叫「访达」）。只发修饰键单按（`flagsChanged`）时可以不查前台：它不产生字符，打不进别的 app；普通按键仍然每一下都要查。用户正在用 Claude.app 时它会反复抢回前台，依赖前台的步骤会随机跳过，别当成功能坏了。
 - Carbon 热键（Mochi 自己的 ⌥G/⌥H）和系统快捷键（⌘Tab）在 `NSEvent` 全局/本地监听看到之前就把 keyDown 吞掉了。凡是要判断"期间没按别的键"的逻辑，都要再查 `CGEventSource.secondsSinceLastEventType(.hidSystemState, ...)`，并且按事件时间比较，别用 `counterForEventType` 的两次读数相减：监听回调会滞后，中间那颗键会同时落在两次读数之前。
@@ -219,3 +220,5 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 commit message 里写 `Closes #<n>`，push 后让 GitHub 自动关闭——不要手动跑 `gh issue close`。
 
 一个 commit 要关闭多个 issue 时，`Closes #13, #14, #15` 这种逗号列表只会关闭紧跟关键字的第一个，其余只是被关联（cross-reference）不会关闭——每个号码前都要重复关键字：`Closes #13`、`Closes #14`、`Closes #15` 各自一行（或都用 `Closes` 而不是省略后续的关键字）。
+
+用 `Closes #<n>` 的 commit 关掉一张带「真机验证清单」评论的票时，要同时把清单勾好：拿 `gh api repos/asfamilybank/mochi/issues/<n>/comments` 查到评论 id，在 scratchpad 里生成新的 body 文件，再把 `gh api --method PATCH repos/asfamilybank/mochi/issues/comments/<id> -F body=@<文件>` 交给用户执行（改评论不在豁免里）。这条命令在用户终端会进分页器，显示 `(END)`，要提醒按 `q`。
