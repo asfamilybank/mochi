@@ -40,6 +40,10 @@ xattr -dr com.apple.quarantine /Applications/Mochi.app
 
 Mochi 只做 ad-hoc 签名，系统按每一版的签名记账，所以每次升级之后，「系统设置 → 隐私与安全性 → 辅助功能」里 Mochi 的开关**看着还开着，实际已经失效**。在列表里选中 Mochi，点下方的「−」把它移除，再点「+」把 `/Applications/Mochi.app` 重新添加进来并打开开关，不用重新打开 Mochi，马上就会生效。
 
+**在系统设置里打开了摄像头、麦克风或下载文件夹权限，Mochi 里还是用不了**
+
+这几项权限只要被拒过一次，之后在「系统设置 → 隐私与安全性」里再打开，系统会提示需要退出并重新打开 Mochi，请照做：选「以后」的话，Mochi 重新打开之前仍然拿不到这项权限，设置里的提示也不会消失。辅助功能不受影响，打开就生效。
+
 ## 卸载
 
 把 `/Applications/Mochi.app` 移到废纸篓即可。如果想连数据一起清掉，再删除 `~/Library/Application Support/Mochi`（配置文件 `config.toml`）和 `~/Library/Caches/com.daidalma.mochi`、`~/Library/WebKit/com.daidalma.mochi`、`~/Library/HTTPStorages/com.daidalma.mochi.binarycookies`（网站缓存与登录态）。
