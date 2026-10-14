@@ -115,6 +115,7 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 - 起探针实例前用 `if pgrep -x Mochi; then echo ABORT; else ... fi` 包住整段，**检测到就不跑**，不能只打印一下接着跑。结束时也别 `kill $(pgrep -x Mochi)`，那会连用户开着的实例一起杀掉。
 - 量别的 app 的窗口尺寸（如 Safari 最小宽高，实测 574×220）用 `CGWindowListCopyWindowInfo` 读 `kCGWindowBounds`，按 owner 名过滤（Safari 的 owner 名是本地化的「Safari浏览器」，用 contains），不需要截图权限。
 - Mochi 启动时 `config.toml` 解析失败会走 `presentAlert` 的模态 `NSAlert` 卡住主线程，表现为"进程活着但 AX 查不到窗口、`screencapture -l` 也失败"——别误判成权限没生效。另外 app 退出时会整份重写 `config.toml`（手工 `>>` 追加 TOML 段容易造出重复 section 触发上面这个坑），探针类实验前先备份、跑完还原；用户手上开着 Mochi 时不要再起第二个实例，两者共享同一份配置文件。
+- 每次修改都会经 `persist` **立即写盘**（不只是退出时写）：验证「询问框、设置面板写进了什么」直接读 `config.toml` 就行，不用退出 Mochi。反过来，Mochi 运行时手改这个文件不会生效，退出时还会被整份覆盖。
 - 备份 config 和覆盖 config 必须用 `&&` 串起来（`cp config.toml $S/backup.toml && printf … > config.toml`）：scratchpad 目录可能在两轮之间被清空重建，`cp` 失败后若用 `;` 或分两条命令，会在没有备份的情况下覆盖用户的真实配置。
 - 「辅助功能」和「自动化」（Automation）是两个独立的 TCC 权限类别——只开「辅助功能」，`osascript` 操作 System Events 依然会报"不允许辅助访问"，还要在「自动化」里单独把 Claude 对 System Events 的授权打开；改动任一权限后都要完全退出重启一次 Claude.app（`⌘Q`）才生效，不会热更新。
 - 验证 Mochi 窗口只能用 `screencapture -l<windowID>` 按窗口 ID 截图（窗口 ID 用 `CGWindowListCopyWindowInfo` 查，System Events 的 `id of window` 属性不支持）——**禁止用全屏 `-x` 或区域 `-R`**，这两种会把屏幕上恰好可见的其他窗口一起拍进去，曾真实发生过误拍到用户私人聊天内容的事故。这条不分用途：连"只是探测一下有没有权限"也不准用 `-x`（拿任意窗口 ID 试 `-l` 即可）。
@@ -209,6 +210,7 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 - 测轻按识别本身的测试用 `WidgetConfig.tapsOnlyVideoKeys`（只有轻按、不会延迟），别用默认配置：自 ADR-0024 起右 ⌥ 默认两用，轻按要等 `runScheduledWork()`。需要定时的逻辑走 `PlatformOps.schedule(after:)`，测试里用 `FakePlatformOps.runScheduledWork()` 代替时间流逝。
 - 设置窗口里「幽灵模式」「脚本」两个面板的高度是写死的（见 `SettingsView` 的 `content(viewModel:)` 里的 `.frame(height:)`）：往里加分组却不调高度，会出现顶部标题被裁掉、`List` 被挤到 0 高的情况，编译和测试都发现不了，只能截图看。
 - 打开设置、切面板、点按钮一律用 AX 动作（`AXUIElementPerformAction` + `kAXPressAction`，菜单项走 `kAXMenuBarAttribute` 找「设置…」），不发合成按键：AX 不需要 Mochi 在前台，也不会误打进用户正在用的应用。确需按键时，每一下之前都查一次 frontmost，不是 Mochi 就跳过，不能只在开头 `set frontmost` 一次——用户在用电脑时它会静默失败。
+- AX 只看得见**当前桌面（Space）**上的窗口：Mochi 窗口在别的桌面时，`kAXWindowsAttribute` 返回 0 个，`CGWindowListCopyWindowInfo` 和 `screencapture -l` 却照常能用，别误判成辅助功能权限失效。想用 AX 操作时，退出 Mochi 再用 `open -a /Applications/Mochi.app` 启动，新窗口会出现在当前桌面。
 - ⚠️ 用自动化点「清除浏览数据…」这类会删用户数据的 sheet，点「清除」之前**必须把每个勾选框的状态读回来核对**，不一致就取消：它默认勾着「历史记录」，而勾选框的 AX 标题是「历史记录、这段时间内访问过的网页…」这种「标题、说明」连在一起的整串，按「历史记录」匹配会静默落空。真实事故（#96 验证）：取消勾选没生效，一次「清除」把用户全部历史记录删掉了。事后恢复靠的是 SQLite 没有覆盖已删除的记录：先把 `History.db*` 复制出来，`sqlite3 副本 ".recover"` 生成 SQL，导进一个新库后，`lost_and_found` 里 `nfield = 4` 的行就是 `(url, title, last_visited, visit_count)`，找回了 38 条，再在 Mochi 退出后用 `INSERT … ON CONFLICT(url) DO UPDATE` 写回去。
 - 设置面板里几种控件的 AX 特点：① SwiftUI `Picker` 弹出按钮没有标题和描述，只能按当前值（`AXValue`）定位；要用 `AXPress` 打开，菜单项出现在它的子级 `AXMenu` 底下，`AXShowMenu` 没用。② 例外表格（`AXOutline`）设置 `AXSelectedRows` 就能选中，但按 Delete 键之前还要把 `AXFocused` 设成 true，否则按键到不了表格。③「管理网站和数据…」删除后列表是异步重新加载的，要等一两秒再读，太早读会误以为没删掉。
 - 设置窗口里的 SwiftUI 控件，System Events 的 `entire contents`/`whose description` 读不到（返回空或 -1719）：写个小 swift 工具用 `AXUIElementCopyAttributeValue` 递归 `kAXChildrenAttribute` 遍历，按 `AXDescription`/`AXTitle` 匹配。
@@ -225,4 +227,4 @@ commit message 里写 `Closes #<n>`，push 后让 GitHub 自动关闭——不�
 
 一个 commit 要关闭多个 issue 时，`Closes #13, #14, #15` 这种逗号列表只会关闭紧跟关键字的第一个，其余只是被关联（cross-reference）不会关闭——每个号码前都要重复关键字：`Closes #13`、`Closes #14`、`Closes #15` 各自一行（或都用 `Closes` 而不是省略后续的关键字）。
 
-用 `Closes #<n>` 的 commit 关掉一张带「真机验证清单」评论的票时，要同时把清单勾好：拿 `gh api repos/asfamilybank/mochi/issues/<n>/comments` 查到评论 id，在 scratchpad 里生成新的 body 文件，再把 `gh api --method PATCH repos/asfamilybank/mochi/issues/comments/<id> -F body=@<文件>` 交给用户执行（改评论不在豁免里）。这条命令在用户终端会进分页器，显示 `(END)`，要提醒按 `q`。
+用 `Closes #<n>` 的 commit 关掉一张带「真机验证清单」评论的票时，要同时把清单勾好：拿 `gh api repos/asfamilybank/mochi/issues/<n>/comments` 查到评论 id，在 scratchpad 里生成新的 body 文件，再把 `gh api --method PATCH repos/asfamilybank/mochi/issues/comments/<id> -F body=@<文件> --silent` 交给用户执行（改评论不在豁免里；加 `--silent` 就不会把整段 JSON 吐进分页器）。执行后用 `gh api …/comments/<id> --jq .updated_at` 确认更新成功。
