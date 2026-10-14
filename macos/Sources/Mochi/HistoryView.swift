@@ -202,12 +202,8 @@ struct HistoryView: View {
             model.open(visits)
         }
         .onDeleteCommand { model.delete(model.selection) }
-        // ⌘C (#119): the edit menu's 拷贝 reaches the list through the responder chain. One row
-        // only — several selected, there is nothing to copy.
-        .onCopyCommand {
-            guard let text = model.copiedText(model.selection) else { return [] }
-            return [NSItemProvider(object: text as NSString)]
-        }
+        // ⌘C is `HistoryWindowController.copy(_:)`, not `onCopyCommand`: given nothing to copy,
+        // that one still empties the pasteboard (#119).
     }
 
     private func rows(_ rows: [HistoryBrowser.Row]) -> some View {
@@ -282,6 +278,8 @@ private struct HistoryRow: View {
                 }
             }
             .frame(width: 16, height: 16)
+            // Decoration: the title and address say which page it is.
+            .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.title)
                     .lineLimit(1)

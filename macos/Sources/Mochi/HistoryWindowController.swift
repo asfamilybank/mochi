@@ -9,7 +9,9 @@ import SwiftUI
 ///
 /// One instance for the app's lifetime, created on first use by `MainMenuBuilder`; closing only
 /// orders it out, so the search survives a close and reopen.
-final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate {
+final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate,
+    NSMenuItemValidation
+{
     private static let searchItemIdentifier = NSToolbarItem.Identifier("history.search")
     private static let clearItemIdentifier = NSToolbarItem.Identifier("history.clear")
     private static let matchCountItemIdentifier = NSToolbarItem.Identifier("history.matchCount")
@@ -147,6 +149,21 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSToo
         matchCountLabel.stringValue = "\(matchCount) 个匹配项"
         clearItem?.isHidden = isSearching
         matchCountItem?.isHidden = !isSearching
+    }
+
+    // MARK: ⌘C (#119)
+
+    /// 编辑 › 拷贝 with the list in front: the window controller is on the window's responder
+    /// chain, behind the search field's editor (which copies its own text first). With several
+    /// rows selected there is nothing to copy, so the item is disabled and the pasteboard is left
+    /// alone.
+    @objc func copy(_ sender: Any?) {
+        model.copy(model.selection)
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        guard menuItem.action == #selector(copy(_:)) else { return true }
+        return model.canCopy(model.selection)
     }
 
     @objc private func clearHistory(_ sender: Any?) {
