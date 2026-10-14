@@ -52,6 +52,8 @@ GitHub 原生 `blocked_by` 依赖（`issue-tracker.md` 写在"Wayfinding operati
 
 多 session 并发时 `CLAUDE.md` 自身也可能被别的 session 同时改动（比如学习记录更新）——commit 前 `git status` 看到 `CLAUDE.md` 有非本次任务的改动，按文件名精确 `git add`，不要用 `-A`/`.` 把它一起带上。`git reset`/`git commit --amend` 之类改写历史的操作（哪怕只是改 commit message）也可能顺带清空其他文件上尚未提交的改动——修改已推送的 commit 前先确认工作区没有别的 session 留下的草稿。这类操作前还要先 `git fetch` 核对 `@{upstream}`：用户会在轮次之间自己 push，不能因为"push 由用户手动执行"就假定 HEAD 还没推送（本仓库真实踩过：amend 了一个已在 origin/main 上的 commit）。需要撤销这类改写时用 `git reset --soft origin/main`，别用 `--hard`。
 
+签名用不了（锁屏时 1Password 会一直报错）又要接着做后面的票时：上一张票的改动先 `git add` 进暂存区留着；后面每做完一张，把累积的 `git diff` 存成补丁放进 `.git/`（不被跟踪、不会被清，scratchpad 会）。`git diff` 不含 untracked 新文件，要先 `git add -N` 或另外备份。能签名之后先提交暂存区，再把工作区整个 `git stash -u` 留底，然后按 `git apply -R 上一份补丁 && git apply 下一份补丁` 逐张重建，每张都构建、测试、提交。拆完用 `git diff stash@{0}` 核对跟拆之前一致，再删 stash 和补丁。
+
 重新设计一个已经 CLOSED 的 issue 所描述的（已上线）行为时，新开一个 issue 引用旧的，不要重开/改写旧 issue 的验收标准——旧记录保留作历史存档。
 
 commit message 里用 `Closes #<n>` 关闭多个 issue 时，逗号列表（`Closes #13, #14, #15`）只会关闭紧跟关键字的第一个，其余只是被关联（cross-reference）不会关闭——每个号码前都要重复关键字：`Closes #13`、`Closes #14`、`Closes #15` 各自一行（或都用 `Closes` 而不是省略后续的关键字）。
@@ -116,7 +118,7 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 - 量别的 app 的窗口尺寸（如 Safari 最小宽高，实测 574×220）用 `CGWindowListCopyWindowInfo` 读 `kCGWindowBounds`，按 owner 名过滤（Safari 的 owner 名是本地化的「Safari浏览器」，用 contains），不需要截图权限。
 - Mochi 启动时 `config.toml` 解析失败会走 `presentAlert` 的模态 `NSAlert` 卡住主线程，表现为"进程活着但 AX 查不到窗口、`screencapture -l` 也失败"——别误判成权限没生效。另外 app 退出时会整份重写 `config.toml`（手工 `>>` 追加 TOML 段容易造出重复 section 触发上面这个坑），探针类实验前先备份、跑完还原；用户手上开着 Mochi 时不要再起第二个实例，两者共享同一份配置文件。
 - 每次修改都会经 `persist` **立即写盘**（不只是退出时写）：验证「询问框、设置面板写进了什么」直接读 `config.toml` 就行，不用退出 Mochi。反过来，Mochi 运行时手改这个文件不会生效，退出时还会被整份覆盖。
-- 备份 config 和覆盖 config 必须用 `&&` 串起来（`cp config.toml $S/backup.toml && printf … > config.toml`）：scratchpad 目录可能在两轮之间被清空重建，`cp` 失败后若用 `;` 或分两条命令，会在没有备份的情况下覆盖用户的真实配置。
+- 备份 config 和覆盖 config 必须用 `&&` 串起来（`cp config.toml $S/backup.toml && printf … > config.toml`）：scratchpad 目录可能在两轮之间被清空重建，`cp` 失败后若用 `;` 或分两条命令，会在没有备份的情况下覆盖用户的真实配置。备份放到 `~/Library/Application Support/Mochi.claude-backup/` 这种不会被清的目录，别放 scratchpad。要验证历史记录，就把 `History.db` 也挪进备份目录，按当前 schema 用 `sqlite3` 手写一个测试库（图标 blob 用 `readfile()` 灌进去），跑完挪回。
 - 「辅助功能」和「自动化」（Automation）是两个独立的 TCC 权限类别——只开「辅助功能」，`osascript` 操作 System Events 依然会报"不允许辅助访问"，还要在「自动化」里单独把 Claude 对 System Events 的授权打开；改动任一权限后都要完全退出重启一次 Claude.app（`⌘Q`）才生效，不会热更新。
 - 验证 Mochi 窗口只能用 `screencapture -l<windowID>` 按窗口 ID 截图（窗口 ID 用 `CGWindowListCopyWindowInfo` 查，System Events 的 `id of window` 属性不支持）——**禁止用全屏 `-x` 或区域 `-R`**，这两种会把屏幕上恰好可见的其他窗口一起拍进去，曾真实发生过误拍到用户私人聊天内容的事故。这条不分用途：连"只是探测一下有没有权限"也不准用 `-x`（拿任意窗口 ID 试 `-l` 即可）。
 - 菜单栏的 `NSStatusItem` 不作为 `CGWindowListCopyWindowInfo` 查得到的窗口暴露（按 owner 过滤只能拿到普通窗口），所以托盘图标截不了图——只能验证到"图像尺寸装得进 22pt 菜单栏"这层几何，清晰度要请用户看一眼。
@@ -211,13 +213,19 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 - 设置窗口里「幽灵模式」「脚本」两个面板的高度是写死的（见 `SettingsView` 的 `content(viewModel:)` 里的 `.frame(height:)`）：往里加分组却不调高度，会出现顶部标题被裁掉、`List` 被挤到 0 高的情况，编译和测试都发现不了，只能截图看。
 - 打开设置、切面板、点按钮一律用 AX 动作（`AXUIElementPerformAction` + `kAXPressAction`，菜单项走 `kAXMenuBarAttribute` 找「设置…」），不发合成按键：AX 不需要 Mochi 在前台，也不会误打进用户正在用的应用。确需按键时，每一下之前都查一次 frontmost，不是 Mochi 就跳过，不能只在开头 `set frontmost` 一次——用户在用电脑时它会静默失败。
 - AX 只看得见**当前桌面（Space）**上的窗口：Mochi 窗口在别的桌面时，`kAXWindowsAttribute` 返回 0 个，`CGWindowListCopyWindowInfo` 和 `screencapture -l` 却照常能用，别误判成辅助功能权限失效。想用 AX 操作时，退出 Mochi 再用 `open -a /Applications/Mochi.app` 启动，新窗口会出现在当前桌面。
+- 屏幕锁定时（`ioreg -n Root -d1 | grep '"CGSSessionScreenIsLocked"=Yes'`），`screencapture -l` 报 `could not create image from window`，AX 读到的窗口标题全变成 `Mochi`、按标题找窗口落空，1Password 签名和 SSH 也一起失败（`failed to fill whole buffer`、`agent returned an error`、`communication with agent failed`）。这些都不是代码或权限的问题。真机验证开始前先跑 `caffeinate -d -t 900`，防止中途自动锁屏；已经锁了就先还原测试用的 config 和库，等用户回来。
+- 往工具栏搜索框（`NSSearchToolbarItem`）里填值不用发按键：AX 先设 `AXFocused`、再设 `AXValue`，就会触发它的 action，跟用户打字一样。
+- AX 打不开 SwiftUI `contextMenu(forSelectionType:)` 的菜单：`AXShowMenu` 对 `AXRow`/`AXCell` 返回 -25206，对 `AXImage`/`AXStaticText` 返回成功却什么也不出现。只能发一次真实的右键 `CGEvent`：先确认 Mochi 在前台，记下光标位置，点完用 `CGWarpMouseCursorPosition` 还原。菜单出现在**窗口**底下的 `AXMenu` 里（不在 app 顶层），而且要在同一个进程里接着 `AXPress` 菜单项——另起一次 `osascript` 去点时菜单已经关了。把 Mochi 切到前台用 `osascript` 让 System Events `set frontmost`；从后台的小工具里调 `NSRunningApplication.activate` 切不过去。
 - ⚠️ 用自动化点「清除浏览数据…」这类会删用户数据的 sheet，点「清除」之前**必须把每个勾选框的状态读回来核对**，不一致就取消：它默认勾着「历史记录」，而勾选框的 AX 标题是「历史记录、这段时间内访问过的网页…」这种「标题、说明」连在一起的整串，按「历史记录」匹配会静默落空。真实事故（#96 验证）：取消勾选没生效，一次「清除」把用户全部历史记录删掉了。事后恢复靠的是 SQLite 没有覆盖已删除的记录：先把 `History.db*` 复制出来，`sqlite3 副本 ".recover"` 生成 SQL，导进一个新库后，`lost_and_found` 里 `nfield = 4` 的行就是 `(url, title, last_visited, visit_count)`，找回了 38 条，再在 Mochi 退出后用 `INSERT … ON CONFLICT(url) DO UPDATE` 写回去。
 - 设置面板里几种控件的 AX 特点：① SwiftUI `Picker` 弹出按钮没有标题和描述，只能按当前值（`AXValue`）定位；要用 `AXPress` 打开，菜单项出现在它的子级 `AXMenu` 底下，`AXShowMenu` 没用。② 例外表格（`AXOutline`）设置 `AXSelectedRows` 就能选中，但按 Delete 键之前还要把 `AXFocused` 设成 true，否则按键到不了表格。③「管理网站和数据…」删除后列表是异步重新加载的，要等一两秒再读，太早读会误以为没删掉。
 - 设置窗口里的 SwiftUI 控件，System Events 的 `entire contents`/`whose description` 读不到（返回空或 -1719）：写个小 swift 工具用 `AXUIElementCopyAttributeValue` 递归 `kAXChildrenAttribute` 遍历，按 `AXDescription`/`AXTitle` 匹配。
+- SwiftUI 的 `onCopyCommand` 返回空数组时**照样会清空剪贴板**，返回的 `NSItemProvider` 写进去的内容 `pbpaste` 也读不出纯文本（#119 真机发现）。窗口里的 ⌘C 改由 window controller 实现 `copy:`（它在窗口的响应链上，排在搜索框的 field editor 后面），再用 `NSMenuItemValidation` 控制「编辑 › 拷贝」能不能点，参见 `HistoryWindowController`。验证拷贝之前先 `osascript -e 'clipboard info'` 看用户剪贴板里有什么：`pbpaste` 只能存下纯文本，里面还有 HTML、图片之类时先问用户。
+- 纯装饰的 SF Symbol 要加 `.accessibilityHidden(true)`：系统会给它配读屏标签，`globe` 会被念成「地球仪键」。
 - 起探针实例时 `pkill -f '\.build/debug/Mochi$'` 匹配不到带参数启动的进程（如 `-NSRequiresAquaSystemAppearance YES`），用 `'\.build/debug/Mochi( |$)'`。
 - 验证浅色外观不用改系统设置：启动参数加 `-NSRequiresAquaSystemAppearance YES`。截图裁剪没有 PIL，用 `sips -c <h> <w> --cropOffset <y> <x> in.png --out out.png`。
 - Mochi 自己注册着的 Carbon 全局热键（⌥G/⌥H 及映射触发键），在设置面板录制时也会先被 Carbon 吞掉、到不了录制框——这类组合没法在真机上「录」出冲突。测就地冲突提示要用 ⌘,（保留的菜单快捷键，录制框靠 `performKeyEquivalent` 截住）；合成的右 ⌥ 轻按（`flagsChanged`）也录不进录制框，新旧代码都一样，这一项只能请用户手按。
 - `NSViewRepresentable` 不会尊重 `intrinsicContentSize`，会被拉满可用宽度：要固定尺寸就实现 `sizeThatFits(_:nsView:context:)` 返回它。macOS 的 `List`（`.plain`）不管 `listRowInsets` 怎么设，左边都还有约 8pt 缩进，分隔线也横跨整行，会从浮动滚动条底下穿过；`.contentMargins(.trailing, …, for: .scrollContent)` 对它无效。要精确控制左右边界（对齐外面的控件、给滚动条留 `NSScroller.scrollerWidth(for: .regular, scrollerStyle: .overlay)` 宽的空白），就改用 `ScrollView` + `VStack(spacing: 0)` + 自己画的 `Divider()`，参见 `HotkeyForwardingSection`。
+- macOS 上没有 `listSectionSpacing`（`@available(macOS, unavailable)`）：`List` 的每个 `Section` 都自带一截间距，折叠成空的 section 会留下大块空白。要紧凑的可折叠分组，就把分组标题做成 `ForEach` 里的普通一行（参见 `HistoryView` 的日期行）。这一行的 id 类型跟 `List(selection:)` 的选择类型不同，它就选不中，行上自己的 `.contextMenu` 照常能用。
 - 设置窗口里的 SwiftUI `ScrollView`/`List` 用合成手段滚不动：`CGEvent` 滚轮 `postToPid` 和 AX 的 `AXScrollToVisible` 都没反应，所以浮动滚动条截不到图。验证滚动条有没有压住内容，就看截图里内容右边缘离容器边缘够不够 17pt，滚动条本身请用户真机滚一下。
 - 设置面板的录制控件只有一个：`HotkeyRecorderField`（`HotkeyRecorderView`/`TriggerKeyRecorderView` 两层薄包装），显示和录制中的按键判定都在 MochiCore 的 `HotkeyRecorderModel` 里；`SettingsController` 拒绝修改时返回 `HotkeyRejection`（不弹框），由 view model 显示在出错那一行。新增热键类设置照此接，别再造录制按钮或 alert。带触发方式下拉框的行照 `VideoControlRow` 写：`pendingKind` 加 `recordingRequest` 计数，`onRecordingStopped` 里清空 `pendingKind`。选一种方式只是先试，录到新键才算修改。
 
