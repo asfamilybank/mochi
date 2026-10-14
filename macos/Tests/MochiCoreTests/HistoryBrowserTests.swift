@@ -31,10 +31,6 @@ import Testing
         HistoryBrowser(store: store, open: opened)
     }
 
-    private func addresses(_ sections: [HistoryBrowser.Section]) -> [[String]] {
-        sections.map { $0.rows.map(\.url.absoluteString) }
-    }
-
     private func addresses(_ days: [HistoryBrowser.Day]) -> [[String]] {
         days.map { $0.rows.map(\.url.absoluteString) }
     }
@@ -236,18 +232,19 @@ import Testing
         #expect(openedBrowser(makeStore()).days.isEmpty)
     }
 
-    // MARK: Search
+    // MARK: Search (#118)
 
     @Test(arguments: [
         (query: "Cats", shown: ["https://video.example.com/watch"]),
         (query: "cats", shown: ["https://video.example.com/watch"]),
         (query: "news.example", shown: ["https://news.example.org/today"]),
         (query: " news ", shown: ["https://news.example.org/today"]),
+        (query: "example", shown: ["https://video.example.com/watch", "https://news.example.org/today"]),
         (query: "nothing like it", shown: []),
     ])
     func searchMatchesTitleOrAddress(_ row: (query: String, shown: [String])) {
         let store = makeStore()
-        visit(store, "https://news.example.org/today", at: "2026-10-11 09:00", title: "Headlines")
+        visit(store, "https://news.example.org/today", at: "2026-10-01 09:00", title: "Headlines")
         visit(store, "https://video.example.com/watch", at: "2026-10-12 09:00", title: "Funny Cats")
         let browser = openedBrowser(store)
 
@@ -256,6 +253,56 @@ import Testing
         #expect(browser.isSearching)
         #expect(browser.shownRows.map(\.url.absoluteString) == row.shown)
         #expect(browser.days.isEmpty)
+    }
+
+    /// Search results are one flat timeline, folded days and all — no day headers — with how many
+    /// there are.
+    @Test func searchResultsAreOneFlatTimelineWithTheirCount() {
+        let store = makeStore()
+        visit(store, "https://example.com/a", at: "2026-10-12 09:00")
+        visit(store, "https://example.com/b", at: "2026-10-10 09:00")
+        visit(store, "https://example.com/c", at: "2026-10-12 09:30")
+        visit(store, "https://other.org/", at: "2026-10-11 09:00")
+        let browser = openedBrowser(store)
+
+        browser.search("example.com")
+
+        #expect(
+            browser.results.map(\.url.path) == ["/c", "/a", "/b"])
+        #expect(browser.matchCount == 3)
+    }
+
+    /// With no day header above it, a result says which day it is from as well as when.
+    @Test func aResultsTimeSaysTheDayToo() {
+        let store = makeStore()
+        visit(store, "https://example.com/today", at: "2026-10-12 09:05")
+        visit(store, "https://example.com/yesterday", at: "2026-10-11 21:30")
+        visit(store, "https://example.com/earlier", at: "2026-10-04 08:00")
+        visit(store, "https://example.com/last-year", at: "2025-12-31 23:59")
+        let browser = openedBrowser(store)
+
+        browser.search("example")
+
+        #expect(
+            browser.results.map(\.time) == [
+                "今天 · 10月12日 星期一 09:05", "昨天 · 10月11日 星期日 21:30", "10月4日 星期日 08:00",
+                "2025年12月31日 星期三 23:59",
+            ])
+    }
+
+    /// Leaving a search goes back to the timeline as it was before it.
+    @Test func clearingTheSearchRestoresWhatWasUnfolded() {
+        let store = makeStore()
+        visit(store, "https://example.com/old", at: "2026-10-10 09:00")
+        visit(store, "https://example.com/today", at: "2026-10-12 09:00")
+        let browser = openedBrowser(store)
+        browser.setExpanded(true, day: browser.days[1].day)
+        browser.setExpanded(false, day: browser.days[0].day)
+
+        browser.search("example")
+        browser.search("")
+
+        #expect(browser.days.map(\.isExpanded) == [false, true])
     }
 
     /// Only whitespace is no search: the timeline, as it was.
@@ -268,7 +315,49 @@ import Testing
         browser.search(query)
 
         #expect(!browser.isSearching)
+        #expect(browser.results.isEmpty)
         #expect(addresses(browser.days) == [["https://example.com/a"]])
+    }
+
+    /// `site:<host>` at the start narrows to that host exactly, whatever its case; what follows
+    /// it narrows further.
+    @Test(arguments: [
+        (query: "site:knitpeople.com", shown: ["https://knitpeople.com/b", "https://knitpeople.com/a"]),
+        (query: "SITE:KnitPeople.com", shown: ["https://knitpeople.com/b", "https://knitpeople.com/a"]),
+        (query: "  site:knitpeople.com  ", shown: ["https://knitpeople.com/b", "https://knitpeople.com/a"]),
+        (query: "site:www.knitpeople.com", shown: ["https://www.knitpeople.com/"]),
+        (query: "site:knitpeople.com 薪酬", shown: ["https://knitpeople.com/a"]),
+        (query: "site:knitpeople.com   薪酬  ", shown: ["https://knitpeople.com/a"]),
+        // Pasted with its scheme or path, it is still the host that counts.
+        (query: "site:https://knitpeople.com/whatever", shown: ["https://knitpeople.com/b", "https://knitpeople.com/a"]),
+        // `site:` anywhere but the start is just text.
+        (query: "薪酬 site:knitpeople.com", shown: []),
+    ])
+    func siteNarrowsToOneHost(_ row: (query: String, shown: [String])) {
+        let store = makeStore()
+        visit(store, "https://knitpeople.com/a", at: "2026-10-12 09:00", title: "薪酬报告")
+        visit(store, "https://www.knitpeople.com/", at: "2026-10-12 09:01", title: "薪酬报告")
+        visit(store, "https://knitpeople.com.cn/", at: "2026-10-12 09:02", title: "薪酬报告")
+        visit(store, "https://knitpeople.com/b", at: "2026-10-12 09:03", title: "其他")
+        let browser = openedBrowser(store)
+
+        browser.search(row.query)
+
+        #expect(browser.results.map(\.url.absoluteString) == row.shown)
+    }
+
+    /// Deleting while searching takes the result off at once, and the count with it.
+    @Test func deletingAResultUpdatesTheCount() {
+        let store = makeStore()
+        let a = visit(store, "https://example.com/a", at: "2026-10-12 09:00")
+        visit(store, "https://example.com/b", at: "2026-10-11 09:00")
+        let browser = openedBrowser(store)
+        browser.search("example")
+
+        browser.delete([a])
+
+        #expect(browser.results.map(\.url.path) == ["/b"])
+        #expect(browser.matchCount == 1)
     }
 
     // MARK: Deleting
@@ -313,19 +402,6 @@ import Testing
             store.visits(since: .distantPast).map(\.url.absoluteString)
                 == ["https://example.com/today", "https://example.com/before"])
         #expect(browser.days.count == 2)
-    }
-
-    /// 删除这一天 means the whole day, including the visits a search is hiding — what the item says.
-    @Test func deletingADayWhileSearchingRemovesTheWholeDay() {
-        let store = makeStore()
-        visit(store, "https://example.com/match", at: "2026-10-11 09:00", title: "match")
-        visit(store, "https://example.com/other", at: "2026-10-11 10:00", title: "other")
-        let browser = openedBrowser(store)
-        browser.search("match")
-
-        browser.deleteDay(browser.sections[0].day)
-
-        #expect(store.visits(since: .distantPast).isEmpty)
     }
 
     // MARK: Opening

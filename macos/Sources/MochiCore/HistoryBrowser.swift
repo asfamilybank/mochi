@@ -7,7 +7,9 @@ import Foundation
 /// - the **timeline** (#116): one foldable day per day that has visits, newest first, with how
 ///   many visits it has. Only an expanded day's visits are read — a year of history opens as fast
 ///   as a week of it.
-/// - **search**: the visits whose title or address contains the query, one section per day.
+/// - **search** (#118): the visits whose title or address contains the query, as one flat
+///   timeline across every day, folded or not — each row saying which day as well as when — and
+///   how many there are. A leading `site:<host>` narrows them to that host exactly.
 ///
 /// A row is one visit (#114): a page visited three times is three rows. Deleting visits or a whole
 /// day and opening a page in the widget go through here too.
@@ -21,7 +23,8 @@ public final class HistoryBrowser {
         public let title: String
         /// The address, under a title — `nil` when the address already is the title.
         public let subtitle: String?
-        /// When it was visited, `HH:mm`.
+        /// When it was visited: `HH:mm` under its day's header; in search results, which have no
+        /// headers, the day's title before it — 「今天 · 10月14日 星期三 14:32」.
         public let time: String
         /// The visit's site icon (#117), for `HistoryBrowser.favicon(_:)`.
         public let faviconID: String?
@@ -53,21 +56,6 @@ public final class HistoryBrowser {
         public let rows: [Row]
     }
 
-    /// One day of search results.
-    public struct Section: Equatable, Identifiable, Sendable {
-        public var id: Date { day }
-        /// The start of the day.
-        public let day: Date
-        public let title: String
-        public let rows: [Row]
-
-        public init(day: Date, title: String, rows: [Row]) {
-            self.day = day
-            self.title = title
-            self.rows = rows
-        }
-    }
-
     private let store: HistoryStore
     private let openInWidget: (URL) -> Void
     private let retention: () -> HistoryRetention
@@ -76,8 +64,8 @@ public final class HistoryBrowser {
     public private(set) var query = ""
     /// The timeline — empty while searching.
     public private(set) var days: [Day] = []
-    /// The search results — empty while not searching.
-    public private(set) var sections: [Section] = []
+    /// The search results, newest first — empty while not searching.
+    public private(set) var results: [Row] = []
 
     /// The days unfolded. Starts empty, everything folded, until `resetExpansion()`.
     private var expandedDays: Set<Date> = []
@@ -101,9 +89,19 @@ public final class HistoryBrowser {
         !trimmedQuery.isEmpty
     }
 
+    /// What the search is narrowed by: the `site:` host, if any, and the keywords.
+    public var searchTerms: (host: String?, text: String) {
+        Self.parse(trimmedQuery)
+    }
+
+    /// 「N 个匹配项」.
+    public var matchCount: Int {
+        results.count
+    }
+
     /// Every row on show, top to bottom.
     public var shownRows: [Row] {
-        isSearching ? sections.flatMap(\.rows) : days.flatMap(\.rows)
+        isSearching ? results : days.flatMap(\.rows)
     }
 
     /// #110: called as the window opens, before it lists anything, so nothing past the retention
@@ -112,19 +110,26 @@ public final class HistoryBrowser {
         store.removeVisits(olderThan: retention())
     }
 
-    /// Re-reads the store, keeping which days are unfolded. Once 今天 has moved on (the window was
-    /// open across midnight), the new 今天 is unfolded too.
+    /// Re-reads the store, keeping which days are unfolded — searching leaves them alone, so the
+    /// timeline comes back as it was. Once 今天 has moved on (the window was open across midnight),
+    /// the new 今天 is unfolded too.
     public func reload() {
         let now = store.now()
         let today = store.calendar.startOfDay(for: now)
         if let previous = self.today, previous != today { expandedDays.insert(today) }
         self.today = today
+        let time = HistoryText.formatter("HH:mm", calendar: store.calendar)
         if isSearching {
             days = []
-            sections = Self.sections(of: store.search(trimmedQuery), now: now, calendar: store.calendar)
+            let (host, text) = Self.parse(trimmedQuery)
+            var dayTitles: [Date: String] = [:]
+            results = store.search(text, host: host).map { visit in
+                let day = store.calendar.startOfDay(for: visit.visitedAt)
+                if dayTitles[day] == nil { dayTitles[day] = Self.title(of: day, now: now, calendar: store.calendar) }
+                return Self.row(for: visit, time: time, day: dayTitles[day])
+            }
         } else {
-            sections = []
-            let time = HistoryText.formatter("HH:mm", calendar: store.calendar)
+            results = []
             days = store.dayCounts().map { count in
                 let isExpanded = expandedDays.contains(count.day)
                 return Day(
@@ -184,24 +189,27 @@ public final class HistoryBrowser {
         query.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// - Parameter visits: newest first, as `HistoryStore` returns them.
-    static func sections(of visits: [HistoryVisit], now: Date, calendar: Calendar) -> [Section] {
-        var days: [(day: Date, rows: [Row])] = []
-        let time = HistoryText.formatter("HH:mm", calendar: calendar)
-        for visit in visits {
-            let day = calendar.startOfDay(for: visit.visitedAt)
-            if days.last?.day != day { days.append((day, [])) }
-            days[days.count - 1].rows.append(row(for: visit, time: time))
-        }
-        return days.map { Section(day: $0.day, title: title(of: $0.day, now: now, calendar: calendar), rows: $0.rows) }
+    /// A leading `site:<host>` (any case) and the keywords after it; the whole query as keywords
+    /// otherwise. A host pasted with its scheme or path counts as its host.
+    static func parse(_ query: String) -> (host: String?, text: String) {
+        let prefix = "site:"
+        guard query.lowercased().hasPrefix(prefix) else { return (nil, query) }
+        let rest = query.dropFirst(prefix.count)
+        let token = rest.prefix { !$0.isWhitespace }
+        guard !token.isEmpty else { return (nil, query) }
+        let text = rest.dropFirst(token.count).trimmingCharacters(in: .whitespacesAndNewlines)
+        let host = token.contains("://") ? URL(string: String(token))?.host : String(token)
+        return (host.map { $0.lowercased() } ?? String(token).lowercased(), text)
     }
 
-    private static func row(for visit: HistoryVisit, time: DateFormatter) -> Row {
+    /// - Parameter day: the day's title, for a row with no day header above it (search results).
+    private static func row(for visit: HistoryVisit, time: DateFormatter, day: String? = nil) -> Row {
         let title = HistoryText.title(of: visit)
         let address = visit.url.absoluteString
+        let clock = time.string(from: visit.visitedAt)
         return Row(
             id: visit.id, url: visit.url, title: title ?? address, subtitle: title == nil ? nil : address,
-            time: time.string(from: visit.visitedAt), faviconID: visit.faviconID)
+            time: day.map { "\($0) \(clock)" } ?? clock, faviconID: visit.faviconID)
     }
 
     private static func title(of day: Date, now: Date, calendar: Calendar) -> String {

@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import MochiCore
 import SwiftUI
 
@@ -11,8 +12,15 @@ import SwiftUI
 final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate {
     private static let searchItemIdentifier = NSToolbarItem.Identifier("history.search")
     private static let clearItemIdentifier = NSToolbarItem.Identifier("history.clear")
+    private static let matchCountItemIdentifier = NSToolbarItem.Identifier("history.matchCount")
 
     private let model: HistoryViewModel
+    /// Made by the toolbar, kept to swap with each other as a search starts and ends (#118).
+    private weak var clearItem: NSToolbarItem?
+    private weak var matchCountItem: NSToolbarItem?
+    private let matchCountLabel = NSTextField(labelWithString: "")
+    private weak var searchField: NSSearchField?
+    private var subscriptions: Set<AnyCancellable> = []
     /// `PlatformOps.activateApp` — activation goes through the platform seam, never straight to
     /// `NSApp` (CLAUDE.md).
     private let activateApp: () -> Void
@@ -42,6 +50,19 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSToo
         toolbar.allowsUserCustomization = false
         window.toolbar = toolbar
         window.delegate = self
+
+        matchCountLabel.textColor = .secondaryLabelColor
+        // #118: while searching, 「N 个匹配项」 takes 清除历史记录…'s place, as in Safari.
+        model.$isSearching.combineLatest(model.$matchCount)
+            .sink { [weak self] isSearching, count in self?.showSearchState(isSearching: isSearching, matchCount: count) }
+            .store(in: &subscriptions)
+        // A query set from elsewhere (显示此网站的所有记录, #119) shows in the field too.
+        model.$query
+            .sink { [weak self] query in
+                guard let field = self?.searchField, field.stringValue != query else { return }
+                field.stringValue = query
+            }
+            .store(in: &subscriptions)
     }
 
     @available(*, unavailable)
@@ -74,7 +95,7 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSToo
     // MARK: NSToolbarDelegate
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, Self.clearItemIdentifier, Self.searchItemIdentifier]
+        [.flexibleSpace, Self.matchCountItemIdentifier, Self.clearItemIdentifier, Self.searchItemIdentifier]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -94,6 +115,16 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSToo
             item.isBordered = true
             item.target = self
             item.action = #selector(clearHistory(_:))
+            item.isHidden = model.isSearching
+            clearItem = item
+            return item
+        }
+        if itemIdentifier == Self.matchCountItemIdentifier {
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.label = "匹配项"
+            item.view = matchCountLabel
+            item.isHidden = !model.isSearching
+            matchCountItem = item
             return item
         }
         guard itemIdentifier == Self.searchItemIdentifier else { return nil }
@@ -102,6 +133,7 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSToo
         item.searchField.target = self
         item.searchField.action = #selector(searchChanged(_:))
         item.searchField.stringValue = model.query
+        searchField = item.searchField
         return item
     }
 
@@ -109,6 +141,12 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSToo
     /// empties the field.
     @objc private func searchChanged(_ sender: NSSearchField) {
         model.query = sender.stringValue
+    }
+
+    private func showSearchState(isSearching: Bool, matchCount: Int) {
+        matchCountLabel.stringValue = "\(matchCount) 个匹配项"
+        clearItem?.isHidden = isSearching
+        matchCountItem?.isHidden = !isSearching
     }
 
     @objc private func clearHistory(_ sender: Any?) {

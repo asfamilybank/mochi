@@ -146,6 +146,28 @@ func historyTestDate(_ string: String) -> Date {
         #expect(store.search("example").count == 2)
     }
 
+    /// `site:` (#118): the host exactly — not a longer one it is the start of, not a subdomain —
+    /// whatever its case, and the keywords on top.
+    @Test(arguments: [
+        (host: "knitpeople.com", text: "", expected: ["https://KnitPeople.com/b", "https://knitpeople.com/a"]),
+        (host: "www.knitpeople.com", text: "", expected: ["https://www.knitpeople.com/"]),
+        (host: "knitpeople.com.cn", text: "", expected: ["https://knitpeople.com.cn/"]),
+        (host: "knitpeople.com", text: "Payroll", expected: ["https://knitpeople.com/a"]),
+        (host: "example.com", text: "", expected: []),
+    ])
+    func searchCanBeNarrowedToOneHost(_ row: (host: String, text: String, expected: [String])) {
+        let store = makeStore()
+        for (address, title) in [
+            ("https://knitpeople.com/a", "Payroll"), ("https://www.knitpeople.com/", "Payroll"),
+            ("https://knitpeople.com.cn/", "Payroll"), ("https://KnitPeople.com/b", "Other"),
+        ] {
+            clock.now = clock.now.addingTimeInterval(60)
+            store.updateTitle(title, ofVisit: store.recordVisit(to: url(address))!)
+        }
+
+        #expect(store.search(row.text, host: row.host).map(\.url.absoluteString) == row.expected)
+    }
+
     // MARK: Days
 
     @Test func visitsAreGroupedByTheCalendarDayTheyHappenedOn() {

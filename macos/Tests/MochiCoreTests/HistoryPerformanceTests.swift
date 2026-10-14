@@ -3,8 +3,8 @@ import Testing
 
 @testable import MochiCore
 
-/// How the 历史记录 window holds up under a heavy year of history (#116): 300 000 visits, about
-/// 800 a day. Timing-sensitive, so off by default — CI's machines are too uneven to hold a
+/// How the 历史记录 window holds up under a heavy year of history (#116, #118): 300 000 visits,
+/// about 800 a day. Timing-sensitive, so off by default — CI's machines are too uneven to hold a
 /// millisecond budget. Run with `MOCHI_HISTORY_BENCH=1 swift test --filter HistoryPerformanceTests`.
 @Suite(.enabled(if: ProcessInfo.processInfo.environment["MOCHI_HISTORY_BENCH"] != nil), .serialized)
 struct HistoryPerformanceTests {
@@ -43,5 +43,21 @@ struct HistoryPerformanceTests {
         #expect(browser.days[100].rows.count == browser.days[100].visits)
         #expect(opening < Self.budget)
         #expect(unfolding < Self.budget)
+    }
+
+    /// A search reads every visit, but a narrow one returns few: the budget is the scan.
+    @Test func searchingStaysWithinBudget() {
+        let (_, browser) = Self.heavyHistory()
+        browser.resetExpansion()
+
+        let keywords = Self.time { browser.search("site42.example.com/page/1") }
+        let keywordMatches = browser.matchCount
+        let site = Self.time { browser.search("site:site42.example.com Page 3") }
+
+        print("history bench: search \(keywords) (\(keywordMatches)), site: \(site) (\(browser.matchCount))")
+        #expect(keywordMatches > 0)
+        #expect(browser.matchCount > 0)
+        #expect(keywords < Self.budget)
+        #expect(site < Self.budget)
     }
 }

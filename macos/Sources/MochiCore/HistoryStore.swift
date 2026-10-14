@@ -121,9 +121,9 @@ public final class HistoryStore {
         let faviconID = favicon.flatMap(storeFavicon)
         guard
             execute(
-                "INSERT INTO visits (url, title, visited_at, favicon_hash) VALUES (?1, NULL, ?2, ?3)",
-                .text(Self.address(of: url)), .real(now().timeIntervalSinceReferenceDate),
-                faviconID.map(Value.text) ?? .null)
+                "INSERT INTO visits (url, host, title, visited_at, favicon_hash) VALUES (?1, ?2, NULL, ?3, ?4)",
+                .text(Self.address(of: url)), url.host.map { .text($0.lowercased()) } ?? .null,
+                .real(now().timeIntervalSinceReferenceDate), faviconID.map(Value.text) ?? .null)
         else { return nil }
         return sqlite3_last_insert_rowid(db)
     }
@@ -145,14 +145,16 @@ public final class HistoryStore {
     // MARK: Reading
 
     /// Visits whose title or address contains `query` (case-insensitively), newest first. An
-    /// empty query matches everything.
-    public func search(_ query: String) -> [HistoryVisit] {
+    /// empty query matches everything. `host` narrows them to the visits to exactly that host,
+    /// case aside (`site:`, #118) — not to a longer host it is the start or end of.
+    public func search(_ query: String, host: String? = nil) -> [HistoryVisit] {
         let escaped = query
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "%", with: "\\%")
             .replacingOccurrences(of: "_", with: "\\_")
-        return visits(
-            where: "title LIKE ?1 ESCAPE '\\' OR url LIKE ?1 ESCAPE '\\'", .text("%\(escaped)%"))
+        let matches = "(title LIKE ?1 ESCAPE '\\' OR url LIKE ?1 ESCAPE '\\')"
+        guard let host else { return visits(where: matches, .text("%\(escaped)%")) }
+        return visits(where: "host = ?2 AND \(matches)", .text("%\(escaped)%"), .text(host.lowercased()))
     }
 
     /// The PNG behind a visit's `faviconID`, `nil` once no visit shows it.
@@ -309,12 +311,14 @@ public final class HistoryStore {
             CREATE TABLE IF NOT EXISTS visits (
                 id INTEGER PRIMARY KEY,
                 url TEXT NOT NULL,
+                host TEXT,
                 title TEXT,
                 visited_at REAL NOT NULL,
                 favicon_hash TEXT
             );
             CREATE INDEX IF NOT EXISTS visits_visited_at ON visits (visited_at);
             CREATE INDEX IF NOT EXISTS visits_favicon_hash ON visits (favicon_hash);
+            CREATE INDEX IF NOT EXISTS visits_host ON visits (host, visited_at);
             CREATE TABLE IF NOT EXISTS favicons (
                 hash TEXT PRIMARY KEY NOT NULL,
                 png BLOB NOT NULL

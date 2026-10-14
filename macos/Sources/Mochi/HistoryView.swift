@@ -3,26 +3,37 @@ import MochiCore
 import SwiftUI
 
 /// Adapts `HistoryBrowser` (MochiCore) to SwiftUI, the way `SettingsViewModel` adapts
-/// `SettingsController`: `days` and `sections` are published copies of the browser's state, taken
+/// `SettingsController`: `days` and `results` are published copies of the browser's state, taken
 /// after everything that changes it, never a second source of truth.
 final class HistoryViewModel: ObservableObject {
     private let browser: HistoryBrowser
     private let clearBrowsingData: (Set<BrowsingDataKind>, BrowsingDataTimeRange) -> Void
 
-    /// The toolbar's search field (`HistoryWindowController`).
+    /// The toolbar's search field (`HistoryWindowController`). Typing is searched once it pauses
+    /// for `searchDelay` (#118), so a burst of keystrokes is one search rather than one each;
+    /// emptying the field goes back to the timeline at once.
     @Published var query = "" {
         didSet {
             guard query != oldValue else { return }
-            browser.search(query)
-            publish()
+            pendingSearch?.cancel()
+            let isBlank = query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            let search = DispatchWorkItem { [weak self] in self?.search() }
+            pendingSearch = search
+            DispatchQueue.main.asyncAfter(deadline: .now() + (isBlank ? 0 : Self.searchDelay), execute: search)
         }
     }
+    private static let searchDelay: TimeInterval = 0.15
+    private var pendingSearch: DispatchWorkItem?
     @Published var selection: Set<HistoryVisit.ID> = []
     /// The timeline (#116), while not searching.
     @Published private(set) var days: [HistoryBrowser.Day] = []
-    /// The search results, while searching.
-    @Published private(set) var sections: [HistoryBrowser.Section] = []
+    /// The search results, while searching (#118).
+    @Published private(set) var results: [HistoryBrowser.Row] = []
     @Published private(set) var isSearching = false
+    /// 「N 个匹配项」, shown in the toolbar in 清除历史记录…'s place while searching.
+    @Published private(set) var matchCount = 0
+    /// The search as it was run, for the 没有找到结果 page to say what wasn't found.
+    @Published private(set) var searchTerms: (host: String?, text: String) = (nil, "")
     /// 清除历史记录… is showing (#115) — set by the toolbar button.
     @Published var isClearingHistory = false
     /// Decoded site icons (#117), by `faviconID`: many rows share one, and a row is redrawn often.
@@ -51,6 +62,12 @@ final class HistoryViewModel: ObservableObject {
         publish()
     }
 
+    private func search() {
+        pendingSearch = nil
+        browser.search(query)
+        publish()
+    }
+
     func setExpanded(_ isExpanded: Bool, day: Date) {
         browser.setExpanded(isExpanded, day: day)
         publish()
@@ -60,8 +77,10 @@ final class HistoryViewModel: ObservableObject {
     /// away — is dropped, so Delete never reaches a visit that isn't on screen.
     private func publish() {
         days = browser.days
-        sections = browser.sections
+        results = browser.results
         isSearching = browser.isSearching
+        matchCount = browser.matchCount
+        searchTerms = browser.searchTerms
         let shown = Set(browser.shownRows.map(\.id))
         if !selection.isSubset(of: shown) { selection.formIntersection(shown) }
     }
@@ -106,7 +125,7 @@ final class HistoryViewModel: ObservableObject {
 
 /// The 历史记录 window's content (#108; ADR-0018 — the window and its search field are AppKit).
 /// A timeline of foldable days, newest first (#116), each header with its 「N 项」; search results
-/// by day. Double-click opens a page in the widget; Delete or the context menu removes the
+/// as one flat timeline (#118). Double-click opens a page in the widget; Delete or the context menu removes the
 /// selection; a day's header has 删除这一天. The toolbar's 清除历史记录… shows the settings
 /// window's 清除浏览数据 sheet here, over this window (#115).
 struct HistoryView: View {
@@ -114,7 +133,7 @@ struct HistoryView: View {
 
     var body: some View {
         Group {
-            if model.isSearching ? model.sections.isEmpty : model.days.isEmpty {
+            if model.isSearching ? model.results.isEmpty : model.days.isEmpty {
                 emptyState
             } else {
                 list
@@ -129,16 +148,7 @@ struct HistoryView: View {
     private var list: some View {
         List(selection: $model.selection) {
             if model.isSearching {
-                ForEach(model.sections) { section in
-                    Section {
-                        rows(section.rows)
-                    } header: {
-                        Text(section.title)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                            .contextMenu { deleteDayButton(section.day) }
-                    }
-                }
+                rows(model.results)
             } else {
                 ForEach(model.days) { day in
                     Section {
@@ -174,12 +184,20 @@ struct HistoryView: View {
     }
 
     @ViewBuilder private var emptyState: some View {
-        let query = model.query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if query.isEmpty {
+        if !model.isSearching {
             ContentUnavailableView("没有历史记录", systemImage: "clock", description: Text("在窗口里访问过的网页会列在这里。"))
         } else {
-            ContentUnavailableView(
-                "没有找到结果", systemImage: "magnifyingglass", description: Text("没有标题或网址包含“\(query)”的网页。"))
+            ContentUnavailableView("没有找到结果", systemImage: "magnifyingglass", description: Text(noResultsDescription))
+        }
+    }
+
+    /// What wasn't found — with `site:`, the host it was narrowed to (#118).
+    private var noResultsDescription: String {
+        let (host, text) = model.searchTerms
+        switch (host, text.isEmpty) {
+        case (let host?, true): return "没有来自 \(host) 的记录。"
+        case (let host?, false): return "\(host) 上没有标题或网址包含“\(text)”的网页。"
+        case (nil, _): return "没有标题或网址包含“\(text)”的网页。"
         }
     }
 }
