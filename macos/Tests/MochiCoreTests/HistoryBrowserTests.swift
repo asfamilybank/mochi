@@ -4,7 +4,7 @@ import Testing
 @testable import MochiCore
 
 /// The 历史记录 window's logic (#108) — grouping, search, deleting and opening — run against a
-/// real in-memory `HistoryStore`, like the store's own tests.
+/// real in-memory `HistoryStore`, like the store's own tests. A row is a visit (#114).
 @Suite struct HistoryBrowserTests {
     private let clock = TestClock(historyTestDate("2026-10-12 10:00"))
 
@@ -13,13 +13,17 @@ import Testing
         return HistoryStore(databaseURL: nil, now: { clock.now }, calendar: historyTestCalendar)
     }
 
-    /// Records `address` at `time`, optionally titled.
-    private func visit(_ store: HistoryStore, _ address: String, at time: String, title: String? = nil) {
+    /// Records a visit to `address` at `time`, optionally titled.
+    @discardableResult
+    private func visit(_ store: HistoryStore, _ address: String, at time: String, title: String? = nil)
+        -> HistoryVisit.ID
+    {
         let saved = clock.now
         clock.now = historyTestDate(time)
-        store.recordVisit(to: URL(string: address)!)
-        if let title { store.updateTitle(title, for: URL(string: address)!) }
+        let id = store.recordVisit(to: URL(string: address)!)!
+        if let title { store.updateTitle(title, ofVisit: id) }
         clock.now = saved
+        return id
     }
 
     private func makeBrowser(_ store: HistoryStore, opened: @escaping (URL) -> Void = { _ in }) -> HistoryBrowser {
@@ -48,6 +52,25 @@ import Testing
                 ["https://example.com/old"],
             ])
         #expect(sections.map(\.day) == ["2026-10-12", "2026-10-11", "2026-10-10"].map { historyTestDate("\($0) 00:00") })
+    }
+
+    /// A timeline, not a list of addresses: going back and forth between two pages lists every
+    /// visit, in the order they happened.
+    @Test func everyVisitIsARowInTheOrderTheyHappened() {
+        let store = makeStore()
+        visit(store, "https://example.com/a", at: "2026-10-12 09:00")
+        visit(store, "https://example.com/b", at: "2026-10-12 09:01")
+        visit(store, "https://example.com/a", at: "2026-10-12 09:02")
+        visit(store, "https://example.com/a", at: "2026-10-10 09:00")
+
+        let sections = makeBrowser(store).sections(matching: "")
+
+        #expect(
+            addresses(sections) == [
+                ["https://example.com/a", "https://example.com/b", "https://example.com/a"],
+                ["https://example.com/a"],
+            ])
+        #expect(sections[0].rows.map(\.time) == ["09:02", "09:01", "09:00"])
     }
 
     @Test(arguments: [
@@ -126,17 +149,30 @@ import Testing
 
     // MARK: Deleting
 
-    @Test func deletingSelectedRowsRemovesThemFromTheStore() {
+    @Test func deletingSelectedRowsRemovesThoseVisitsFromTheStore() {
         let store = makeStore()
-        visit(store, "https://example.com/a", at: "2026-10-12 09:00")
+        let a = visit(store, "https://example.com/a", at: "2026-10-12 09:00")
         visit(store, "https://example.com/b", at: "2026-10-12 09:01")
-        visit(store, "https://example.com/c", at: "2026-10-11 09:00")
+        let c = visit(store, "https://example.com/c", at: "2026-10-11 09:00")
         let browser = makeBrowser(store)
 
-        browser.delete([URL(string: "https://example.com/a")!, URL(string: "https://example.com/c")!])
+        browser.delete([a, c])
 
-        #expect(store.entries(since: .distantPast).map(\.url.absoluteString) == ["https://example.com/b"])
+        #expect(store.visits(since: .distantPast).map(\.url.absoluteString) == ["https://example.com/b"])
         #expect(addresses(browser.sections(matching: "")) == [["https://example.com/b"]])
+    }
+
+    /// Deleting a row is deleting that visit: the page's other visits stay on the timeline.
+    @Test func deletingOneVisitKeepsTheOtherVisitsToThatPage() {
+        let store = makeStore()
+        visit(store, "https://example.com/a", at: "2026-10-11 09:00")
+        let today = visit(store, "https://example.com/a", at: "2026-10-12 09:00")
+        let browser = makeBrowser(store)
+
+        browser.delete([today])
+
+        #expect(addresses(browser.sections(matching: "")) == [["https://example.com/a"]])
+        #expect(browser.sections(matching: "").map(\.title) == ["昨天"])
     }
 
     @Test func deletingADayRemovesEverythingFromThatDayOnly() {
@@ -151,7 +187,7 @@ import Testing
         browser.deleteDay(yesterday)
 
         #expect(
-            store.entries(since: .distantPast).map(\.url.absoluteString)
+            store.visits(since: .distantPast).map(\.url.absoluteString)
                 == ["https://example.com/today", "https://example.com/before"])
     }
 
@@ -164,18 +200,18 @@ import Testing
 
         browser.deleteDay(browser.sections(matching: "match")[0].day)
 
-        #expect(store.entries(since: .distantPast).isEmpty)
+        #expect(store.visits(since: .distantPast).isEmpty)
     }
 
     // MARK: Opening
 
     @Test func openingHandsTheAddressOn() {
         let store = makeStore()
-        visit(store, "https://example.com/a", at: "2026-10-12 09:00")
+        let a = visit(store, "https://example.com/a", at: "2026-10-12 09:00")
         var opened: [URL] = []
         let browser = makeBrowser(store) { opened.append($0) }
 
-        browser.open([URL(string: "https://example.com/a")!], shownIn: browser.sections(matching: ""))
+        browser.open([a], shownIn: browser.sections(matching: ""))
 
         #expect(opened == [URL(string: "https://example.com/a")!])
     }
@@ -183,15 +219,13 @@ import Testing
     /// There is one widget, so a double-click on a multiple selection opens one page: the topmost.
     @Test func openingSeveralOpensTheTopmost() {
         let store = makeStore()
-        visit(store, "https://example.com/older", at: "2026-10-11 09:00")
-        visit(store, "https://example.com/newer", at: "2026-10-12 09:00")
+        let older = visit(store, "https://example.com/older", at: "2026-10-11 09:00")
+        let newer = visit(store, "https://example.com/newer", at: "2026-10-12 09:00")
         visit(store, "https://example.com/newest", at: "2026-10-12 09:30")
         var opened: [URL] = []
         let browser = makeBrowser(store) { opened.append($0) }
 
-        browser.open(
-            [URL(string: "https://example.com/older")!, URL(string: "https://example.com/newer")!],
-            shownIn: browser.sections(matching: ""))
+        browser.open([older, newer], shownIn: browser.sections(matching: ""))
 
         #expect(opened == [URL(string: "https://example.com/newer")!])
     }
@@ -203,7 +237,7 @@ import Testing
         let browser = makeBrowser(store) { opened.append($0) }
 
         browser.open([], shownIn: browser.sections(matching: ""))
-        browser.open([URL(string: "https://example.com/gone")!], shownIn: browser.sections(matching: ""))
+        browser.open([999], shownIn: browser.sections(matching: ""))
 
         #expect(opened.isEmpty)
     }

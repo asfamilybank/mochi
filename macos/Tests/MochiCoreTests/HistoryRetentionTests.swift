@@ -54,19 +54,19 @@ import Testing
         return store
     }
 
-    @Test func theStoreRemovesWhatWasLastVisitedBeforeTheCutoffAtItsOwnNow() {
+    @Test func theStoreRemovesWhatWasVisitedBeforeTheCutoffAtItsOwnNow() {
         let store = storeWithThreeVisits()
 
-        store.removeEntries(olderThan: .oneDay)
+        store.removeVisits(olderThan: .oneDay)
 
-        #expect(store.entries(since: .distantPast).map(\.url.path) == ["/new", "/edge"])
+        #expect(store.visits(since: .distantPast).map(\.url.path) == ["/new", "/edge"])
     }
 
     @Test func manualRemovesNothing() {
         let store = storeWithThreeVisits()
 
-        store.removeEntries(olderThan: .manual)
+        store.removeVisits(olderThan: .manual)
 
-        #expect(store.entries(since: .distantPast).count == 3)
+        #expect(store.visits(since: .distantPast).count == 3)
     }
 }

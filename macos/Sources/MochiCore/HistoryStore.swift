@@ -1,20 +1,23 @@
 import Foundation
 import SQLite3
 
-/// One page in the history (`CONTEXT.md`「历史记录」): an address visited at least once, with the
-/// last title it reported, when it was last visited and how many times in all.
-public struct HistoryEntry: Equatable, Sendable {
+/// One visit in the history (`CONTEXT.md`「历史记录」, ADR-0030): the widget's main page arriving at
+/// an address, at a moment, under the title the page reported then. Visiting the same address
+/// again is another visit — history is a timeline, not a list of addresses.
+public struct HistoryVisit: Equatable, Identifiable, Sendable {
+    public typealias ID = Int64
+
+    public let id: ID
     public let url: URL
     /// `nil` until the page reports one.
     public let title: String?
-    public let lastVisited: Date
-    public let visitCount: Int
+    public let visitedAt: Date
 
-    public init(url: URL, title: String?, lastVisited: Date, visitCount: Int) {
+    public init(id: ID, url: URL, title: String?, visitedAt: Date) {
+        self.id = id
         self.url = url
         self.title = title
-        self.lastVisited = lastVisited
-        self.visitCount = visitCount
+        self.visitedAt = visitedAt
     }
 }
 
@@ -22,9 +25,9 @@ public struct HistoryEntry: Equatable, Sendable {
 /// own `libsqlite3` — no dependency added (#102). The interface is shaped by what the app does with
 /// history; no SQL leaks out.
 ///
-/// One row per address: the address is the whole URL minus its `#` fragment (a fragment only
-/// points somewhere inside the same page), so revisiting merges into the existing row — the visit
-/// count goes up and the last-visited time moves forward.
+/// Append-only, one row per visit (#114, ADR-0030): every change of the widget's main-page address
+/// adds a row, and what a visit was titled is written to that row alone. The address is stored
+/// minus its `#` fragment (a fragment only points somewhere inside the same page).
 ///
 /// "Now" and the calendar that decides where one day ends and the next begins are injected, so
 /// day grouping can be tested across midnight without waiting for one.
@@ -36,6 +39,9 @@ public struct HistoryEntry: Equatable, Sendable {
 /// itself, so the file is left exactly as it is and this session keeps its history in memory:
 /// what is visited now is lost at quit, but nothing already recorded is. Memory is also the last
 /// resort when even a fresh file can't be made.
+///
+/// There is no migration: a file from when history kept one row per address keeps that old table,
+/// unread, beside the timeline.
 ///
 /// Main thread only, like everything else that touches it.
 public final class HistoryStore {
@@ -86,82 +92,74 @@ public final class HistoryStore {
 
     // MARK: Recording
 
-    /// Records one visit to `url` at the injected "now".
-    public func recordVisit(to url: URL) {
-        execute(
-            """
-            INSERT INTO history (url, title, last_visited, visit_count) VALUES (?1, NULL, ?2, 1)
-            ON CONFLICT(url) DO UPDATE SET last_visited = excluded.last_visited, visit_count = visit_count + 1
-            """,
-            .text(Self.address(of: url)), .real(now().timeIntervalSinceReferenceDate))
+    /// Records one visit to `url` at the injected "now", returning it for its title to be written
+    /// to — `nil` only when the database refused the row.
+    @discardableResult
+    public func recordVisit(to url: URL) -> HistoryVisit.ID? {
+        guard
+            execute(
+                "INSERT INTO visits (url, title, visited_at) VALUES (?1, NULL, ?2)",
+                .text(Self.address(of: url)), .real(now().timeIntervalSinceReferenceDate))
+        else { return nil }
+        return sqlite3_last_insert_rowid(db)
     }
 
-    /// Sets the title of `url`'s entry — the last title a page reports is the one kept. Does
-    /// nothing when `url` has never been recorded.
-    public func updateTitle(_ title: String, for url: URL) {
-        execute("UPDATE history SET title = ?1 WHERE url = ?2", .text(title), .text(Self.address(of: url)))
+    /// Sets the title of one visit — the last title a page reports while it is up is the one kept.
+    /// Does nothing for a visit that isn't (or is no longer) recorded.
+    public func updateTitle(_ title: String, ofVisit id: HistoryVisit.ID) {
+        execute("UPDATE visits SET title = ?1 WHERE id = ?2", .text(title), .integer(id))
     }
 
     // MARK: Reading
 
-    /// Entries whose title or address contains `query` (case-insensitively), newest first. An
+    /// Visits whose title or address contains `query` (case-insensitively), newest first. An
     /// empty query matches everything.
-    public func search(_ query: String) -> [HistoryEntry] {
+    public func search(_ query: String) -> [HistoryVisit] {
         let escaped = query
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "%", with: "\\%")
             .replacingOccurrences(of: "_", with: "\\_")
-        return entries(
+        return visits(
             where: "title LIKE ?1 ESCAPE '\\' OR url LIKE ?1 ESCAPE '\\'", .text("%\(escaped)%"))
     }
 
-    /// Entries last visited at or after `date`, newest first.
-    public func entries(since date: Date) -> [HistoryEntry] {
-        entries(where: "last_visited >= ?1", .real(date.timeIntervalSinceReferenceDate))
+    /// Visits at or after `date`, newest first.
+    public func visits(since date: Date) -> [HistoryVisit] {
+        visits(where: "visited_at >= ?1", .real(date.timeIntervalSinceReferenceDate))
     }
 
-    /// Entries last visited on the calendar day containing `day`, newest first.
-    public func entries(onDayOf day: Date) -> [HistoryEntry] {
+    /// Visits on the calendar day containing `day`, newest first.
+    public func visits(onDayOf day: Date) -> [HistoryVisit] {
         let (start, end) = bounds(ofDayContaining: day)
-        return entries(
-            where: "last_visited >= ?1 AND last_visited < ?2",
+        return visits(
+            where: "visited_at >= ?1 AND visited_at < ?2",
             .real(start.timeIntervalSinceReferenceDate), .real(end.timeIntervalSinceReferenceDate))
-    }
-
-    /// The start of every calendar day since `date` that has at least one entry, newest first.
-    public func daysWithEntries(since date: Date) -> [Date] {
-        var days: [Date] = []
-        for entry in entries(since: date) {
-            let day = calendar.startOfDay(for: entry.lastVisited)
-            if days.last != day { days.append(day) }
-        }
-        return days
     }
 
     // MARK: Removing
 
-    public func deleteEntries(for urls: [URL]) {
-        for url in urls {
-            execute("DELETE FROM history WHERE url = ?1", .text(Self.address(of: url)))
+    public func deleteVisits(_ ids: some Collection<HistoryVisit.ID>) {
+        for id in ids {
+            execute("DELETE FROM visits WHERE id = ?1", .integer(id))
         }
     }
 
-    /// Removes every entry last visited on the calendar day containing `day`.
+    /// Removes every visit on the calendar day containing `day`.
     public func deleteDay(containing day: Date) {
         let (start, end) = bounds(ofDayContaining: day)
         execute(
-            "DELETE FROM history WHERE last_visited >= ?1 AND last_visited < ?2",
+            "DELETE FROM visits WHERE visited_at >= ?1 AND visited_at < ?2",
             .real(start.timeIntervalSinceReferenceDate), .real(end.timeIntervalSinceReferenceDate))
     }
 
-    /// The retention limit: removes everything last visited before `date`.
-    public func removeEntries(visitedBefore date: Date) {
-        execute("DELETE FROM history WHERE last_visited < ?1", .real(date.timeIntervalSinceReferenceDate))
+    /// The retention limit: removes every visit before `date`.
+    public func removeVisits(before date: Date) {
+        execute("DELETE FROM visits WHERE visited_at < ?1", .real(date.timeIntervalSinceReferenceDate))
     }
 
-    /// 清除浏览数据: removes everything last visited at or after `date`.
-    public func removeEntries(visitedSince date: Date) {
-        execute("DELETE FROM history WHERE last_visited >= ?1", .real(date.timeIntervalSinceReferenceDate))
+    /// 清除浏览数据: removes every visit at or after `date`.
+    public func removeVisits(since date: Date) {
+        execute("DELETE FROM visits WHERE visited_at >= ?1", .real(date.timeIntervalSinceReferenceDate))
     }
 
     // MARK: - SQLite
@@ -183,6 +181,7 @@ public final class HistoryStore {
     private enum Value {
         case text(String)
         case real(Double)
+        case integer(Int64)
     }
 
     /// `SQLITE_TRANSIENT`, which the C macro defines as `-1` cast to a destructor — Swift can't
@@ -221,14 +220,14 @@ public final class HistoryStore {
         }
         sqlite3_busy_timeout(db, Int32(busyTimeout * 1000))
         let schema = """
-            CREATE TABLE IF NOT EXISTS history (
-                url TEXT PRIMARY KEY NOT NULL,
+            CREATE TABLE IF NOT EXISTS visits (
+                id INTEGER PRIMARY KEY,
+                url TEXT NOT NULL,
                 title TEXT,
-                last_visited REAL NOT NULL,
-                visit_count INTEGER NOT NULL
+                visited_at REAL NOT NULL
             );
-            CREATE INDEX IF NOT EXISTS history_last_visited ON history (last_visited);
-            PRAGMA user_version = 1;
+            CREATE INDEX IF NOT EXISTS visits_visited_at ON visits (visited_at);
+            PRAGMA user_version = 2;
             """
         let schemaCode = sqlite3_exec(db, schema, nil, nil, nil)
         guard schemaCode == SQLITE_OK else {
@@ -281,34 +280,36 @@ public final class HistoryStore {
             switch value {
             case .text(let text): sqlite3_bind_text(statement, position, text, -1, Self.transient)
             case .real(let real): sqlite3_bind_double(statement, position, real)
+            case .integer(let integer): sqlite3_bind_int64(statement, position, integer)
             }
         }
         return statement
     }
 
-    private func execute(_ sql: String, _ values: Value...) {
-        guard let statement = prepare(sql, values) else { return }
+    /// `false` when the statement couldn't be prepared or didn't run to completion.
+    @discardableResult
+    private func execute(_ sql: String, _ values: Value...) -> Bool {
+        guard let statement = prepare(sql, values) else { return false }
         defer { sqlite3_finalize(statement) }
-        sqlite3_step(statement)
+        return sqlite3_step(statement) == SQLITE_DONE
     }
 
-    private func entries(where condition: String, _ values: Value...) -> [HistoryEntry] {
+    private func visits(where condition: String, _ values: Value...) -> [HistoryVisit] {
         let sql = """
-            SELECT url, title, last_visited, visit_count FROM history
-            WHERE \(condition) ORDER BY last_visited DESC, rowid DESC
+            SELECT id, url, title, visited_at FROM visits
+            WHERE \(condition) ORDER BY visited_at DESC, id DESC
             """
         guard let statement = prepare(sql, values) else { return [] }
         defer { sqlite3_finalize(statement) }
-        var result: [HistoryEntry] = []
+        var result: [HistoryVisit] = []
         while sqlite3_step(statement) == SQLITE_ROW {
-            guard let urlText = sqlite3_column_text(statement, 0), let url = URL(string: String(cString: urlText))
+            guard let urlText = sqlite3_column_text(statement, 1), let url = URL(string: String(cString: urlText))
             else { continue }
-            let title = sqlite3_column_text(statement, 1).map { String(cString: $0) }
             result.append(
-                HistoryEntry(
-                    url: url, title: title,
-                    lastVisited: Date(timeIntervalSinceReferenceDate: sqlite3_column_double(statement, 2)),
-                    visitCount: Int(sqlite3_column_int64(statement, 3))))
+                HistoryVisit(
+                    id: sqlite3_column_int64(statement, 0), url: url,
+                    title: sqlite3_column_text(statement, 2).map { String(cString: $0) },
+                    visitedAt: Date(timeIntervalSinceReferenceDate: sqlite3_column_double(statement, 3))))
         }
         return result
     }

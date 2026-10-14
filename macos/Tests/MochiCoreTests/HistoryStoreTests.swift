@@ -42,80 +42,77 @@ func historyTestDate(_ string: String) -> Date {
 
     // MARK: Recording
 
-    @Test func aFirstVisitIsRecordedOnceWithNoTitleYet() {
+    @Test func aFirstVisitIsRecordedWithNoTitleYet() {
         let store = makeStore()
 
-        store.recordVisit(to: url("https://example.com/a"))
+        let id = store.recordVisit(to: url("https://example.com/a"))
 
         #expect(
-            store.entries(since: .distantPast) == [
-                HistoryEntry(url: url("https://example.com/a"), title: nil, lastVisited: clock.now, visitCount: 1)
+            store.visits(since: .distantPast) == [
+                HistoryVisit(id: id!, url: url("https://example.com/a"), title: nil, visitedAt: clock.now)
             ])
     }
 
-    @Test func visitingTheSameAddressAgainMergesIntoOneEntry() {
+    /// History is a timeline: visiting the same address again is another visit, not a merge.
+    @Test func everyVisitIsItsOwnRowEvenToTheSameAddress() {
         let store = makeStore()
         store.recordVisit(to: url("https://example.com/a"))
         clock.now = clock.now.addingTimeInterval(60)
-
+        store.recordVisit(to: url("https://example.com/b"))
+        clock.now = clock.now.addingTimeInterval(60)
         store.recordVisit(to: url("https://example.com/a"))
 
-        let entries = store.entries(since: .distantPast)
-        #expect(entries.count == 1)
-        #expect(entries.first?.visitCount == 2)
-        #expect(entries.first?.lastVisited == clock.now)
+        #expect(store.visits(since: .distantPast).map(\.url.path) == ["/a", "/b", "/a"])
+    }
+
+    /// Two visits in the same instant still come back in the order they happened.
+    @Test func visitsInTheSameInstantKeepTheirOrder() {
+        let store = makeStore()
+        store.recordVisit(to: url("https://example.com/first"))
+        store.recordVisit(to: url("https://example.com/second"))
+
+        #expect(store.visits(since: .distantPast).map(\.url.path) == ["/second", "/first"])
     }
 
     @Test func theFragmentIsNotPartOfTheAddress() {
         let store = makeStore()
+
         store.recordVisit(to: url("https://example.com/a#intro"))
-        store.recordVisit(to: url("https://example.com/a#usage"))
 
-        let entries = store.entries(since: .distantPast)
-        #expect(entries.map(\.url) == [url("https://example.com/a")])
-        #expect(entries.first?.visitCount == 2)
+        #expect(store.visits(since: .distantPast).map(\.url) == [url("https://example.com/a")])
     }
 
-    /// The address is otherwise taken as a whole: a different query is a different page.
-    @Test func aDifferentQueryIsADifferentEntry() {
+    /// The title belongs to the visit it was reported for: a later visit retitled doesn't rewrite
+    /// what the page was called before.
+    @Test func aTitleLandsOnlyOnTheVisitItIsGivenFor() {
         let store = makeStore()
-        store.recordVisit(to: url("https://youtube.com/watch?v=1"))
-        clock.now = clock.now.addingTimeInterval(1)
-        store.recordVisit(to: url("https://youtube.com/watch?v=2"))
+        let first = store.recordVisit(to: url("https://example.com/a"))!
+        store.updateTitle("Before", ofVisit: first)
+        clock.now = clock.now.addingTimeInterval(60)
+        let second = store.recordVisit(to: url("https://example.com/a"))!
 
-        #expect(
-            store.entries(since: .distantPast).map(\.url) == [
-                url("https://youtube.com/watch?v=2"), url("https://youtube.com/watch?v=1"),
-            ])
+        store.updateTitle("After", ofVisit: second)
+
+        #expect(store.visits(since: .distantPast).map(\.title) == ["After", "Before"])
     }
 
-    @Test func theLastTitleReceivedWins() {
+    @Test func theLastTitleReceivedForAVisitWins() {
         let store = makeStore()
-        store.recordVisit(to: url("https://example.com/a"))
+        let id = store.recordVisit(to: url("https://example.com/a"))!
 
-        store.updateTitle("First", for: url("https://example.com/a"))
-        store.updateTitle("Second", for: url("https://example.com/a#section"))
+        store.updateTitle("First", ofVisit: id)
+        store.updateTitle("Second", ofVisit: id)
 
-        #expect(store.entries(since: .distantPast).first?.title == "Second")
+        #expect(store.visits(since: .distantPast).map(\.title) == ["Second"])
     }
 
-    /// A title is only ever attached to a visit already recorded — never conjures up an entry.
-    @Test func updatingTheTitleOfAnUnvisitedAddressRecordsNothing() {
+    /// A title is only ever attached to a visit already recorded — never conjures one up.
+    @Test func titlingAnUnknownVisitRecordsNothing() {
         let store = makeStore()
 
-        store.updateTitle("Nowhere", for: url("https://example.com/never"))
+        store.updateTitle("Nowhere", ofVisit: 42)
 
-        #expect(store.entries(since: .distantPast).isEmpty)
-    }
-
-    @Test func aRevisitKeepsTheTitle() {
-        let store = makeStore()
-        store.recordVisit(to: url("https://example.com/a"))
-        store.updateTitle("Kept", for: url("https://example.com/a"))
-
-        store.recordVisit(to: url("https://example.com/a"))
-
-        #expect(store.entries(since: .distantPast).first?.title == "Kept")
+        #expect(store.visits(since: .distantPast).isEmpty)
     }
 
     // MARK: Search
@@ -130,18 +127,28 @@ func historyTestDate(_ string: String) -> Date {
     ])
     func searchMatchesTitleOrAddressNewestFirst(_ row: (query: String, expected: [String])) {
         let store = makeStore()
-        store.recordVisit(to: url("https://example.com/swift"))
-        store.updateTitle("The Swift Guide", for: url("https://example.com/swift"))
+        store.updateTitle("The Swift Guide", ofVisit: store.recordVisit(to: url("https://example.com/swift"))!)
         clock.now = clock.now.addingTimeInterval(60)
-        store.recordVisit(to: url("https://doc.rust-lang.org/book"))
-        store.updateTitle("The Book — guide", for: url("https://doc.rust-lang.org/book"))
+        store.updateTitle("The Book — guide", ofVisit: store.recordVisit(to: url("https://doc.rust-lang.org/book"))!)
 
         #expect(store.search(row.query).map(\.url.absoluteString) == row.expected)
     }
 
+    /// Each visit is matched on its own title, so a page renamed since still turns up under the name
+    /// it had then.
+    @Test func searchMatchesEachVisitByTheTitleItHad() {
+        let store = makeStore()
+        store.updateTitle("Old name", ofVisit: store.recordVisit(to: url("https://example.com/a"))!)
+        clock.now = clock.now.addingTimeInterval(60)
+        store.updateTitle("New name", ofVisit: store.recordVisit(to: url("https://example.com/a"))!)
+
+        #expect(store.search("old").map(\.title) == ["Old name"])
+        #expect(store.search("example").count == 2)
+    }
+
     // MARK: Days
 
-    @Test func entriesAreGroupedByTheCalendarDayOfTheirLastVisit() {
+    @Test func visitsAreGroupedByTheCalendarDayTheyHappenedOn() {
         let store = makeStore()
         clock.now = historyTestDate("2026-10-11 23:59")
         store.recordVisit(to: url("https://example.com/late"))
@@ -151,34 +158,35 @@ func historyTestDate(_ string: String) -> Date {
         store.recordVisit(to: url("https://example.com/morning"))
 
         #expect(
-            store.entries(onDayOf: historyTestDate("2026-10-12 12:00")).map(\.url.path) == ["/morning", "/midnight"])
-        #expect(store.entries(onDayOf: historyTestDate("2026-10-11 01:00")).map(\.url.path) == ["/late"])
+            store.visits(onDayOf: historyTestDate("2026-10-12 12:00")).map(\.url.path) == ["/morning", "/midnight"])
+        #expect(store.visits(onDayOf: historyTestDate("2026-10-11 01:00")).map(\.url.path) == ["/late"])
     }
 
-    @Test func onlyDaysThatHaveEntriesAreListedNewestFirst() {
+    /// A page visited on several days is on each of them.
+    @Test func aPageVisitedOnTwoDaysIsOnBoth() {
         let store = makeStore()
-        for day in ["2026-10-01 08:00", "2026-10-09 23:30", "2026-10-12 00:10", "2026-10-12 09:00"] {
-            clock.now = historyTestDate(day)
-            store.recordVisit(to: url("https://example.com/\(day.prefix(10))-\(day.suffix(5))"))
-        }
+        clock.now = historyTestDate("2026-10-10 09:00")
+        store.recordVisit(to: url("https://example.com/a"))
+        clock.now = historyTestDate("2026-10-12 09:00")
+        store.recordVisit(to: url("https://example.com/a"))
 
-        #expect(
-            store.daysWithEntries(since: historyTestDate("2026-10-06 00:00")) == [
-                historyTestDate("2026-10-12 00:00"), historyTestDate("2026-10-09 00:00"),
-            ])
+        #expect(store.visits(onDayOf: historyTestDate("2026-10-10 12:00")).map(\.url.path) == ["/a"])
+        #expect(store.visits(onDayOf: historyTestDate("2026-10-12 12:00")).map(\.url.path) == ["/a"])
     }
 
     // MARK: Removing
 
-    @Test func deletingEntriesRemovesExactlyThoseAddresses() {
+    /// Deleting a visit leaves the other visits to the same page alone.
+    @Test func deletingVisitsRemovesExactlyThoseVisits() {
         let store = makeStore()
-        store.recordVisit(to: url("https://example.com/a"))
+        let a1 = store.recordVisit(to: url("https://example.com/a"))!
         store.recordVisit(to: url("https://example.com/b"))
-        store.recordVisit(to: url("https://example.com/c"))
+        store.recordVisit(to: url("https://example.com/a"))
+        let c = store.recordVisit(to: url("https://example.com/c"))!
 
-        store.deleteEntries(for: [url("https://example.com/a"), url("https://example.com/c#x")])
+        store.deleteVisits([a1, c])
 
-        #expect(store.entries(since: .distantPast).map(\.url.path) == ["/b"])
+        #expect(store.visits(since: .distantPast).map(\.url.path) == ["/a", "/b"])
     }
 
     @Test func deletingADayLeavesTheDaysAroundIt() {
@@ -194,37 +202,39 @@ func historyTestDate(_ string: String) -> Date {
 
         store.deleteDay(containing: historyTestDate("2026-10-11 12:00"))
 
-        #expect(store.entries(since: .distantPast).map(\.url.path) == ["/after", "/before"])
+        #expect(store.visits(since: .distantPast).map(\.url.path) == ["/after", "/before"])
     }
 
-    /// The retention limit: everything last visited before the cut-off goes.
-    @Test func removingEntriesVisitedBeforeAMomentKeepsThatMomentAndLater() {
+    /// The retention limit: every visit before the cut-off goes, even to a page visited since.
+    @Test func removingVisitsBeforeAMomentKeepsThatMomentAndLater() {
         let store = makeStore()
         clock.now = historyTestDate("2025-10-12 09:59")
         store.recordVisit(to: url("https://example.com/old"))
+        store.recordVisit(to: url("https://example.com/again"))
         clock.now = historyTestDate("2025-10-12 10:00")
         store.recordVisit(to: url("https://example.com/edge"))
         clock.now = historyTestDate("2026-10-12 10:00")
-        store.recordVisit(to: url("https://example.com/new"))
+        store.recordVisit(to: url("https://example.com/again"))
 
-        store.removeEntries(visitedBefore: historyTestDate("2025-10-12 10:00"))
+        store.removeVisits(before: historyTestDate("2025-10-12 10:00"))
 
-        #expect(store.entries(since: .distantPast).map(\.url.path) == ["/new", "/edge"])
+        #expect(store.visits(since: .distantPast).map(\.url.path) == ["/again", "/edge"])
     }
 
-    /// 清除浏览数据's time range: everything last visited from the start onwards goes.
-    @Test func removingEntriesVisitedSinceAMomentKeepsWhatCameBefore() {
+    /// 清除浏览数据's time range: every visit from the start onwards goes.
+    @Test func removingVisitsSinceAMomentKeepsWhatCameBefore() {
         let store = makeStore()
         clock.now = historyTestDate("2026-10-12 08:59")
         store.recordVisit(to: url("https://example.com/kept"))
         clock.now = historyTestDate("2026-10-12 09:00")
         store.recordVisit(to: url("https://example.com/edge"))
         clock.now = historyTestDate("2026-10-12 10:00")
-        store.recordVisit(to: url("https://example.com/new"))
+        store.recordVisit(to: url("https://example.com/kept"))
 
-        store.removeEntries(visitedSince: historyTestDate("2026-10-12 09:00"))
+        store.removeVisits(since: historyTestDate("2026-10-12 09:00"))
 
-        #expect(store.entries(since: .distantPast).map(\.url.path) == ["/kept"])
+        #expect(store.visits(since: .distantPast).map(\.url.path) == ["/kept"])
+        #expect(store.visits(since: .distantPast).map(\.visitedAt) == [historyTestDate("2026-10-12 08:59")])
     }
 
     // MARK: On disk
@@ -236,7 +246,7 @@ func historyTestDate(_ string: String) -> Date {
         return directory
     }
 
-    @Test func entriesSurviveReopeningTheFile() throws {
+    @Test func visitsSurviveReopeningTheFile() throws {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let file = directory.appendingPathComponent("History.db")
@@ -244,12 +254,35 @@ func historyTestDate(_ string: String) -> Date {
 
         do {
             let store = HistoryStore(databaseURL: file, now: { clock.now }, calendar: historyTestCalendar)
-            store.recordVisit(to: url("https://example.com/a"))
-            store.updateTitle("A", for: url("https://example.com/a"))
+            store.updateTitle("A", ofVisit: store.recordVisit(to: url("https://example.com/a"))!)
         }
         let reopened = HistoryStore(databaseURL: file, now: { clock.now }, calendar: historyTestCalendar)
 
-        #expect(reopened.entries(since: .distantPast).map(\.title) == ["A"])
+        #expect(reopened.visits(since: .distantPast).map(\.title) == ["A"])
+    }
+
+    /// No migration (#114): a file from when history kept one row per address still opens, its old
+    /// rows are neither read nor removed, and the timeline starts empty beside them.
+    @Test func aFileFromBeforeTheTimelineOpensWithAnEmptyTimeline() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("History.db")
+        var old: OpaquePointer?
+        #expect(sqlite3_open_v2(file.path, &old, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil) == SQLITE_OK)
+        let oldSchema = """
+            CREATE TABLE history (url TEXT PRIMARY KEY NOT NULL, title TEXT, last_visited REAL NOT NULL,
+                visit_count INTEGER NOT NULL);
+            INSERT INTO history VALUES ('https://example.com/old', 'Old', 0, 3);
+            """
+        #expect(sqlite3_exec(old, oldSchema, nil, nil, nil) == SQLITE_OK)
+        sqlite3_close(old)
+
+        let store = HistoryStore(databaseURL: file, now: { Date() }, calendar: historyTestCalendar)
+
+        #expect(store.visits(since: .distantPast).isEmpty)
+        store.recordVisit(to: url("https://example.com/new"))
+        #expect(store.visits(since: .distantPast).map(\.url.path) == ["/new"])
+        #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("History.db.corrupt").path))
     }
 
     /// Creates `Mochi/` under Application Support when it isn't there yet (a first launch, or the
@@ -263,7 +296,7 @@ func historyTestDate(_ string: String) -> Date {
         store.recordVisit(to: url("https://example.com/a"))
 
         #expect(FileManager.default.fileExists(atPath: file.path))
-        #expect(store.entries(since: .distantPast).count == 1)
+        #expect(store.visits(since: .distantPast).count == 1)
     }
 
     /// A damaged history must never stand in the way of launching: the file is moved aside (not
@@ -277,9 +310,9 @@ func historyTestDate(_ string: String) -> Date {
 
         let store = HistoryStore(databaseURL: file, now: { Date() }, calendar: historyTestCalendar)
 
-        #expect(store.entries(since: .distantPast).isEmpty)
+        #expect(store.visits(since: .distantPast).isEmpty)
         store.recordVisit(to: url("https://example.com/a"))
-        #expect(store.entries(since: .distantPast).count == 1)
+        #expect(store.visits(since: .distantPast).count == 1)
         let movedAside = directory.appendingPathComponent("History.db.corrupt")
         #expect(try Data(contentsOf: movedAside) == garbage)
         #expect(try Data(contentsOf: file) != garbage)
@@ -305,14 +338,14 @@ func historyTestDate(_ string: String) -> Date {
             databaseURL: file, now: { Date() }, calendar: historyTestCalendar, busyTimeout: 0.05)
         store.recordVisit(to: url("https://example.com/this-session"))
 
-        #expect(store.entries(since: .distantPast).map(\.url) == [url("https://example.com/this-session")])
+        #expect(store.visits(since: .distantPast).map(\.url) == [url("https://example.com/this-session")])
         #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("History.db.corrupt").path))
         #expect(try Data(contentsOf: file) == before)
 
         sqlite3_exec(other, "ROLLBACK", nil, nil, nil)
         sqlite3_close(other)
         let nextLaunch = HistoryStore(databaseURL: file, now: { Date() }, calendar: historyTestCalendar)
-        #expect(nextLaunch.entries(since: .distantPast).map(\.url) == [url("https://example.com/kept")])
+        #expect(nextLaunch.visits(since: .distantPast).map(\.url) == [url("https://example.com/kept")])
     }
 
     /// A lock held only briefly is waited out rather than given up on.
@@ -335,6 +368,6 @@ func historyTestDate(_ string: String) -> Date {
 
         let store = HistoryStore(databaseURL: file, now: { Date() }, calendar: historyTestCalendar, busyTimeout: 5)
 
-        #expect(store.entries(since: .distantPast).map(\.url) == [url("https://example.com/kept")])
+        #expect(store.visits(since: .distantPast).map(\.url) == [url("https://example.com/kept")])
     }
 }

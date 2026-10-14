@@ -518,15 +518,15 @@ public final class Orchestrator {
 
     // MARK: 历史记录 (#102)
 
-    /// The address of the entry the page's title belongs to — the last one recorded, `nil` once
-    /// the page has moved somewhere that isn't recorded.
-    private var historyAddress: URL?
+    /// The visit the page's title belongs to — the last one recorded (#114: titles land on that
+    /// visit alone), `nil` once the page has moved somewhere that isn't recorded.
+    private var historyVisit: HistoryVisit.ID?
 
     /// Records the widget's main-page visits: `http`/`https` only, nothing while the Empty Page
     /// is up, Ghost Mode included (a video autoplaying the next one is still a visit). Popup
     /// Windows are never registered, so they never reach here.
     private func registerHistoryRecording(for window: WidgetWindowHandle, addressBarController: AddressBarController) {
-        historyAddress = nil
+        historyVisit = nil
         platformOps.onMainFrameURLChanged(window) { [weak self, weak addressBarController] url in
             self?.recordHistoryVisit(to: url, isShowingEmptyPage: addressBarController?.isShowingEmptyPage ?? false)
         }
@@ -539,17 +539,16 @@ public final class Orchestrator {
         guard let historyStore, !isShowingEmptyPage, let scheme = url.scheme?.lowercased(),
             scheme == "http" || scheme == "https"
         else {
-            historyAddress = nil
+            historyVisit = nil
             return
         }
-        historyStore.recordVisit(to: url)
-        historyAddress = url
+        historyVisit = historyStore.recordVisit(to: url)
     }
 
     private func updateHistoryTitle(_ title: String?) {
-        guard let historyAddress, let title = title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty
+        guard let historyVisit, let title = title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty
         else { return }
-        historyStore?.updateTitle(title, for: historyAddress)
+        historyStore?.updateTitle(title, ofVisit: historyVisit)
     }
 
     /// The main menu's 历史记录 list, rebuilt from the store each time the menu opens — at the
@@ -558,7 +557,7 @@ public final class Orchestrator {
         guard let historyStore else { return HistoryMenu(today: [], earlierDays: []) }
         let now = historyStore.now()
         let earliest = HistoryMenu.earliestDay(now: now, calendar: historyStore.calendar)
-        return HistoryMenu.build(entries: historyStore.entries(since: earliest), now: now, calendar: historyStore.calendar)
+        return HistoryMenu.build(visits: historyStore.visits(since: earliest), now: now, calendar: historyStore.calendar)
     }
 
     /// Opens a page picked from history in the widget — reopening the widget first when it is
@@ -589,7 +588,7 @@ public final class Orchestrator {
     /// 移除历史记录项目 (#110) at launch; a settings edit and the 历史记录 window opening do the
     /// same through `SettingsController` and `HistoryBrowser`.
     private func removeExpiredHistory() {
-        historyStore?.removeEntries(olderThan: currentConfig().historyRetention)
+        historyStore?.removeVisits(olderThan: currentConfig().historyRetention)
     }
 
     // MARK: 网页交互请求 (#66)

@@ -30,7 +30,7 @@ import Testing
         let (fake, orchestrator, _) = makeOrchestrator()
         let browser = try #require(orchestrator.makeHistoryBrowser())
 
-        browser.open([page], shownIn: [section(with: page)])
+        browser.open([1], shownIn: [section(with: page)])
 
         #expect(fake.createdFrames.count == 1)
         #expect(fake.loadedURLs.last?.url == page)
@@ -42,7 +42,7 @@ import Testing
         let browser = try #require(orchestrator.makeHistoryBrowser())
         orchestrator.closeWidget()
 
-        browser.open([page], shownIn: [section(with: page)])
+        browser.open([1], shownIn: [section(with: page)])
 
         #expect(fake.createdFrames.count == 2)
         #expect(fake.loadedURLs.last?.url == page)
@@ -56,14 +56,14 @@ import Testing
         let browser = try #require(orchestrator.makeHistoryBrowser())
         fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
 
-        browser.open([page], shownIn: [section(with: page)])
+        browser.open([1], shownIn: [section(with: page)])
 
         #expect(fake.loadedURLs.last?.url == page)
         #expect(fake.trayItem("幽灵模式").isChecked())
         #expect(fake.shownWindowIDs == [1])
     }
 
-    /// The menu is rebuilt from the store each time it opens, so a page deleted in the window is
+    /// The menu is rebuilt from the store each time it opens, so a visit deleted in the window is
     /// gone from the menu too.
     @Test func whatTheWindowDeletesLeavesTheMenu() throws {
         let (fake, orchestrator, _) = makeOrchestrator()
@@ -71,8 +71,9 @@ import Testing
         fake.simulateMainFrameURLChanged(URL(string: "https://example.com/keep")!)
         fake.simulateMainFrameURLChanged(page)
         let browser = try #require(orchestrator.makeHistoryBrowser())
+        let pageVisit = try #require(browser.sections(matching: "")[0].rows.first { $0.url == page }?.id)
 
-        browser.delete([page])
+        browser.delete([pageVisit])
 
         #expect(orchestrator.historyMenu().today.map(\.url) == [URL(string: "https://example.com/keep")!])
     }
@@ -104,17 +105,17 @@ import Testing
         fake.simulateMainFrameURLChanged(page)
         let browser = try #require(orchestrator.makeHistoryBrowser())
 
-        browser.removeExpiredEntries()
-        #expect(store.entries(since: .distantPast).count == 2)
+        browser.removeExpiredVisits()
+        #expect(store.visits(since: .distantPast).count == 2)
 
         config = config.updatingHistoryRetention(.oneDay)
-        browser.removeExpiredEntries()
-        #expect(store.entries(since: .distantPast).map(\.url) == [page])
+        browser.removeExpiredVisits()
+        #expect(store.visits(since: .distantPast).map(\.url) == [page])
     }
 
     private func section(with url: URL) -> HistoryBrowser.Section {
         HistoryBrowser.Section(
             day: historyTestDate("2026-10-12 00:00"), title: "今天",
-            rows: [HistoryBrowser.Row(url: url, title: url.absoluteString, subtitle: nil, time: "09:00")])
+            rows: [HistoryBrowser.Row(id: 1, url: url, title: url.absoluteString, subtitle: nil, time: "09:00")])
     }
 }

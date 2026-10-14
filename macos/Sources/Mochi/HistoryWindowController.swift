@@ -51,7 +51,7 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSToo
             window.performClose(nil)
         } else {
             // #110: 移除历史记录项目 applies as the window opens, before anything is listed.
-            model.removeExpiredEntries()
+            model.removeExpiredVisits()
             model.reload()
             window.makeKeyAndOrderFront(nil)
             activateApp()

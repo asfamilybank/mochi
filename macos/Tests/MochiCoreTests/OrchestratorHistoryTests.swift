@@ -20,7 +20,7 @@ import Testing
     }
 
     private func recorded(_ store: HistoryStore) -> [String] {
-        store.entries(since: .distantPast).map(\.url.absoluteString)
+        store.visits(since: .distantPast).map(\.url.absoluteString)
     }
 
     // MARK: What gets recorded
@@ -104,7 +104,7 @@ import Testing
 
     // MARK: Titles
 
-    @Test func thePagesTitleLandsOnItsEntry() {
+    @Test func thePagesTitleLandsOnItsVisit() {
         let (fake, orchestrator, store) = makeOrchestrator()
         defer { withExtendedLifetime(orchestrator) {} }
         fake.simulateMainFrameURLChanged(URL(string: "https://example.com/a")!)
@@ -112,7 +112,23 @@ import Testing
 
         fake.simulatePageTitleChanged("Page B")
 
-        #expect(store.entries(since: .distantPast).map(\.title) == ["Page B", nil])
+        #expect(store.visits(since: .distantPast).map(\.title) == ["Page B", nil])
+    }
+
+    /// #114: a page visited again is a new visit, and its title lands on that visit alone — what
+    /// the page was called the first time stays on the first visit.
+    @Test func aRevisitsTitleLeavesTheEarlierVisitAlone() {
+        let (fake, orchestrator, store) = makeOrchestrator()
+        defer { withExtendedLifetime(orchestrator) {} }
+        fake.simulateMainFrameURLChanged(URL(string: "https://example.com/a")!)
+        fake.simulatePageTitleChanged("Old title")
+        fake.simulateMainFrameURLChanged(URL(string: "https://example.com/b")!)
+        fake.simulateMainFrameURLChanged(URL(string: "https://example.com/a")!)
+
+        fake.simulatePageTitleChanged("New title")
+
+        #expect(recorded(store) == ["https://example.com/a", "https://example.com/b", "https://example.com/a"])
+        #expect(store.visits(since: .distantPast).map(\.title) == ["New title", nil, "Old title"])
     }
 
     /// A title change still drives the window title — history listens alongside, not instead.
@@ -136,7 +152,7 @@ import Testing
         fake.simulateMainFrameURLChanged(URL(string: "about:blank")!)
         fake.simulatePageTitleChanged("Blank")
 
-        #expect(store.entries(since: .distantPast).map(\.title) == ["Page A"])
+        #expect(store.visits(since: .distantPast).map(\.title) == ["Page A"])
     }
 
     @Test(arguments: [nil, "", "   "] as [String?])
@@ -148,7 +164,7 @@ import Testing
 
         fake.simulatePageTitleChanged(title)
 
-        #expect(store.entries(since: .distantPast).map(\.title) == ["Page A"])
+        #expect(store.visits(since: .distantPast).map(\.title) == ["Page A"])
     }
 
     // MARK: The menu
@@ -254,6 +270,6 @@ import Testing
 
         orchestrator.start()
 
-        #expect(store.entries(since: .distantPast).map(\.url.path) == row.kept)
+        #expect(store.visits(since: .distantPast).map(\.url.path) == row.kept)
     }
 }

@@ -6,18 +6,23 @@ import Testing
 @Suite struct HistoryMenuTests {
     private let now = historyTestDate("2026-10-12 10:00")
 
-    /// `count` entries on the day of `day`, one a minute from 08:00, newest first like the store
+    /// `count` visits on the day of `day`, one a minute from 08:00, newest first like the store
     /// returns them.
-    private func entries(_ count: Int, on day: String, prefix: String = "p") -> [HistoryEntry] {
+    private func entries(_ count: Int, on day: String, prefix: String = "p") -> [HistoryVisit] {
         (0..<count).reversed().map { minute in
-            HistoryEntry(
-                url: URL(string: "https://example.com/\(prefix)\(minute)")!, title: "\(prefix)\(minute)",
-                lastVisited: historyTestDate("\(day) 08:00").addingTimeInterval(Double(minute) * 60), visitCount: 1)
+            HistoryVisit(
+                id: Int64(minute), url: URL(string: "https://example.com/\(prefix)\(minute)")!,
+                title: "\(prefix)\(minute)",
+                visitedAt: historyTestDate("\(day) 08:00").addingTimeInterval(Double(minute) * 60))
         }
     }
 
-    private func build(_ entries: [HistoryEntry]) -> HistoryMenu {
-        HistoryMenu.build(entries: entries, now: now, calendar: historyTestCalendar)
+    private func visit(_ url: String, title: String?, at time: Date) -> HistoryVisit {
+        HistoryVisit(id: 1, url: URL(string: url)!, title: title, visitedAt: time)
+    }
+
+    private func build(_ visits: [HistoryVisit]) -> HistoryMenu {
+        HistoryMenu.build(visits: visits, now: now, calendar: historyTestCalendar)
     }
 
     @Test(arguments: [
@@ -63,17 +68,24 @@ import Testing
     }
 
     @Test func midnightSeparatesTodayFromYesterday() {
-        let justBefore = HistoryEntry(
-            url: URL(string: "https://example.com/before")!, title: "before",
-            lastVisited: historyTestDate("2026-10-11 23:59"), visitCount: 1)
-        let justAfter = HistoryEntry(
-            url: URL(string: "https://example.com/after")!, title: "after",
-            lastVisited: historyTestDate("2026-10-12 00:00"), visitCount: 1)
+        let justBefore = visit("https://example.com/before", title: "before", at: historyTestDate("2026-10-11 23:59"))
+        let justAfter = visit("https://example.com/after", title: "after", at: historyTestDate("2026-10-12 00:00"))
 
         let menu = build([justAfter, justBefore])
 
         #expect(menu.today.map(\.title) == ["after"])
         #expect(menu.earlierDays.map { $0.items.map(\.title) } == [["before"]])
+    }
+
+    /// Visit by visit, like the window (#114): a page visited twice today is listed twice.
+    @Test func aPageVisitedTwiceIsListedTwice() {
+        let menu = build([
+            visit("https://example.com/a", title: "A", at: now),
+            visit("https://example.com/b", title: "B", at: now.addingTimeInterval(-60)),
+            visit("https://example.com/a", title: "A", at: now.addingTimeInterval(-120)),
+        ])
+
+        #expect(menu.today.map(\.title) == ["A", "B", "A"])
     }
 
     /// The oldest moment the menu shows, for fetching just enough from the store.
@@ -94,7 +106,7 @@ import Testing
         (title: "Line\none", url: "https://example.com/a", shown: "Line one"),
     ] as [(title: String?, url: String, shown: String)])
     func anItemShowsTheTitleOrElseTheAddress(_ row: (title: String?, url: String, shown: String)) {
-        let entry = HistoryEntry(url: URL(string: row.url)!, title: row.title, lastVisited: now, visitCount: 1)
+        let entry = visit(row.url, title: row.title, at: now)
 
         #expect(build([entry]).today == [HistoryMenu.Item(title: row.shown, url: URL(string: row.url)!)])
     }
@@ -108,9 +120,7 @@ import Testing
     }
 
     @Test func aLongTitleIsCutShort() {
-        let entry = HistoryEntry(
-            url: URL(string: "https://example.com/a")!, title: String(repeating: "长", count: 200), lastVisited: now,
-            visitCount: 1)
+        let entry = visit("https://example.com/a", title: String(repeating: "长", count: 200), at: now)
 
         let shown = build([entry]).today.first?.title ?? ""
 

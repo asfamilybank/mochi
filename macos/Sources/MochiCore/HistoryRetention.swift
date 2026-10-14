@@ -24,7 +24,7 @@ public enum HistoryRetention: String, CaseIterable, Sendable {
         }
     }
 
-    /// The oldest last-visited time that is kept — anything visited before it has expired — or
+    /// The oldest visit time that is kept — any visit before it has expired — or
     /// `nil` for 手动. Counted back in `calendar`, so a month is a calendar month.
     public func cutoff(now: Date, calendar: Calendar) -> Date? {
         let period: (component: Calendar.Component, value: Int)
@@ -41,9 +41,9 @@ public enum HistoryRetention: String, CaseIterable, Sendable {
 }
 
 extension HistoryStore {
-    /// Removes every entry `retention` has expired, at the store's own "now" and calendar.
-    public func removeEntries(olderThan retention: HistoryRetention) {
+    /// Removes every visit `retention` has expired, at the store's own "now" and calendar.
+    public func removeVisits(olderThan retention: HistoryRetention) {
         guard let cutoff = retention.cutoff(now: now(), calendar: calendar) else { return }
-        removeEntries(visitedBefore: cutoff)
+        removeVisits(before: cutoff)
     }
 }

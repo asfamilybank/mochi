@@ -12,7 +12,7 @@ final class HistoryViewModel: ObservableObject {
     @Published var query = "" {
         didSet { if query != oldValue { reload() } }
     }
-    @Published var selection: Set<URL> = []
+    @Published var selection: Set<HistoryVisit.ID> = []
     @Published private(set) var sections: [HistoryBrowser.Section] = []
 
     init(browser: HistoryBrowser) {
@@ -25,18 +25,18 @@ final class HistoryViewModel: ObservableObject {
     /// is dropped, so Delete never reaches a page that isn't on screen.
     func reload() {
         sections = browser.sections(matching: query)
-        let shown = Set(sections.lazy.flatMap(\.rows).map(\.url))
+        let shown = Set(sections.lazy.flatMap(\.rows).map(\.id))
         if !selection.isSubset(of: shown) { selection.formIntersection(shown) }
     }
 
     /// #110 — the caller reloads afterwards.
-    func removeExpiredEntries() {
-        browser.removeExpiredEntries()
+    func removeExpiredVisits() {
+        browser.removeExpiredVisits()
     }
 
-    func delete(_ urls: Set<URL>) {
-        guard !urls.isEmpty else { return }
-        browser.delete(urls)
+    func delete(_ visits: Set<HistoryVisit.ID>) {
+        guard !visits.isEmpty else { return }
+        browser.delete(visits)
         reload()
     }
 
@@ -45,8 +45,8 @@ final class HistoryViewModel: ObservableObject {
         reload()
     }
 
-    func open(_ urls: Set<URL>) {
-        browser.open(urls, shownIn: sections)
+    func open(_ visits: Set<HistoryVisit.ID>) {
+        browser.open(visits, shownIn: sections)
     }
 }
 
@@ -85,14 +85,14 @@ struct HistoryView: View {
             }
         }
         .listStyle(.inset)
-        .contextMenu(forSelectionType: URL.self) { urls in
-            if !urls.isEmpty {
-                Button("打开") { model.open(urls) }
+        .contextMenu(forSelectionType: HistoryVisit.ID.self) { visits in
+            if !visits.isEmpty {
+                Button("打开") { model.open(visits) }
                 Divider()
-                Button("删除") { model.delete(urls) }
+                Button("删除") { model.delete(visits) }
             }
-        } primaryAction: { urls in
-            model.open(urls)
+        } primaryAction: { visits in
+            model.open(visits)
         }
         .onDeleteCommand { model.delete(model.selection) }
     }

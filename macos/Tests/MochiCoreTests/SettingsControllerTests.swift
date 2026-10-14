@@ -1038,7 +1038,7 @@ import Testing
     }
 
     private func paths(in history: HistoryStore) -> [String] {
-        history.entries(since: .distantPast).map(\.url.path)
+        history.visits(since: .distantPast).map(\.url.path)
     }
 
     private func makeHistoryController(

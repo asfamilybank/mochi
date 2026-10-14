@@ -153,19 +153,19 @@ public final class SettingsController {
     /// launch.
     public func updateHistoryRetention(_ retention: HistoryRetention) {
         persistAndNotify { $0.updatingHistoryRetention(retention) }
-        historyStore?.removeEntries(olderThan: currentConfig().historyRetention)
+        historyStore?.removeVisits(olderThan: currentConfig().historyRetention)
     }
 
     // MARK: - #107: 清除浏览数据…
 
-    /// Clears `kinds` modified within `range`: 历史记录 from the history (the pages last visited
-    /// since the start, #110), the website data ones through the platform, the 网页权限例外
+    /// Clears `kinds` modified within `range`: 历史记录 from the history (every visit since the
+    /// start, #110), the website data ones through the platform, the 网页权限例外
     /// through the config (by their modification time). The page isn't reloaded. The UI asks for
     /// confirmation before calling this.
     public func clearBrowsingData(_ kinds: Set<BrowsingDataKind>, from range: BrowsingDataTimeRange) {
         let start = range.startDate(now: currentDate())
         if kinds.contains(.history) {
-            historyStore?.removeEntries(visitedSince: start)
+            historyStore?.removeVisits(since: start)
         }
         let categories = BrowsingDataKind.websiteDataCategories(for: kinds)
         if !categories.isEmpty {

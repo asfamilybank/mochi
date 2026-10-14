@@ -1,8 +1,9 @@
 import Foundation
 
-/// What the main menu's 历史记录 lists below 返回/前进 (#102) — a pure function of the entries and
-/// "now", rebuilt every time the menu is about to open: today's most recent pages, then one
-/// submenu for each of the past six days that has any.
+/// What the main menu's 历史记录 lists below 返回/前进 (#102) — a pure function of the visits and
+/// "now", rebuilt every time the menu is about to open: today's most recent visits, then one
+/// submenu for each of the past six days that has any. Visit by visit, like the 历史记录 window
+/// (#114): a page visited three times today is listed three times.
 public struct HistoryMenu: Equatable {
     public struct Item: Equatable {
         public let title: String
@@ -33,21 +34,21 @@ public struct HistoryMenu: Equatable {
         return calendar.date(byAdding: .day, value: -earlierDayCount, to: today) ?? today
     }
 
-    /// - Parameter entries: newest first, as `HistoryStore` returns them; anything older than
+    /// - Parameter visits: newest first, as `HistoryStore` returns them; anything older than
     ///   `earliestDay` or later than today is left out.
-    public static func build(entries: [HistoryEntry], now: Date, calendar: Calendar) -> HistoryMenu {
+    public static func build(visits: [HistoryVisit], now: Date, calendar: Calendar) -> HistoryMenu {
         let today = calendar.startOfDay(for: now)
         let earliest = earliestDay(now: now, calendar: calendar)
         var todayItems: [Item] = []
         var days: [(day: Date, items: [Item])] = []
-        for entry in entries.sorted(by: { $0.lastVisited > $1.lastVisited }) {
-            let day = calendar.startOfDay(for: entry.lastVisited)
+        for visit in visits {
+            let day = calendar.startOfDay(for: visit.visitedAt)
             if day == today {
-                if todayItems.count < todayLimit { todayItems.append(item(for: entry)) }
+                if todayItems.count < todayLimit { todayItems.append(item(for: visit)) }
             } else if day < today, day >= earliest {
                 if days.last?.day != day { days.append((day, [])) }
                 if days[days.count - 1].items.count < dayLimit {
-                    days[days.count - 1].items.append(item(for: entry))
+                    days[days.count - 1].items.append(item(for: visit))
                 }
             }
         }
@@ -58,10 +59,10 @@ public struct HistoryMenu: Equatable {
 
     /// The page's title on one line, or its address when it has none; cut to
     /// `maximumTitleLength` with a trailing ellipsis.
-    private static func item(for entry: HistoryEntry) -> Item {
-        let shown = HistoryText.title(of: entry) ?? entry.url.absoluteString
+    private static func item(for visit: HistoryVisit) -> Item {
+        let shown = HistoryText.title(of: visit) ?? visit.url.absoluteString
         let cut = shown.count > maximumTitleLength ? shown.prefix(maximumTitleLength - 1) + "…" : shown
-        return Item(title: String(cut), url: entry.url)
+        return Item(title: String(cut), url: visit.url)
     }
 
     /// 「10月11日 星期日」.

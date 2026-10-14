@@ -21,8 +21,8 @@ enum HistoryText {
 
     /// The page's title on one line — runs of whitespace, line breaks included, become one
     /// space — or `nil` when it has none worth showing.
-    static func title(of entry: HistoryEntry) -> String? {
-        let title = (entry.title ?? "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    static func title(of visit: HistoryVisit) -> String? {
+        let title = (visit.title ?? "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
         return title.isEmpty ? nil : title
     }
 }
