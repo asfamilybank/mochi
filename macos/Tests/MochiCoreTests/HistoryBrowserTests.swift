@@ -494,8 +494,10 @@ import Testing
         #expect(opened == [URL(string: "https://example.com/a")!])
     }
 
-    /// There is one widget, so a double-click on a multiple selection opens one page: the topmost.
-    @Test func openingSeveralOpensTheTopmost() {
+    /// 打开 is about one page, like 拷贝: with several rows selected the context menu's 打开 is
+    /// greyed out and Return opens nothing — there is one widget, and picking one of them for the
+    /// user would be a guess. (A double-click is different: it says which row; see below.)
+    @Test func openingSeveralOpensNothing() {
         let store = makeStore()
         let older = visit(store, "https://example.com/older", at: "2026-10-11 09:00")
         let newer = visit(store, "https://example.com/newer", at: "2026-10-12 09:00")
@@ -506,7 +508,40 @@ import Testing
 
         browser.open([older, newer])
 
-        #expect(opened == [URL(string: "https://example.com/newer")!])
+        #expect(opened.isEmpty)
+        #expect(!browser.canOpen([older, newer]))
+        #expect(browser.canOpen([newer]))
+    }
+
+    /// A double-click opens the row it hit, even among several selected — and leaves that row alone
+    /// selected, so what is selected is what was opened.
+    @Test func aDoubleClickOpensTheRowItHitAndSelectsItAlone() {
+        let store = makeStore()
+        let older = visit(store, "https://example.com/older", at: "2026-10-12 09:00")
+        let newer = visit(store, "https://example.com/newer", at: "2026-10-12 09:30")
+        var opened: [URL] = []
+        let browser = openedBrowser(store) { opened.append($0) }
+
+        let selection = browser.activate([older, newer], hitRow: older)
+
+        #expect(opened == [URL(string: "https://example.com/older")!])
+        #expect(selection == [older])
+    }
+
+    /// Return hits no row: it opens the selection when that is one row, and nothing otherwise.
+    @Test(arguments: [1, 2])
+    func returnOpensOnlyASingleRow(_ selected: Int) {
+        let store = makeStore()
+        let a = visit(store, "https://example.com/a", at: "2026-10-12 09:00")
+        let b = visit(store, "https://example.com/b", at: "2026-10-12 09:30")
+        var opened: [URL] = []
+        let browser = openedBrowser(store) { opened.append($0) }
+        let before = Set([a, b].prefix(selected))
+
+        let after = browser.activate(before, hitRow: nil)
+
+        #expect(opened == (selected == 1 ? [URL(string: "https://example.com/a")!] : []))
+        #expect(after == before)
     }
 
     /// A visit folded away or deleted isn't on show, so it can't be opened.

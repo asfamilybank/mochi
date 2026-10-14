@@ -213,11 +213,28 @@ public final class HistoryBrowser {
         return shownRows.first { selection.contains($0.id) }
     }
 
-    /// A double-click. There is one widget, so of several selected visits only the topmost on show
-    /// is opened; a selection that is no longer shown opens nothing.
+    /// 打开: one row on show, opened in the widget. There is one widget, so with several selected
+    /// nothing is opened — picking one for the user would be a guess — and the context menu's
+    /// 打开 is greyed out (`canOpen`).
     public func open(_ selection: Set<HistoryVisit.ID>) {
-        guard let url = shownRows.first(where: { selection.contains($0.id) })?.url else { return }
+        guard let url = onlyRow(of: selection)?.url else { return }
         openInWidget(url)
+    }
+
+    public func canOpen(_ selection: Set<HistoryVisit.ID>) -> Bool {
+        onlyRow(of: selection) != nil
+    }
+
+    /// The list's primary action. A double-click says which row it hit: that row is opened,
+    /// whatever else is selected, and becomes the whole selection. Return hits no row and opens
+    /// the selection only when it is one row. Returns what the selection is to be.
+    public func activate(_ selection: Set<HistoryVisit.ID>, hitRow: HistoryVisit.ID?) -> Set<HistoryVisit.ID> {
+        guard let hitRow, shownRows.contains(where: { $0.id == hitRow }) else {
+            open(selection)
+            return selection
+        }
+        open([hitRow])
+        return [hitRow]
     }
 
     // MARK: - Rows and titles

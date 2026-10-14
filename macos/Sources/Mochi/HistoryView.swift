@@ -100,6 +100,25 @@ final class HistoryViewModel: ObservableObject {
         browser.open(visits)
     }
 
+    func canOpen(_ visits: Set<HistoryVisit.ID>) -> Bool {
+        browser.canOpen(visits)
+    }
+
+    /// The row under the pointer, kept by each row's hover — which row a double-click hit. Not
+    /// published: nothing is drawn from it.
+    var hoveredRow: HistoryVisit.ID?
+
+    /// The list's primary action. SwiftUI hands over the whole selection even when the double-click
+    /// landed on one of several selected rows, so the row under the pointer says which one was hit;
+    /// for Return (no mouse) there is none.
+    func activate(_ visits: Set<HistoryVisit.ID>) {
+        let event = NSApp.currentEvent
+        let isDoubleClick = event.map { [.leftMouseDown, .leftMouseUp].contains($0.type) && $0.clickCount >= 2 } ?? false
+        let hit = isDoubleClick ? hoveredRow : nil
+        let selection = browser.activate(visits, hitRow: hit)
+        if selection != self.selection { self.selection = selection }
+    }
+
     /// 拷贝 / ⌘C (#119): the whole address of one visit; `nil` with several selected.
     func copiedText(_ visits: Set<HistoryVisit.ID>) -> String? {
         browser.copiedText(for: visits)
@@ -184,6 +203,7 @@ struct HistoryView: View {
         .contextMenu(forSelectionType: HistoryVisit.ID.self) { visits in
             if !visits.isEmpty {
                 Button { model.open(visits) } label: { Label("打开", systemImage: "arrow.up.forward.app") }
+                    .disabled(!model.canOpen(visits))
                 Button { model.copy(visits) } label: { Label("拷贝", systemImage: "doc.on.doc") }
                     .keyboardShortcut("c")
                     .disabled(!model.canCopy(visits))
@@ -195,7 +215,7 @@ struct HistoryView: View {
                 Button { model.delete(visits) } label: { Label("删除", systemImage: "trash") }
             }
         } primaryAction: { visits in
-            model.open(visits)
+            model.activate(visits)
         }
         .onDeleteCommand { model.delete(model.selection) }
         // ⌘C is `HistoryWindowController.copy(_:)`, not `onCopyCommand`: given nothing to copy,
@@ -205,6 +225,13 @@ struct HistoryView: View {
     private func rows(_ rows: [HistoryBrowser.Row]) -> some View {
         ForEach(rows) { row in
             HistoryRow(row: row, icon: model.icon(for: row))
+                .onHover { isHovering in
+                    if isHovering {
+                        model.hoveredRow = row.id
+                    } else if model.hoveredRow == row.id {
+                        model.hoveredRow = nil
+                    }
+                }
         }
     }
 
