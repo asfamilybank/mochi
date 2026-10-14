@@ -360,6 +360,60 @@ import Testing
         #expect(browser.matchCount == 1)
     }
 
+    // MARK: The context menu (#119)
+
+    /// 拷贝 and 显示此网站的所有记录 are about one page: only with one row selected.
+    @Test(arguments: [
+        (selected: 0, available: false),
+        (selected: 1, available: true),
+        (selected: 2, available: false),
+    ])
+    func copyingAndShowingTheSiteNeedOneRow(_ row: (selected: Int, available: Bool)) {
+        let store = makeStore()
+        let a = visit(store, "https://www.example.com/a", at: "2026-10-12 09:00")
+        let b = visit(store, "https://www.example.com/b", at: "2026-10-12 09:01")
+        let browser = openedBrowser(store)
+        let selection = Set([a, b].prefix(row.selected))
+
+        #expect((browser.copiedText(for: selection) != nil) == row.available)
+        #expect((browser.siteQuery(for: selection) != nil) == row.available)
+    }
+
+    @Test func copyingGivesTheWholeAddress() {
+        let store = makeStore()
+        let a = visit(store, "https://www.example.com/watch?v=1&t=30", at: "2026-10-12 09:00", title: "A video")
+        let browser = openedBrowser(store)
+
+        #expect(browser.copiedText(for: [a]) == "https://www.example.com/watch?v=1&t=30")
+    }
+
+    /// 显示此网站的所有记录 searches for the row's host, and that search finds exactly the host's
+    /// visits.
+    @Test func showingTheSiteSearchesForItsHost() throws {
+        let store = makeStore()
+        let a = visit(store, "https://WWW.Example.com/a", at: "2026-10-12 09:00")
+        visit(store, "https://www.example.com/b", at: "2026-10-11 09:00")
+        visit(store, "https://example.com/c", at: "2026-10-11 09:30")
+        let browser = openedBrowser(store)
+
+        let query = try #require(browser.siteQuery(for: [a]))
+        browser.search(query)
+
+        #expect(query == "site:www.example.com")
+        #expect(browser.results.map(\.url.path) == ["/a", "/b"])
+    }
+
+    /// A row that is no longer on show (deleted meanwhile) offers neither.
+    @Test func aRowNoLongerShownOffersNothing() {
+        let store = makeStore()
+        let a = visit(store, "https://example.com/a", at: "2026-10-12 09:00")
+        let browser = openedBrowser(store)
+        browser.delete([a])
+
+        #expect(browser.copiedText(for: [a]) == nil)
+        #expect(browser.siteQuery(for: [a]) == nil)
+    }
+
     // MARK: Deleting
 
     @Test func deletingSelectedRowsRemovesThoseVisitsFromTheStore() {

@@ -176,6 +176,24 @@ public final class HistoryBrowser {
         reload()
     }
 
+    /// 拷贝 (⌘C, #119): the selected visit's whole address — only for one row on show; several
+    /// selected, nothing is copied.
+    public func copiedText(for selection: Set<HistoryVisit.ID>) -> String? {
+        onlyRow(of: selection)?.url.absoluteString
+    }
+
+    /// 显示此网站的所有记录 (#119): the search for every visit to the selected visit's host — only
+    /// for one row on show.
+    public func siteQuery(for selection: Set<HistoryVisit.ID>) -> String? {
+        guard let host = onlyRow(of: selection)?.url.host?.lowercased() else { return nil }
+        return "site:\(host)"
+    }
+
+    private func onlyRow(of selection: Set<HistoryVisit.ID>) -> Row? {
+        guard selection.count == 1 else { return nil }
+        return shownRows.first { selection.contains($0.id) }
+    }
+
     /// A double-click. There is one widget, so of several selected visits only the topmost on show
     /// is opened; a selection that is no longer shown opens nothing.
     public func open(_ selection: Set<HistoryVisit.ID>) {

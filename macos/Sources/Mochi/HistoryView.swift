@@ -105,6 +105,33 @@ final class HistoryViewModel: ObservableObject {
         browser.open(visits)
     }
 
+    /// 拷贝 / ⌘C (#119): the whole address of one visit; `nil` with several selected.
+    func copiedText(_ visits: Set<HistoryVisit.ID>) -> String? {
+        browser.copiedText(for: visits)
+    }
+
+    func canCopy(_ visits: Set<HistoryVisit.ID>) -> Bool {
+        copiedText(visits) != nil
+    }
+
+    func copy(_ visits: Set<HistoryVisit.ID>) {
+        guard let text = copiedText(visits) else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    func canShowSite(_ visits: Set<HistoryVisit.ID>) -> Bool {
+        browser.siteQuery(for: visits) != nil
+    }
+
+    /// 显示此网站的所有记录 (#119): searches `site:<host>` at once, and the toolbar's field shows it.
+    func showSite(_ visits: Set<HistoryVisit.ID>) {
+        guard let siteQuery = browser.siteQuery(for: visits) else { return }
+        query = siteQuery
+        pendingSearch?.cancel()
+        search()
+    }
+
     /// A row's site icon, `nil` when its visit has none (the row shows a placeholder).
     func icon(for row: HistoryBrowser.Row) -> NSImage? {
         guard let id = row.faviconID else { return nil }
@@ -126,8 +153,10 @@ final class HistoryViewModel: ObservableObject {
 /// The 历史记录 window's content (#108; ADR-0018 — the window and its search field are AppKit).
 /// A timeline of foldable days, newest first (#116), each header with its 「N 项」; search results
 /// as one flat timeline (#118). Double-click opens a page in the widget; Delete or the context menu removes the
-/// selection; a day's header has 删除这一天. The toolbar's 清除历史记录… shows the settings
-/// window's 清除浏览数据 sheet here, over this window (#115).
+/// selection; a day's header has 删除这一天. With one row selected, the context menu also copies
+/// its address (拷贝, ⌘C) and shows every visit to its host (显示此网站的所有记录, #119). The
+/// toolbar's 清除历史记录… shows the settings window's 清除浏览数据 sheet here, over this window
+/// (#115).
 struct HistoryView: View {
     @ObservedObject var model: HistoryViewModel
 
@@ -163,14 +192,26 @@ struct HistoryView: View {
         .listStyle(.inset)
         .contextMenu(forSelectionType: HistoryVisit.ID.self) { visits in
             if !visits.isEmpty {
-                Button("打开") { model.open(visits) }
+                Button { model.open(visits) } label: { Label("打开", systemImage: "arrow.up.forward.app") }
+                Button { model.copy(visits) } label: { Label("拷贝", systemImage: "doc.on.doc") }
+                    .disabled(!model.canCopy(visits))
+                Button { model.showSite(visits) } label: {
+                    Label("显示此网站的所有记录", systemImage: "line.3.horizontal.decrease.circle")
+                }
+                .disabled(!model.canShowSite(visits))
                 Divider()
-                Button("删除") { model.delete(visits) }
+                Button { model.delete(visits) } label: { Label("删除", systemImage: "trash") }
             }
         } primaryAction: { visits in
             model.open(visits)
         }
         .onDeleteCommand { model.delete(model.selection) }
+        // ⌘C (#119): the edit menu's 拷贝 reaches the list through the responder chain. One row
+        // only — several selected, there is nothing to copy.
+        .onCopyCommand {
+            guard let text = model.copiedText(model.selection) else { return [] }
+            return [NSItemProvider(object: text as NSString)]
+        }
     }
 
     private func rows(_ rows: [HistoryBrowser.Row]) -> some View {
@@ -180,7 +221,7 @@ struct HistoryView: View {
     }
 
     private func deleteDayButton(_ day: Date) -> some View {
-        Button("删除这一天") { model.deleteDay(day) }
+        Button { model.deleteDay(day) } label: { Label("删除这一天", systemImage: "trash") }
     }
 
     @ViewBuilder private var emptyState: some View {
