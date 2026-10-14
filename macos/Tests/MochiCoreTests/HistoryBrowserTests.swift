@@ -3,8 +3,9 @@ import Testing
 
 @testable import MochiCore
 
-/// The 历史记录 window's logic (#108) — grouping, search, deleting and opening — run against a
-/// real in-memory `HistoryStore`, like the store's own tests. A row is a visit (#114).
+/// The 历史记录 window's state (#108) — the foldable timeline (#116), search, deleting and opening
+/// — run against a real in-memory `HistoryStore`, like the store's own tests. A row is a visit
+/// (#114).
 @Suite struct HistoryBrowserTests {
     private let clock = TestClock(historyTestDate("2026-10-12 10:00"))
 
@@ -34,24 +35,117 @@ import Testing
         sections.map { $0.rows.map(\.url.absoluteString) }
     }
 
-    // MARK: Grouping
+    private func addresses(_ days: [HistoryBrowser.Day]) -> [[String]] {
+        days.map { $0.rows.map(\.url.absoluteString) }
+    }
 
-    @Test func entriesAreGroupedByDayNewestFirst() {
+    /// A browser as the window has it on opening: every day folded but 今天.
+    private func openedBrowser(_ store: HistoryStore, opened: @escaping (URL) -> Void = { _ in }) -> HistoryBrowser {
+        let browser = makeBrowser(store, opened: opened)
+        browser.resetExpansion()
+        return browser
+    }
+
+    /// Unfolds every day — for the tests about what a day lists rather than about folding.
+    private func expandAll(_ browser: HistoryBrowser) {
+        for day in browser.days where !day.isExpanded { browser.setExpanded(true, day: day.day) }
+    }
+
+    // MARK: The timeline (#116)
+
+    @Test func daysAreListedNewestFirstWithHowManyVisitsEach() {
         let store = makeStore()
         visit(store, "https://example.com/old", at: "2026-10-10 09:00")
         visit(store, "https://example.com/yesterday-early", at: "2026-10-11 08:00")
         visit(store, "https://example.com/today", at: "2026-10-12 09:30")
         visit(store, "https://example.com/yesterday-late", at: "2026-10-11 23:59")
 
-        let sections = makeBrowser(store).sections(matching: "")
+        let days = openedBrowser(store).days
 
-        #expect(
-            addresses(sections) == [
-                ["https://example.com/today"],
-                ["https://example.com/yesterday-late", "https://example.com/yesterday-early"],
-                ["https://example.com/old"],
-            ])
-        #expect(sections.map(\.day) == ["2026-10-12", "2026-10-11", "2026-10-10"].map { historyTestDate("\($0) 00:00") })
+        #expect(days.map(\.day) == ["2026-10-12", "2026-10-11", "2026-10-10"].map { historyTestDate("\($0) 00:00") })
+        #expect(days.map(\.visits) == [1, 2, 1])
+    }
+
+    /// The window opens on today alone: the past is folded away.
+    @Test func openingUnfoldsTodayAndFoldsTheRest() {
+        let store = makeStore()
+        visit(store, "https://example.com/yesterday", at: "2026-10-11 09:00")
+        visit(store, "https://example.com/today", at: "2026-10-12 09:00")
+
+        let days = openedBrowser(store).days
+
+        #expect(days.map(\.isExpanded) == [true, false])
+        #expect(addresses(days) == [["https://example.com/today"], []])
+    }
+
+    @Test func withNothingTodayEveryDayIsFolded() {
+        let store = makeStore()
+        visit(store, "https://example.com/a", at: "2026-10-11 09:00")
+        visit(store, "https://example.com/b", at: "2026-10-09 09:00")
+
+        let days = openedBrowser(store).days
+
+        #expect(days.map(\.isExpanded) == [false, false])
+        #expect(days.allSatisfy { $0.rows.isEmpty })
+        #expect(days.map(\.visits) == [1, 1])
+    }
+
+    @Test func aDayUnfoldsAndFoldsAgain() {
+        let store = makeStore()
+        visit(store, "https://example.com/a", at: "2026-10-11 09:00")
+        visit(store, "https://example.com/b", at: "2026-10-11 09:05")
+        let browser = openedBrowser(store)
+        let yesterday = browser.days[0].day
+
+        browser.setExpanded(true, day: yesterday)
+        #expect(addresses(browser.days) == [["https://example.com/b", "https://example.com/a"]])
+
+        browser.setExpanded(false, day: yesterday)
+        #expect(addresses(browser.days) == [[]])
+    }
+
+    /// Coming back to the window re-reads the store but leaves what the user unfolded alone.
+    @Test func reloadingKeepsWhatIsUnfolded() {
+        let store = makeStore()
+        visit(store, "https://example.com/old", at: "2026-10-10 09:00")
+        visit(store, "https://example.com/today", at: "2026-10-12 09:00")
+        let browser = openedBrowser(store)
+        browser.setExpanded(true, day: browser.days[1].day)
+        browser.setExpanded(false, day: browser.days[0].day)
+        visit(store, "https://example.com/meanwhile", at: "2026-10-12 09:59")
+
+        browser.reload()
+
+        #expect(browser.days.map(\.isExpanded) == [false, true])
+        #expect(browser.days.map(\.visits) == [2, 1])
+    }
+
+    /// ⌘Y again: back to today alone, whatever was unfolded before.
+    @Test func reopeningFoldsEverythingButTodayAgain() {
+        let store = makeStore()
+        visit(store, "https://example.com/old", at: "2026-10-10 09:00")
+        visit(store, "https://example.com/today", at: "2026-10-12 09:00")
+        let browser = openedBrowser(store)
+        browser.setExpanded(true, day: browser.days[1].day)
+
+        browser.resetExpansion()
+
+        #expect(browser.days.map(\.isExpanded) == [true, false])
+    }
+
+    /// Open across midnight: the new 今天 is unfolded, the day that just ended stays as it was.
+    @Test func pastMidnightTheNewTodayUnfolds() {
+        let store = makeStore()
+        visit(store, "https://example.com/before", at: "2026-10-11 09:00")
+        visit(store, "https://example.com/late", at: "2026-10-12 23:00")
+        let browser = openedBrowser(store)
+        clock.now = historyTestDate("2026-10-13 00:05")
+        visit(store, "https://example.com/after-midnight", at: "2026-10-13 00:01")
+
+        browser.reload()
+
+        #expect(browser.days.map(\.title).first?.hasPrefix("今天") == true)
+        #expect(browser.days.map(\.isExpanded) == [true, true, false])
     }
 
     /// A timeline, not a list of addresses: going back and forth between two pages lists every
@@ -62,47 +156,49 @@ import Testing
         visit(store, "https://example.com/b", at: "2026-10-12 09:01")
         visit(store, "https://example.com/a", at: "2026-10-12 09:02")
         visit(store, "https://example.com/a", at: "2026-10-10 09:00")
+        let browser = openedBrowser(store)
 
-        let sections = makeBrowser(store).sections(matching: "")
+        expandAll(browser)
 
         #expect(
-            addresses(sections) == [
+            addresses(browser.days) == [
                 ["https://example.com/a", "https://example.com/b", "https://example.com/a"],
                 ["https://example.com/a"],
             ])
-        #expect(sections[0].rows.map(\.time) == ["09:02", "09:01", "09:00"])
+        #expect(browser.days[0].rows.map(\.time) == ["09:02", "09:01", "09:00"])
     }
 
     @Test(arguments: [
-        (visited: "2026-10-12 00:00", title: "今天"),
-        (visited: "2026-10-11 23:59", title: "昨天"),
+        (visited: "2026-10-12 00:00", title: "今天 · 10月12日 星期一"),
+        (visited: "2026-10-11 23:59", title: "昨天 · 10月11日 星期日"),
         (visited: "2026-10-10 12:00", title: "10月10日 星期六"),
         (visited: "2025-12-31 12:00", title: "2025年12月31日 星期三"),
     ])
-    func sectionsAreNamedAfterTheirDay(_ row: (visited: String, title: String)) {
+    func daysAreNamedAfterTheirDate(_ row: (visited: String, title: String)) {
         let store = makeStore()
         visit(store, "https://example.com/a", at: row.visited)
 
-        #expect(makeBrowser(store).sections(matching: "").map(\.title) == [row.title])
+        #expect(openedBrowser(store).days.map(\.title) == [row.title])
     }
 
-    /// 今天 is the store's today: once its clock passes midnight, yesterday's pages are 昨天.
+    /// 今天 is the store's today: once its clock passes midnight, yesterday's visits are 昨天.
     @Test func theDaysFollowTheStoresNow() {
         let store = makeStore()
         visit(store, "https://example.com/a", at: "2026-10-12 23:00")
-        let browser = makeBrowser(store)
-        #expect(browser.sections(matching: "").map(\.title) == ["今天"])
+        let browser = openedBrowser(store)
+        #expect(browser.days.map(\.title) == ["今天 · 10月12日 星期一"])
 
         clock.now = historyTestDate("2026-10-13 00:01")
+        browser.reload()
 
-        #expect(browser.sections(matching: "").map(\.title) == ["昨天"])
+        #expect(browser.days.map(\.title) == ["昨天 · 10月12日 星期一"])
     }
 
     @Test func aRowShowsItsTitleWithTheAddressBelowAndTheTimeVisited() {
         let store = makeStore()
         visit(store, "https://example.com/a", at: "2026-10-12 09:05", title: "  Page\n  A ")
 
-        let row = makeBrowser(store).sections(matching: "").first?.rows.first
+        let row = openedBrowser(store).days.first?.rows.first
 
         #expect(row?.title == "Page A")
         #expect(row?.subtitle == "https://example.com/a")
@@ -115,7 +211,7 @@ import Testing
         let store = makeStore()
         visit(store, "https://example.com/untitled", at: "2026-10-12 09:00", title: title)
 
-        let row = makeBrowser(store).sections(matching: "").first?.rows.first
+        let row = openedBrowser(store).days.first?.rows.first
 
         #expect(row?.title == "https://example.com/untitled")
         #expect(row?.subtitle == nil)
@@ -127,23 +223,22 @@ import Testing
         let icon = Data("png".utf8)
         clock.now = historyTestDate("2026-10-12 09:00")
         store.recordVisit(to: URL(string: "https://example.com/a")!, favicon: icon)
+        clock.now = historyTestDate("2026-10-12 10:00")
         visit(store, "https://example.com/b", at: "2026-10-12 09:30")
-        let browser = makeBrowser(store)
+        let browser = openedBrowser(store)
 
-        let rows = try #require(browser.sections(matching: "").first?.rows)
+        let rows = try #require(browser.days.first?.rows)
 
         #expect(rows.map { $0.faviconID.flatMap(browser.favicon) } == [nil, icon])
     }
 
-    @Test func anEmptyHistoryHasNoSections() {
-        #expect(makeBrowser(makeStore()).sections(matching: "").isEmpty)
+    @Test func anEmptyHistoryHasNoDays() {
+        #expect(openedBrowser(makeStore()).days.isEmpty)
     }
 
     // MARK: Search
 
     @Test(arguments: [
-        (query: "", shown: ["https://video.example.com/watch", "https://news.example.org/today"]),
-        (query: "   ", shown: ["https://video.example.com/watch", "https://news.example.org/today"]),
         (query: "Cats", shown: ["https://video.example.com/watch"]),
         (query: "cats", shown: ["https://video.example.com/watch"]),
         (query: "news.example", shown: ["https://news.example.org/today"]),
@@ -154,11 +249,26 @@ import Testing
         let store = makeStore()
         visit(store, "https://news.example.org/today", at: "2026-10-11 09:00", title: "Headlines")
         visit(store, "https://video.example.com/watch", at: "2026-10-12 09:00", title: "Funny Cats")
+        let browser = openedBrowser(store)
 
-        let sections = makeBrowser(store).sections(matching: row.query)
+        browser.search(row.query)
 
-        #expect(sections.flatMap(\.rows).map(\.url.absoluteString) == row.shown)
-        #expect(sections.allSatisfy { !$0.rows.isEmpty })
+        #expect(browser.isSearching)
+        #expect(browser.shownRows.map(\.url.absoluteString) == row.shown)
+        #expect(browser.days.isEmpty)
+    }
+
+    /// Only whitespace is no search: the timeline, as it was.
+    @Test(arguments: ["", "   "])
+    func aBlankQueryIsTheTimeline(_ query: String) {
+        let store = makeStore()
+        visit(store, "https://example.com/a", at: "2026-10-12 09:00")
+        let browser = openedBrowser(store)
+
+        browser.search(query)
+
+        #expect(!browser.isSearching)
+        #expect(addresses(browser.days) == [["https://example.com/a"]])
     }
 
     // MARK: Deleting
@@ -168,12 +278,12 @@ import Testing
         let a = visit(store, "https://example.com/a", at: "2026-10-12 09:00")
         visit(store, "https://example.com/b", at: "2026-10-12 09:01")
         let c = visit(store, "https://example.com/c", at: "2026-10-11 09:00")
-        let browser = makeBrowser(store)
+        let browser = openedBrowser(store)
 
         browser.delete([a, c])
 
         #expect(store.visits(since: .distantPast).map(\.url.absoluteString) == ["https://example.com/b"])
-        #expect(addresses(browser.sections(matching: "")) == [["https://example.com/b"]])
+        #expect(addresses(browser.days) == [["https://example.com/b"]])
     }
 
     /// Deleting a row is deleting that visit: the page's other visits stay on the timeline.
@@ -181,12 +291,12 @@ import Testing
         let store = makeStore()
         visit(store, "https://example.com/a", at: "2026-10-11 09:00")
         let today = visit(store, "https://example.com/a", at: "2026-10-12 09:00")
-        let browser = makeBrowser(store)
+        let browser = openedBrowser(store)
 
         browser.delete([today])
 
-        #expect(addresses(browser.sections(matching: "")) == [["https://example.com/a"]])
-        #expect(browser.sections(matching: "").map(\.title) == ["昨天"])
+        #expect(browser.days.map(\.title) == ["昨天 · 10月11日 星期日"])
+        #expect(browser.days.map(\.visits) == [1])
     }
 
     @Test func deletingADayRemovesEverythingFromThatDayOnly() {
@@ -195,24 +305,25 @@ import Testing
         visit(store, "https://example.com/late", at: "2026-10-11 23:59")
         visit(store, "https://example.com/early", at: "2026-10-11 00:00")
         visit(store, "https://example.com/before", at: "2026-10-10 23:59")
-        let browser = makeBrowser(store)
-        let yesterday = browser.sections(matching: "")[1].day
+        let browser = openedBrowser(store)
 
-        browser.deleteDay(yesterday)
+        browser.deleteDay(browser.days[1].day)
 
         #expect(
             store.visits(since: .distantPast).map(\.url.absoluteString)
                 == ["https://example.com/today", "https://example.com/before"])
+        #expect(browser.days.count == 2)
     }
 
-    /// 删除这一天 means the whole day, including the pages a search is hiding — what the item says.
+    /// 删除这一天 means the whole day, including the visits a search is hiding — what the item says.
     @Test func deletingADayWhileSearchingRemovesTheWholeDay() {
         let store = makeStore()
         visit(store, "https://example.com/match", at: "2026-10-11 09:00", title: "match")
         visit(store, "https://example.com/other", at: "2026-10-11 10:00", title: "other")
-        let browser = makeBrowser(store)
+        let browser = openedBrowser(store)
+        browser.search("match")
 
-        browser.deleteDay(browser.sections(matching: "match")[0].day)
+        browser.deleteDay(browser.sections[0].day)
 
         #expect(store.visits(since: .distantPast).isEmpty)
     }
@@ -223,9 +334,9 @@ import Testing
         let store = makeStore()
         let a = visit(store, "https://example.com/a", at: "2026-10-12 09:00")
         var opened: [URL] = []
-        let browser = makeBrowser(store) { opened.append($0) }
+        let browser = openedBrowser(store) { opened.append($0) }
 
-        browser.open([a], shownIn: browser.sections(matching: ""))
+        browser.open([a])
 
         #expect(opened == [URL(string: "https://example.com/a")!])
     }
@@ -237,21 +348,25 @@ import Testing
         let newer = visit(store, "https://example.com/newer", at: "2026-10-12 09:00")
         visit(store, "https://example.com/newest", at: "2026-10-12 09:30")
         var opened: [URL] = []
-        let browser = makeBrowser(store) { opened.append($0) }
+        let browser = openedBrowser(store) { opened.append($0) }
+        expandAll(browser)
 
-        browser.open([older, newer], shownIn: browser.sections(matching: ""))
+        browser.open([older, newer])
 
         #expect(opened == [URL(string: "https://example.com/newer")!])
     }
 
-    @Test func openingNothingOpensNothing() {
+    /// A visit folded away or deleted isn't on show, so it can't be opened.
+    @Test func openingNothingShownOpensNothing() {
         let store = makeStore()
+        let folded = visit(store, "https://example.com/folded", at: "2026-10-11 09:00")
         visit(store, "https://example.com/a", at: "2026-10-12 09:00")
         var opened: [URL] = []
-        let browser = makeBrowser(store) { opened.append($0) }
+        let browser = openedBrowser(store) { opened.append($0) }
 
-        browser.open([], shownIn: browser.sections(matching: ""))
-        browser.open([999], shownIn: browser.sections(matching: ""))
+        browser.open([])
+        browser.open([999])
+        browser.open([folded])
 
         #expect(opened.isEmpty)
     }

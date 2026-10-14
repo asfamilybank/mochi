@@ -29,8 +29,9 @@ import Testing
     @Test func aDoubleClickLoadsInTheOpenWidget() throws {
         let (fake, orchestrator, _) = makeOrchestrator()
         let browser = try #require(orchestrator.makeHistoryBrowser())
+        let visit = try shownVisit(of: page, fake, browser)
 
-        browser.open([1], shownIn: [section(with: page)])
+        browser.open([visit])
 
         #expect(fake.createdFrames.count == 1)
         #expect(fake.loadedURLs.last?.url == page)
@@ -40,9 +41,10 @@ import Testing
     @Test func aDoubleClickWithTheWidgetClosedReopensItFirst() throws {
         let (fake, orchestrator, _) = makeOrchestrator()
         let browser = try #require(orchestrator.makeHistoryBrowser())
+        let visit = try shownVisit(of: page, fake, browser)
         orchestrator.closeWidget()
 
-        browser.open([1], shownIn: [section(with: page)])
+        browser.open([visit])
 
         #expect(fake.createdFrames.count == 2)
         #expect(fake.loadedURLs.last?.url == page)
@@ -54,9 +56,10 @@ import Testing
     @Test func aDoubleClickInGhostModeStaysInGhostMode() throws {
         let (fake, orchestrator, _) = makeOrchestrator()
         let browser = try #require(orchestrator.makeHistoryBrowser())
+        let visit = try shownVisit(of: page, fake, browser)
         fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
 
-        browser.open([1], shownIn: [section(with: page)])
+        browser.open([visit])
 
         #expect(fake.loadedURLs.last?.url == page)
         #expect(fake.trayItem("幽灵模式").isChecked())
@@ -71,7 +74,8 @@ import Testing
         fake.simulateMainFrameURLChanged(URL(string: "https://example.com/keep")!)
         fake.simulateMainFrameURLChanged(page)
         let browser = try #require(orchestrator.makeHistoryBrowser())
-        let pageVisit = try #require(browser.sections(matching: "")[0].rows.first { $0.url == page }?.id)
+        browser.resetExpansion()
+        let pageVisit = try #require(browser.shownRows.first { $0.url == page }?.id)
 
         browser.delete([pageVisit])
 
@@ -86,7 +90,8 @@ import Testing
         let browser = try #require(orchestrator.makeHistoryBrowser())
         #expect(orchestrator.historyMenu().earlierDays.count == 1)
 
-        browser.deleteDay(browser.sections(matching: "")[0].day)
+        browser.resetExpansion()
+        browser.deleteDay(browser.days[0].day)
 
         #expect(orchestrator.historyMenu().earlierDays.isEmpty)
     }
@@ -113,9 +118,10 @@ import Testing
         #expect(store.visits(since: .distantPast).map(\.url) == [page])
     }
 
-    private func section(with url: URL) -> HistoryBrowser.Section {
-        HistoryBrowser.Section(
-            day: historyTestDate("2026-10-12 00:00"), title: "今天",
-            rows: [HistoryBrowser.Row(id: 1, url: url, title: url.absoluteString, subtitle: nil, time: "09:00")])
+    /// Records a visit to `url` and returns it as the window, just opened, shows it.
+    private func shownVisit(of url: URL, _ fake: FakePlatformOps, _ browser: HistoryBrowser) throws -> HistoryVisit.ID {
+        fake.simulateMainFrameURLChanged(url)
+        browser.resetExpansion()
+        return try #require(browser.shownRows.first { $0.url == url }?.id)
     }
 }

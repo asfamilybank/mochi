@@ -1,13 +1,18 @@
 import Foundation
 
-/// What the 历史记录 window (#108) shows and does, kept out of the view so it can be tested
-/// against a real store: the visits grouped by day, newest first, narrowed by a search over
-/// titles and addresses; deleting visits or a whole day; and opening a page in the widget.
-/// A row is one visit (#114): a page visited three times is three rows.
+/// The 历史记录 window's state and what it does (#108), kept out of the view so it can be tested
+/// against a real store. The SwiftUI view only draws it.
 ///
-/// Stateless over the store — every call reads it afresh at the store's own "now" and calendar,
-/// so the window, the 历史记录 menu and recording all see the same history, and 今天 is the day
-/// the store groups by.
+/// Two modes, by whether the search query (surrounding whitespace ignored) is empty:
+/// - the **timeline** (#116): one foldable day per day that has visits, newest first, with how
+///   many visits it has. Only an expanded day's visits are read — a year of history opens as fast
+///   as a week of it.
+/// - **search**: the visits whose title or address contains the query, one section per day.
+///
+/// A row is one visit (#114): a page visited three times is three rows. Deleting visits or a whole
+/// day and opening a page in the widget go through here too.
+///
+/// "Now" and the calendar are the store's, so 今天 is the day the store groups by.
 public final class HistoryBrowser {
     public struct Row: Equatable, Identifiable, Sendable {
         public let id: HistoryVisit.ID
@@ -33,11 +38,26 @@ public final class HistoryBrowser {
         }
     }
 
+    /// One day of the timeline (#116).
+    public struct Day: Equatable, Identifiable, Sendable {
+        public var id: Date { day }
+        /// The start of the day.
+        public let day: Date
+        /// 「今天 · 10月14日 星期三」「昨天 · 10月13日 星期二」「10月4日 星期日」, with the year when it
+        /// isn't this one.
+        public let title: String
+        /// How many visits it has, folded or not — the 「N 项」.
+        public let visits: Int
+        public let isExpanded: Bool
+        /// The day's visits, newest first — empty while folded: a folded day's visits aren't read.
+        public let rows: [Row]
+    }
+
+    /// One day of search results.
     public struct Section: Equatable, Identifiable, Sendable {
         public var id: Date { day }
         /// The start of the day.
         public let day: Date
-        /// 「今天」「昨天」「10月10日 星期六」, with the year when it isn't this one.
         public let title: String
         public let rows: [Row]
 
@@ -52,6 +72,18 @@ public final class HistoryBrowser {
     private let openInWidget: (URL) -> Void
     private let retention: () -> HistoryRetention
 
+    /// As typed, surrounding whitespace and all.
+    public private(set) var query = ""
+    /// The timeline — empty while searching.
+    public private(set) var days: [Day] = []
+    /// The search results — empty while not searching.
+    public private(set) var sections: [Section] = []
+
+    /// The days unfolded. Starts empty, everything folded, until `resetExpansion()`.
+    private var expandedDays: Set<Date> = []
+    /// 今天 as of the last read, so a read past midnight can tell a new day has begun.
+    private var today: Date?
+
     /// - Parameters:
     ///   - retention: 移除历史记录项目 as configured right now (#110) — read, not cached, at each
     ///     `removeExpiredVisits()`. 手动 unless given.
@@ -65,17 +97,60 @@ public final class HistoryBrowser {
         self.openInWidget = open
     }
 
+    public var isSearching: Bool {
+        !trimmedQuery.isEmpty
+    }
+
+    /// Every row on show, top to bottom.
+    public var shownRows: [Row] {
+        isSearching ? sections.flatMap(\.rows) : days.flatMap(\.rows)
+    }
+
     /// #110: called as the window opens, before it lists anything, so nothing past the retention
     /// is ever shown.
     public func removeExpiredVisits() {
         store.removeVisits(olderThan: retention())
     }
 
-    /// Everything whose title or address contains `query` (case-insensitively, surrounding
-    /// whitespace ignored), one section per day that has any.
-    public func sections(matching query: String) -> [Section] {
-        let visits = store.search(query.trimmingCharacters(in: .whitespacesAndNewlines))
-        return Self.sections(of: visits, now: store.now(), calendar: store.calendar)
+    /// Re-reads the store, keeping which days are unfolded. Once 今天 has moved on (the window was
+    /// open across midnight), the new 今天 is unfolded too.
+    public func reload() {
+        let now = store.now()
+        let today = store.calendar.startOfDay(for: now)
+        if let previous = self.today, previous != today { expandedDays.insert(today) }
+        self.today = today
+        if isSearching {
+            days = []
+            sections = Self.sections(of: store.search(trimmedQuery), now: now, calendar: store.calendar)
+        } else {
+            sections = []
+            let time = HistoryText.formatter("HH:mm", calendar: store.calendar)
+            days = store.dayCounts().map { count in
+                let isExpanded = expandedDays.contains(count.day)
+                return Day(
+                    day: count.day, title: Self.title(of: count.day, now: now, calendar: store.calendar),
+                    visits: count.visits, isExpanded: isExpanded,
+                    rows: isExpanded ? store.visits(onDayOf: count.day).map { Self.row(for: $0, time: time) } : [])
+            }
+        }
+    }
+
+    /// Folds every day but 今天 — what the window shows each time ⌘Y opens it.
+    public func resetExpansion() {
+        let today = store.calendar.startOfDay(for: store.now())
+        expandedDays = [today]
+        self.today = today
+        reload()
+    }
+
+    public func setExpanded(_ isExpanded: Bool, day: Date) {
+        if isExpanded { expandedDays.insert(day) } else { expandedDays.remove(day) }
+        reload()
+    }
+
+    public func search(_ query: String) {
+        self.query = query
+        reload()
     }
 
     /// The PNG behind a row's `faviconID` (#117) — read from the store, never fetched: opening the
@@ -87,21 +162,27 @@ public final class HistoryBrowser {
     /// Only these visits — other visits to the same pages stay.
     public func delete(_ visits: Set<HistoryVisit.ID>) {
         store.deleteVisits(visits)
+        reload()
     }
 
     /// 删除这一天 — every visit that day, searched for or not.
     public func deleteDay(_ day: Date) {
         store.deleteDay(containing: day)
+        reload()
     }
 
-    /// A double-click. There is one widget, so of several selected pages only the topmost (as
-    /// `sections` lists them) is opened; a selection that is no longer shown opens nothing.
-    public func open(_ selection: Set<HistoryVisit.ID>, shownIn sections: [Section]) {
-        guard let url = sections.lazy.flatMap(\.rows).first(where: { selection.contains($0.id) })?.url else { return }
+    /// A double-click. There is one widget, so of several selected visits only the topmost on show
+    /// is opened; a selection that is no longer shown opens nothing.
+    public func open(_ selection: Set<HistoryVisit.ID>) {
+        guard let url = shownRows.first(where: { selection.contains($0.id) })?.url else { return }
         openInWidget(url)
     }
 
-    // MARK: - Grouping
+    // MARK: - Rows and titles
+
+    private var trimmedQuery: String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     /// - Parameter visits: newest first, as `HistoryStore` returns them.
     static func sections(of visits: [HistoryVisit], now: Date, calendar: Calendar) -> [Section] {
@@ -125,10 +206,13 @@ public final class HistoryBrowser {
 
     private static func title(of day: Date, now: Date, calendar: Calendar) -> String {
         let today = calendar.startOfDay(for: now)
-        if day == today { return "今天" }
-        if let yesterday = calendar.date(byAdding: .day, value: -1, to: today), day == yesterday { return "昨天" }
         let sameYear = calendar.component(.year, from: day) == calendar.component(.year, from: now)
         let format = sameYear ? HistoryText.dayFormat : HistoryText.dayWithYearFormat
-        return HistoryText.formatter(format, calendar: calendar).string(from: day)
+        let date = HistoryText.formatter(format, calendar: calendar).string(from: day)
+        if day == today { return "今天 · \(date)" }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: today), day == yesterday {
+            return "昨天 · \(date)"
+        }
+        return date
     }
 }

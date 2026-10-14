@@ -3,18 +3,26 @@ import MochiCore
 import SwiftUI
 
 /// Adapts `HistoryBrowser` (MochiCore) to SwiftUI, the way `SettingsViewModel` adapts
-/// `SettingsController`: `sections` is a published copy re-read from the store after every
-/// search and deletion, never a second source of truth.
+/// `SettingsController`: `days` and `sections` are published copies of the browser's state, taken
+/// after everything that changes it, never a second source of truth.
 final class HistoryViewModel: ObservableObject {
     private let browser: HistoryBrowser
     private let clearBrowsingData: (Set<BrowsingDataKind>, BrowsingDataTimeRange) -> Void
 
     /// The toolbar's search field (`HistoryWindowController`).
     @Published var query = "" {
-        didSet { if query != oldValue { reload() } }
+        didSet {
+            guard query != oldValue else { return }
+            browser.search(query)
+            publish()
+        }
     }
     @Published var selection: Set<HistoryVisit.ID> = []
+    /// The timeline (#116), while not searching.
+    @Published private(set) var days: [HistoryBrowser.Day] = []
+    /// The search results, while searching.
     @Published private(set) var sections: [HistoryBrowser.Section] = []
+    @Published private(set) var isSearching = false
     /// 清除历史记录… is showing (#115) — set by the toolbar button.
     @Published var isClearingHistory = false
     /// Decoded site icons (#117), by `faviconID`: many rows share one, and a row is redrawn often.
@@ -26,15 +34,35 @@ final class HistoryViewModel: ObservableObject {
     ) {
         self.browser = browser
         self.clearBrowsingData = clearBrowsingData
-        reload()
+        browser.resetExpansion()
+        publish()
     }
 
-    /// Re-reads the store — on every search and deletion, and each time the window comes forward
-    /// (pages visited while it was in the back show up then). A selection that is no longer listed
-    /// is dropped, so Delete never reaches a page that isn't on screen.
+    /// Re-reads the store, keeping what is unfolded — each time the window comes forward (visits
+    /// made while it was in the back show up then).
     func reload() {
-        sections = browser.sections(matching: query)
-        let shown = Set(sections.lazy.flatMap(\.rows).map(\.id))
+        browser.reload()
+        publish()
+    }
+
+    /// Back to today alone unfolded (#116) — each time ⌘Y opens the window.
+    func resetExpansion() {
+        browser.resetExpansion()
+        publish()
+    }
+
+    func setExpanded(_ isExpanded: Bool, day: Date) {
+        browser.setExpanded(isExpanded, day: day)
+        publish()
+    }
+
+    /// Copies the browser's state out. A selection that is no longer on show — deleted, or folded
+    /// away — is dropped, so Delete never reaches a visit that isn't on screen.
+    private func publish() {
+        days = browser.days
+        sections = browser.sections
+        isSearching = browser.isSearching
+        let shown = Set(browser.shownRows.map(\.id))
         if !selection.isSubset(of: shown) { selection.formIntersection(shown) }
     }
 
@@ -46,16 +74,16 @@ final class HistoryViewModel: ObservableObject {
     func delete(_ visits: Set<HistoryVisit.ID>) {
         guard !visits.isEmpty else { return }
         browser.delete(visits)
-        reload()
+        publish()
     }
 
     func deleteDay(_ day: Date) {
         browser.deleteDay(day)
-        reload()
+        publish()
     }
 
     func open(_ visits: Set<HistoryVisit.ID>) {
-        browser.open(visits, shownIn: sections)
+        browser.open(visits)
     }
 
     /// A row's site icon, `nil` when its visit has none (the row shows a placeholder).
@@ -77,15 +105,16 @@ final class HistoryViewModel: ObservableObject {
 }
 
 /// The 历史记录 window's content (#108; ADR-0018 — the window and its search field are AppKit).
-/// Grouped by day, newest first. Double-click opens a page in the widget; Delete or the context
-/// menu removes the selection; a day's header has 删除这一天. The toolbar's 清除历史记录… shows the
-/// settings window's 清除浏览数据 sheet here, over this window (#115).
+/// A timeline of foldable days, newest first (#116), each header with its 「N 项」; search results
+/// by day. Double-click opens a page in the widget; Delete or the context menu removes the
+/// selection; a day's header has 删除这一天. The toolbar's 清除历史记录… shows the settings
+/// window's 清除浏览数据 sheet here, over this window (#115).
 struct HistoryView: View {
     @ObservedObject var model: HistoryViewModel
 
     var body: some View {
         Group {
-            if model.sections.isEmpty {
+            if model.isSearching ? model.sections.isEmpty : model.days.isEmpty {
                 emptyState
             } else {
                 list
@@ -99,18 +128,25 @@ struct HistoryView: View {
 
     private var list: some View {
         List(selection: $model.selection) {
-            ForEach(model.sections) { section in
-                Section {
-                    ForEach(section.rows) { row in
-                        HistoryRow(row: row, icon: model.icon(for: row))
+            if model.isSearching {
+                ForEach(model.sections) { section in
+                    Section {
+                        rows(section.rows)
+                    } header: {
+                        Text(section.title)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                            .contextMenu { deleteDayButton(section.day) }
                     }
-                } header: {
-                    Text(section.title)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                        .contextMenu {
-                            Button("删除这一天") { model.deleteDay(section.day) }
-                        }
+                }
+            } else {
+                ForEach(model.days) { day in
+                    Section {
+                        if day.isExpanded { rows(day.rows) }
+                    } header: {
+                        HistoryDayHeader(day: day) { model.setExpanded(!day.isExpanded, day: day.day) }
+                            .contextMenu { deleteDayButton(day.day) }
+                    }
                 }
             }
         }
@@ -127,6 +163,16 @@ struct HistoryView: View {
         .onDeleteCommand { model.delete(model.selection) }
     }
 
+    private func rows(_ rows: [HistoryBrowser.Row]) -> some View {
+        ForEach(rows) { row in
+            HistoryRow(row: row, icon: model.icon(for: row))
+        }
+    }
+
+    private func deleteDayButton(_ day: Date) -> some View {
+        Button("删除这一天") { model.deleteDay(day) }
+    }
+
     @ViewBuilder private var emptyState: some View {
         let query = model.query.trimmingCharacters(in: .whitespacesAndNewlines)
         if query.isEmpty {
@@ -135,6 +181,34 @@ struct HistoryView: View {
             ContentUnavailableView(
                 "没有找到结果", systemImage: "magnifyingglass", description: Text("没有标题或网址包含“\(query)”的网页。"))
         }
+    }
+}
+
+/// A day of the timeline (#116), after Chrome's: the whole header folds and unfolds it, the
+/// chevron turning to say which it is; how many visits it has on the right.
+private struct HistoryDayHeader: View {
+    let day: HistoryBrowser.Day
+    let toggle: () -> Void
+
+    var body: some View {
+        Button(action: toggle) {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .rotationEffect(.degrees(day.isExpanded ? 90 : 0))
+                    .frame(width: 12)
+                Text(day.title)
+                Spacer(minLength: 8)
+                Text("\(day.visits) 项")
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(day.title)
+        .accessibilityValue(day.isExpanded ? "已展开，\(day.visits) 项" : "已折叠，\(day.visits) 项")
     }
 }
 

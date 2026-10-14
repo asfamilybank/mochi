@@ -162,6 +162,27 @@ func historyTestDate(_ string: String) -> Date {
         #expect(store.visits(onDayOf: historyTestDate("2026-10-11 01:00")).map(\.url.path) == ["/late"])
     }
 
+    /// #116: what a folded day needs — which days have visits, and how many — without reading a
+    /// single visit.
+    @Test func eachDayWithVisitsIsCountedNewestFirst() {
+        let store = makeStore()
+        for time in ["2026-10-01 08:00", "2026-10-11 23:59", "2026-10-12 00:00", "2026-10-12 09:00", "2026-10-12 09:01"] {
+            clock.now = historyTestDate(time)
+            store.recordVisit(to: url("https://example.com/a"))
+        }
+
+        #expect(
+            store.dayCounts() == [
+                HistoryDayCount(day: historyTestDate("2026-10-12 00:00"), visits: 3),
+                HistoryDayCount(day: historyTestDate("2026-10-11 00:00"), visits: 1),
+                HistoryDayCount(day: historyTestDate("2026-10-01 00:00"), visits: 1),
+            ])
+    }
+
+    @Test func anEmptyHistoryHasNoDays() {
+        #expect(makeStore().dayCounts().isEmpty)
+    }
+
     /// A page visited on several days is on each of them.
     @Test func aPageVisitedOnTwoDaysIsOnBoth() {
         let store = makeStore()

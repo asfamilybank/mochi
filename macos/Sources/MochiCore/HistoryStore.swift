@@ -26,6 +26,19 @@ public struct HistoryVisit: Equatable, Identifiable, Sendable {
     }
 }
 
+/// A calendar day that has visits, and how many (#116) — all a folded day in the 历史记录 window
+/// shows.
+public struct HistoryDayCount: Equatable, Sendable {
+    /// The start of the day.
+    public let day: Date
+    public let visits: Int
+
+    public init(day: Date, visits: Int) {
+        self.day = day
+        self.visits = visits
+    }
+}
+
 /// Mochi's history, kept in SQLite (`Application Support/Mochi/History.db`) through the system's
 /// own `libsqlite3` — no dependency added (#102). The interface is shaped by what the app does with
 /// history; no SQL leaks out.
@@ -153,6 +166,27 @@ public final class HistoryStore {
     /// Visits at or after `date`, newest first.
     public func visits(since date: Date) -> [HistoryVisit] {
         visits(where: "visited_at >= ?1", .real(date.timeIntervalSinceReferenceDate))
+    }
+
+    /// Every calendar day that has visits, newest first, with how many (#116). Reads the visit times
+    /// alone (the index has them), and works the calendar out once per day rather than per visit.
+    public func dayCounts() -> [HistoryDayCount] {
+        guard let statement = prepare("SELECT visited_at FROM visits ORDER BY visited_at DESC", []) else { return [] }
+        defer { sqlite3_finalize(statement) }
+        var counts: [HistoryDayCount] = []
+        var current: (start: Date, end: Date, visits: Int)?
+        while sqlite3_step(statement) == SQLITE_ROW {
+            let time = Date(timeIntervalSinceReferenceDate: sqlite3_column_double(statement, 0))
+            if let day = current, time >= day.start, time < day.end {
+                current?.visits += 1
+                continue
+            }
+            if let day = current { counts.append(HistoryDayCount(day: day.start, visits: day.visits)) }
+            let (start, end) = bounds(ofDayContaining: time)
+            current = (start, end, 1)
+        }
+        if let day = current { counts.append(HistoryDayCount(day: day.start, visits: day.visits)) }
+        return counts
     }
 
     /// Visits on the calendar day containing `day`, newest first.

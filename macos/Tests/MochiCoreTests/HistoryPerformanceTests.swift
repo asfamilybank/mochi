@@ -1,0 +1,47 @@
+import Foundation
+import Testing
+
+@testable import MochiCore
+
+/// How the 历史记录 window holds up under a heavy year of history (#116): 300 000 visits, about
+/// 800 a day. Timing-sensitive, so off by default — CI's machines are too uneven to hold a
+/// millisecond budget. Run with `MOCHI_HISTORY_BENCH=1 swift test --filter HistoryPerformanceTests`.
+@Suite(.enabled(if: ProcessInfo.processInfo.environment["MOCHI_HISTORY_BENCH"] != nil), .serialized)
+struct HistoryPerformanceTests {
+    private static let visits = 300_000
+    private static let budget = Duration.milliseconds(100)
+
+    private static func heavyHistory() -> (HistoryStore, HistoryBrowser) {
+        let clock = TestClock(historyTestDate("2026-10-12 10:00"))
+        let store = HistoryStore(databaseURL: nil, now: { clock.now }, calendar: historyTestCalendar)
+        let start = historyTestDate("2025-10-13 00:00")
+        let step = clock.now.timeIntervalSince(start) / Double(visits)
+        let icon = Data("an icon".utf8)
+        for index in 0..<visits {
+            clock.now = start.addingTimeInterval(Double(index) * step)
+            let id = store.recordVisit(to: URL(string: "https://site\(index % 500).example.com/page/\(index)")!)!
+            store.updateTitle("Page \(index) of site \(index % 500)", ofVisit: id)
+            if index % 3 == 0 { store.updateFavicon(icon, ofVisit: id) }
+        }
+        clock.now = historyTestDate("2026-10-12 10:00")
+        return (store, HistoryBrowser(store: store, open: { _ in }))
+    }
+
+    private static func time(_ work: () -> Void) -> Duration {
+        let clock = ContinuousClock()
+        return clock.measure(work)
+    }
+
+    @Test func openingAndUnfoldingADayStayWithinBudget() {
+        let (_, browser) = Self.heavyHistory()
+
+        let opening = Self.time { browser.resetExpansion() }
+        let unfolding = Self.time { browser.setExpanded(true, day: browser.days[100].day) }
+
+        print("history bench: open \(opening), unfold \(unfolding), days \(browser.days.count)")
+        #expect(browser.days.count >= 365)
+        #expect(browser.days[100].rows.count == browser.days[100].visits)
+        #expect(opening < Self.budget)
+        #expect(unfolding < Self.budget)
+    }
+}
