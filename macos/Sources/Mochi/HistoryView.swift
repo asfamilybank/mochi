@@ -174,13 +174,14 @@ struct HistoryView: View {
             if model.isSearching {
                 rows(model.results)
             } else {
+                // A day is a row of the list, not a section header, so folded days sit as close
+                // together as any rows: macOS gives List sections their own spacing and has no
+                // way to tighten it (`listSectionSpacing` is unavailable here). Its id is a
+                // `Date`, not a visit's, so it can't be selected.
                 ForEach(model.days) { day in
-                    Section {
-                        if day.isExpanded { rows(day.rows) }
-                    } header: {
-                        HistoryDayHeader(day: day) { model.setExpanded(!day.isExpanded, day: day.day) }
-                            .contextMenu { deleteDayButton(day.day) }
-                    }
+                    HistoryDayHeader(day: day) { model.setExpanded(!day.isExpanded, day: day.day) }
+                        .contextMenu { deleteDayButton(day.day) }
+                    if day.isExpanded { rows(day.rows) }
                 }
             }
         }
@@ -235,8 +236,8 @@ struct HistoryView: View {
     }
 }
 
-/// A day of the timeline (#116), after Chrome's: the whole header folds and unfolds it, the
-/// chevron turning to say which it is; how many visits it has on the right.
+/// A day of the timeline (#116), after Chrome's: a row of its own that folds and unfolds the day
+/// when clicked, the chevron turning to say which it is; how many visits it has on the right.
 private struct HistoryDayHeader: View {
     let day: HistoryBrowser.Day
     let toggle: () -> Void
@@ -249,6 +250,7 @@ private struct HistoryDayHeader: View {
                     .rotationEffect(.degrees(day.isExpanded ? 90 : 0))
                     .frame(width: 12)
                 Text(day.title)
+                    .fontWeight(.semibold)
                 Spacer(minLength: 8)
                 Text("\(day.visits) 项")
                     .foregroundStyle(.secondary)
