@@ -17,6 +17,9 @@ public final class AddressBarController {
     /// #102: history listens to the page title too. The platform holds a single handler per signal
     /// and this controller owns it, so the title is passed on from here.
     var onPageTitleChanged: ((String?) -> Void)?
+    /// History again: leaving for the Empty Page ends the page's visit. Passed on for the same
+    /// reason as the title.
+    var onEmptyPageVisibilityChanged: ((Bool) -> Void)?
 
     public init(platformOps: PlatformOps, window: WidgetWindowHandle) {
         self.platformOps = platformOps
@@ -29,6 +32,7 @@ public final class AddressBarController {
         platformOps.onEmptyPageVisibilityChanged(window) { [weak self] visible in
             self?.isShowingEmptyPage = visible
             self?.updateWindowTitle()
+            self?.onEmptyPageVisibilityChanged?(visible)
         }
         updateWindowTitle()
     }

@@ -56,6 +56,36 @@ import Testing
         #expect(recorded(store) == ["https://youtube.com/watch?v=2", "https://youtube.com/watch?v=1"])
     }
 
+    /// A visit is the address changing: reloading the page, which commits a new document at the
+    /// same address, is no new visit — nor is moving only the fragment.
+    @Test(arguments: ["https://example.com/a", "https://example.com/a#section"])
+    func reloadingTheSameAddressIsNoNewVisit(_ again: String) {
+        let (fake, orchestrator, store) = makeOrchestrator()
+        defer { withExtendedLifetime(orchestrator) {} }
+        fake.simulateMainFrameURLChanged(URL(string: "https://example.com/a")!)
+        fake.simulatePageTitleChanged("Page A")
+        clock.now = clock.now.addingTimeInterval(60)
+
+        fake.simulateMainFrameURLChanged(URL(string: again)!)
+        fake.simulatePageTitleChanged("Page A, reloaded")
+
+        #expect(recorded(store) == ["https://example.com/a"])
+        #expect(store.visits(since: .distantPast).map(\.title) == ["Page A, reloaded"])
+    }
+
+    /// Back on a page after the Empty Page is a visit again, even at the same address.
+    @Test func returningFromTheEmptyPageToTheSameAddressIsAVisit() {
+        let (fake, orchestrator, store) = makeOrchestrator()
+        defer { withExtendedLifetime(orchestrator) {} }
+        fake.simulateMainFrameURLChanged(URL(string: "https://example.com/a")!)
+
+        fake.simulateEmptyPageVisibilityChanged(true)
+        fake.simulateEmptyPageVisibilityChanged(false)
+        fake.simulateMainFrameURLChanged(URL(string: "https://example.com/a")!)
+
+        #expect(recorded(store) == ["https://example.com/a", "https://example.com/a"])
+    }
+
     @Test func nothingIsRecordedWhileTheEmptyPageIsUp() {
         let (fake, orchestrator, store) = makeOrchestrator(config: WidgetConfig(url: nil))
         defer { withExtendedLifetime(orchestrator) {} }

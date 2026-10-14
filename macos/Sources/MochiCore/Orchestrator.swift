@@ -523,6 +523,9 @@ public final class Orchestrator {
     private var historyVisit: HistoryVisit.ID?
     /// `historyVisit`'s origin: an icon fetched for any other is not that visit's (#117).
     private var historyVisitOrigin: String?
+    /// `historyVisit`'s address: the page reporting it again — a reload commits a new document at
+    /// the same address — is the same visit, not a new one.
+    private var historyVisitAddress: String?
     /// The last site icon the page got, and the origin it belongs to (#117) — what a visit
     /// within the same site (a `pushState` that loads nothing, so fetches no icon) is made under.
     private var historySiteIcon: (origin: String, png: Data)?
@@ -533,6 +536,7 @@ public final class Orchestrator {
     private func registerHistoryRecording(for window: WidgetWindowHandle, addressBarController: AddressBarController) {
         historyVisit = nil
         historyVisitOrigin = nil
+        historyVisitAddress = nil
         historySiteIcon = nil
         platformOps.onMainFrameURLChanged(window) { [weak self, weak addressBarController] url in
             self?.recordHistoryVisit(to: url, isShowingEmptyPage: addressBarController?.isShowingEmptyPage ?? false)
@@ -543,6 +547,13 @@ public final class Orchestrator {
         addressBarController.onPageTitleChanged = { [weak self] title in
             self?.updateHistoryTitle(title)
         }
+        // Leaving for the Empty Page ends the visit: coming back to the same address is a new one.
+        addressBarController.onEmptyPageVisibilityChanged = { [weak self] isShowing in
+            guard isShowing else { return }
+            self?.historyVisit = nil
+            self?.historyVisitOrigin = nil
+            self?.historyVisitAddress = nil
+        }
     }
 
     private func recordHistoryVisit(to url: URL, isShowingEmptyPage: Bool) {
@@ -551,8 +562,11 @@ public final class Orchestrator {
         else {
             historyVisit = nil
             historyVisitOrigin = nil
+            historyVisitAddress = nil
             return
         }
+        let address = HistoryStore.address(of: url)
+        guard historyVisit == nil || address != historyVisitAddress else { return }
         let origin = Self.historyOrigin(of: url)
         // Only a move within the site the last visit was on — coming back from another site is a
         // change of site too, and waits for the icon its page loads.
@@ -560,6 +574,7 @@ public final class Orchestrator {
         let icon = staysOnSite ? historySiteIcon.flatMap { $0.origin == origin ? $0.png : nil } : nil
         historyVisit = historyStore.recordVisit(to: url, favicon: icon)
         historyVisitOrigin = origin
+        historyVisitAddress = address
     }
 
     /// #117: kept for the next visits within its site, and written to the current visit when it is
