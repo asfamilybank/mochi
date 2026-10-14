@@ -10,14 +10,19 @@ import SwiftUI
 /// orders it out, so the search survives a close and reopen.
 final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate {
     private static let searchItemIdentifier = NSToolbarItem.Identifier("history.search")
+    private static let clearItemIdentifier = NSToolbarItem.Identifier("history.clear")
 
     private let model: HistoryViewModel
     /// `PlatformOps.activateApp` — activation goes through the platform seam, never straight to
     /// `NSApp` (CLAUDE.md).
     private let activateApp: () -> Void
 
-    init(browser: HistoryBrowser, activateApp: @escaping () -> Void) {
-        model = HistoryViewModel(browser: browser)
+    /// - Parameter clearBrowsingData: `SettingsController.clearBrowsingData`, for 清除历史记录… (#115).
+    init(
+        browser: HistoryBrowser, activateApp: @escaping () -> Void,
+        clearBrowsingData: @escaping (Set<BrowsingDataKind>, BrowsingDataTimeRange) -> Void
+    ) {
+        model = HistoryViewModel(browser: browser, clearBrowsingData: clearBrowsingData)
         self.activateApp = activateApp
         let hostingController = NSHostingController(rootView: HistoryView(model: model))
         // Only the minimum: the window is resizable and the list fills whatever it is given.
@@ -68,7 +73,7 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSToo
     // MARK: NSToolbarDelegate
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, Self.searchItemIdentifier]
+        [.flexibleSpace, Self.clearItemIdentifier, Self.searchItemIdentifier]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -79,6 +84,17 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSToo
         _ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
+        if itemIdentifier == Self.clearItemIdentifier {
+            // #115: Safari's place for it, just left of the search field.
+            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            item.title = "清除历史记录…"
+            item.label = "清除历史记录"
+            item.toolTip = "清除历史记录，也可以选择一并清除网站数据"
+            item.isBordered = true
+            item.target = self
+            item.action = #selector(clearHistory(_:))
+            return item
+        }
         guard itemIdentifier == Self.searchItemIdentifier else { return nil }
         let item = NSSearchToolbarItem(itemIdentifier: itemIdentifier)
         item.searchField.placeholderString = "搜索历史记录"
@@ -92,5 +108,9 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSToo
     /// empties the field.
     @objc private func searchChanged(_ sender: NSSearchField) {
         model.query = sender.stringValue
+    }
+
+    @objc private func clearHistory(_ sender: Any?) {
+        model.isClearingHistory = true
     }
 }

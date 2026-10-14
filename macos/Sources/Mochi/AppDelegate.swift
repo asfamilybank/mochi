@@ -83,10 +83,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let mainMenuBuilder = MainMenuBuilder()
         self.mainMenuBuilder = mainMenuBuilder
         NSApp.mainMenu = mainMenuBuilder.build(
-            orchestrator: orchestrator, activateApp: { platformOps.activateApp() }
-        ) { [unowned self] in
-            self.settingsWindowController?.showClearBrowsingData()
-        }
+            orchestrator: orchestrator, activateApp: { platformOps.activateApp() },
+            clearBrowsingData: { [unowned self] in self.settingsWindowController?.showClearBrowsingData() },
+            clearFromHistoryWindow: { kinds, range in settingsController.clearBrowsingData(kinds, from: range) })
 
         // A stale HTTP cache replays requests under an old User-Agent (ADR-0025), so it goes
         // before the widget's first load.

@@ -7,6 +7,7 @@ import SwiftUI
 /// search and deletion, never a second source of truth.
 final class HistoryViewModel: ObservableObject {
     private let browser: HistoryBrowser
+    private let clearBrowsingData: (Set<BrowsingDataKind>, BrowsingDataTimeRange) -> Void
 
     /// The toolbar's search field (`HistoryWindowController`).
     @Published var query = "" {
@@ -14,9 +15,15 @@ final class HistoryViewModel: ObservableObject {
     }
     @Published var selection: Set<HistoryVisit.ID> = []
     @Published private(set) var sections: [HistoryBrowser.Section] = []
+    /// 清除历史记录… is showing (#115) — set by the toolbar button.
+    @Published var isClearingHistory = false
 
-    init(browser: HistoryBrowser) {
+    init(
+        browser: HistoryBrowser,
+        clearBrowsingData: @escaping (Set<BrowsingDataKind>, BrowsingDataTimeRange) -> Void
+    ) {
         self.browser = browser
+        self.clearBrowsingData = clearBrowsingData
         reload()
     }
 
@@ -48,11 +55,19 @@ final class HistoryViewModel: ObservableObject {
     func open(_ visits: Set<HistoryVisit.ID>) {
         browser.open(visits, shownIn: sections)
     }
+
+    /// 清除历史记录…'s 清除 — the very clearing the settings window's dialog does, then a re-read so
+    /// what went is gone from the list at once.
+    func clear(_ kinds: Set<BrowsingDataKind>, from range: BrowsingDataTimeRange) {
+        clearBrowsingData(kinds, range)
+        reload()
+    }
 }
 
 /// The 历史记录 window's content (#108; ADR-0018 — the window and its search field are AppKit).
 /// Grouped by day, newest first. Double-click opens a page in the widget; Delete or the context
-/// menu removes the selection; a day's header has 删除这一天.
+/// menu removes the selection; a day's header has 删除这一天. The toolbar's 清除历史记录… shows the
+/// settings window's 清除浏览数据 sheet here, over this window (#115).
 struct HistoryView: View {
     @ObservedObject var model: HistoryViewModel
 
@@ -65,6 +80,9 @@ struct HistoryView: View {
             }
         }
         .frame(minWidth: 420, minHeight: 280)
+        .sheet(isPresented: $model.isClearingHistory) {
+            ClearBrowsingDataSheet(initialKinds: [.history]) { kinds, range in model.clear(kinds, from: range) }
+        }
     }
 
     private var list: some View {

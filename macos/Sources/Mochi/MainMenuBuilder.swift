@@ -14,6 +14,7 @@ final class MainMenuBuilder {
     private var historyMenuController: HistoryMenuController?
     /// #108: the 历史记录 window, created the first time ⌘Y asks for it.
     private var historyWindowController: HistoryWindowController?
+    private var clearFromHistoryWindow: (Set<BrowsingDataKind>, BrowsingDataTimeRange) -> Void = { _, _ in }
 
     /// - Parameters:
     ///   - orchestrator: supplies everything the menus do. Widget-bound items go through its
@@ -23,9 +24,13 @@ final class MainMenuBuilder {
     ///     by.
     ///   - clearBrowsingData: the 历史记录 menu's 清除浏览数据… (#110) — the settings window's own
     ///     dialog.
+    ///   - clearFromHistoryWindow: `SettingsController.clearBrowsingData`, for the 历史记录
+    ///     window's 清除历史记录… (#115).
     func build(
-        orchestrator: Orchestrator, activateApp: @escaping () -> Void, clearBrowsingData: @escaping () -> Void
+        orchestrator: Orchestrator, activateApp: @escaping () -> Void, clearBrowsingData: @escaping () -> Void,
+        clearFromHistoryWindow: @escaping (Set<BrowsingDataKind>, BrowsingDataTimeRange) -> Void
     ) -> NSMenu {
+        self.clearFromHistoryWindow = clearFromHistoryWindow
         let mainMenu = NSMenu()
         mainMenu.addItem(appMenuItem(orchestrator: orchestrator))
         mainMenu.addItem(fileMenuItem(orchestrator: orchestrator))
@@ -193,7 +198,8 @@ final class MainMenuBuilder {
     /// ⌘Y opens the 历史记录 window, and closes it again when it is the window in front (#108).
     private func toggleHistoryWindow(orchestrator: Orchestrator, activateApp: @escaping () -> Void) {
         if historyWindowController == nil, let browser = orchestrator.makeHistoryBrowser() {
-            historyWindowController = HistoryWindowController(browser: browser, activateApp: activateApp)
+            historyWindowController = HistoryWindowController(
+                browser: browser, activateApp: activateApp, clearBrowsingData: clearFromHistoryWindow)
         }
         historyWindowController?.toggle()
     }
