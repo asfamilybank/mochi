@@ -6,7 +6,7 @@ import SwiftUI
 /// ADR-0031). The sheet is the confirmation step — nothing is cleared until 清除 is clicked — and
 /// `onClear` hands the choice to `SettingsController.clearBrowsingData`.
 struct ClearBrowsingDataSheet: View {
-    let onClear: (Set<BrowsingDataKind>, BrowsingDataTimeRange) -> Void
+    let onClear: BrowsingDataClearing
     @Environment(\.dismiss) private var dismiss
     @State private var range = BrowsingDataTimeRange.defaultRange
     @State private var kinds: Set<BrowsingDataKind>
@@ -15,7 +15,7 @@ struct ClearBrowsingDataSheet: View {
     ///   历史记录 window, whose button says 清除历史记录… and so ticks 历史记录 alone.
     init(
         initialKinds: Set<BrowsingDataKind> = BrowsingDataKind.defaultSelection,
-        onClear: @escaping (Set<BrowsingDataKind>, BrowsingDataTimeRange) -> Void
+        onClear: @escaping BrowsingDataClearing
     ) {
         self.onClear = onClear
         _kinds = State(initialValue: initialKinds)

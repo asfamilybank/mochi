@@ -7,7 +7,7 @@ import SwiftUI
 /// after everything that changes it, never a second source of truth.
 final class HistoryViewModel: ObservableObject {
     private let browser: HistoryBrowser
-    private let clearBrowsingData: (Set<BrowsingDataKind>, BrowsingDataTimeRange) -> Void
+    private let clearBrowsingData: BrowsingDataClearing
 
     /// The toolbar's search field (`HistoryWindowController`). Typing is searched once it pauses
     /// for `searchDelay` (#118), so a burst of keystrokes is one search rather than one each;
@@ -33,20 +33,20 @@ final class HistoryViewModel: ObservableObject {
     /// 「N 个匹配项」, shown in the toolbar in 清除历史记录…'s place while searching.
     @Published private(set) var matchCount = 0
     /// The search as it was run, for the 没有找到结果 page to say what wasn't found.
-    @Published private(set) var searchTerms: (host: String?, text: String) = (nil, "")
+    @Published private(set) var searchTerms = HistoryBrowser.SearchTerms(host: nil, text: "")
     /// 清除历史记录… is showing (#115) — set by the toolbar button.
     @Published var isClearingHistory = false
-    /// Decoded site icons (#117), by `faviconID`: many rows share one, and a row is redrawn often.
-    private var icons: [String: NSImage] = [:]
+    private let icons: HistoryFaviconImages
 
     init(
         browser: HistoryBrowser,
-        clearBrowsingData: @escaping (Set<BrowsingDataKind>, BrowsingDataTimeRange) -> Void
+        clearBrowsingData: @escaping BrowsingDataClearing
     ) {
         self.browser = browser
         self.clearBrowsingData = clearBrowsingData
-        browser.resetExpansion()
-        publish()
+        icons = HistoryFaviconImages(png: browser.favicon)
+        // Nothing is read yet: the window controller removes what has expired, then resets the
+        // folding, as the window opens.
     }
 
     /// Re-reads the store, keeping what is unfolded — each time the window comes forward (visits
@@ -134,12 +134,7 @@ final class HistoryViewModel: ObservableObject {
 
     /// A row's site icon, `nil` when its visit has none (the row shows a placeholder).
     func icon(for row: HistoryBrowser.Row) -> NSImage? {
-        guard let id = row.faviconID else { return nil }
-        if let icon = icons[id] { return icon }
-        guard let png = browser.favicon(id), let icon = NSImage(data: png) else { return nil }
-        icon.size = NSSize(width: 16, height: 16)
-        icons[id] = icon
-        return icon
+        icons.image(for: row.faviconID)
     }
 
     /// 清除历史记录…'s 清除 — the very clearing the settings window's dialog does, then a re-read so
@@ -194,6 +189,7 @@ struct HistoryView: View {
             if !visits.isEmpty {
                 Button { model.open(visits) } label: { Label("打开", systemImage: "arrow.up.forward.app") }
                 Button { model.copy(visits) } label: { Label("拷贝", systemImage: "doc.on.doc") }
+                    .keyboardShortcut("c")
                     .disabled(!model.canCopy(visits))
                 Button { model.showSite(visits) } label: {
                     Label("显示此网站的所有记录", systemImage: "line.3.horizontal.decrease.circle")
@@ -234,7 +230,7 @@ struct HistoryView: View {
 
     /// What wasn't found — with `site:`, the host it was narrowed to (#118).
     private var noResultsDescription: String {
-        let (host, text) = model.searchTerms
+        let (host, text) = (model.searchTerms.host, model.searchTerms.text)
         switch (host, text.isEmpty) {
         case (let host?, true): return "没有来自 \(host) 的记录。"
         case (let host?, false): return "\(host) 上没有标题或网址包含“\(text)”的网页。"

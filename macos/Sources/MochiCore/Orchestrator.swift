@@ -554,7 +554,10 @@ public final class Orchestrator {
             return
         }
         let origin = Self.historyOrigin(of: url)
-        let icon = historySiteIcon.flatMap { $0.origin == origin ? $0.png : nil }
+        // Only a move within the site the last visit was on — coming back from another site is a
+        // change of site too, and waits for the icon its page loads.
+        let staysOnSite = origin != nil && origin == historyVisitOrigin
+        let icon = staysOnSite ? historySiteIcon.flatMap { $0.origin == origin ? $0.png : nil } : nil
         historyVisit = historyStore.recordVisit(to: url, favicon: icon)
         historyVisitOrigin = origin
     }

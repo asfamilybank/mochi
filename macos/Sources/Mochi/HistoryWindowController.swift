@@ -28,7 +28,7 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSToo
     /// - Parameter clearBrowsingData: `SettingsController.clearBrowsingData`, for 清除历史记录… (#115).
     init(
         browser: HistoryBrowser, activateApp: @escaping () -> Void,
-        clearBrowsingData: @escaping (Set<BrowsingDataKind>, BrowsingDataTimeRange) -> Void
+        clearBrowsingData: @escaping BrowsingDataClearing
     ) {
         model = HistoryViewModel(browser: browser, clearBrowsingData: clearBrowsingData)
         self.activateApp = activateApp

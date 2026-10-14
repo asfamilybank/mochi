@@ -89,8 +89,20 @@ public final class HistoryBrowser {
         !trimmedQuery.isEmpty
     }
 
-    /// What the search is narrowed by: the `site:` host, if any, and the keywords.
-    public var searchTerms: (host: String?, text: String) {
+    /// What a search is narrowed by (#118).
+    public struct SearchTerms: Equatable, Sendable {
+        /// The `site:` host, lowercased — `nil` without one.
+        public let host: String?
+        /// The keywords: everything else.
+        public let text: String
+
+        public init(host: String?, text: String) {
+            self.host = host
+            self.text = text
+        }
+    }
+
+    public var searchTerms: SearchTerms {
         Self.parse(trimmedQuery)
     }
 
@@ -121,9 +133,9 @@ public final class HistoryBrowser {
         let time = HistoryText.formatter("HH:mm", calendar: store.calendar)
         if isSearching {
             days = []
-            let (host, text) = Self.parse(trimmedQuery)
+            let terms = Self.parse(trimmedQuery)
             var dayTitles: [Date: String] = [:]
-            results = store.search(text, host: host).map { visit in
+            results = store.search(terms.text, host: terms.host).map { visit in
                 let day = store.calendar.startOfDay(for: visit.visitedAt)
                 if dayTitles[day] == nil { dayTitles[day] = Self.title(of: day, now: now, calendar: store.calendar) }
                 return Self.row(for: visit, time: time, day: dayTitles[day])
@@ -209,15 +221,16 @@ public final class HistoryBrowser {
 
     /// A leading `site:<host>` (any case) and the keywords after it; the whole query as keywords
     /// otherwise. A host pasted with its scheme or path counts as its host.
-    static func parse(_ query: String) -> (host: String?, text: String) {
+    static func parse(_ query: String) -> SearchTerms {
         let prefix = "site:"
-        guard query.lowercased().hasPrefix(prefix) else { return (nil, query) }
+        guard query.lowercased().hasPrefix(prefix) else { return SearchTerms(host: nil, text: query) }
         let rest = query.dropFirst(prefix.count)
-        let token = rest.prefix { !$0.isWhitespace }
-        guard !token.isEmpty else { return (nil, query) }
+        let token = String(rest.prefix { !$0.isWhitespace })
+        guard !token.isEmpty else { return SearchTerms(host: nil, text: query) }
         let text = rest.dropFirst(token.count).trimmingCharacters(in: .whitespacesAndNewlines)
-        let host = token.contains("://") ? URL(string: String(token))?.host : String(token)
-        return (host.map { $0.lowercased() } ?? String(token).lowercased(), text)
+        let address = token.contains("://") ? token : "https://\(token)"
+        let host = URL(string: address)?.host ?? token
+        return SearchTerms(host: host.lowercased(), text: text)
     }
 
     /// - Parameter day: the day's title, for a row with no day header above it (search results).

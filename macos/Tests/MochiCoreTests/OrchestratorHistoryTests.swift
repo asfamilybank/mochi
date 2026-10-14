@@ -216,6 +216,20 @@ import Testing
         #expect(icons(store) == [iconB, iconA])
     }
 
+    /// Back to a site from another is a change of site too: its old icon isn't assumed — the new
+    /// visit waits for the icon its page loads.
+    @Test func comingBackFromAnotherSiteWaitsForTheIconAgain() {
+        let (fake, orchestrator, store) = makeOrchestrator()
+        defer { withExtendedLifetime(orchestrator) {} }
+        fake.simulateMainFrameURLChanged(URL(string: "https://a.example.com/")!)
+        fake.simulateSiteIconLoaded(iconA, for: URL(string: "https://a.example.com/")!)
+        fake.simulateMainFrameURLChanged(URL(string: "https://b.example.com/")!)
+
+        fake.simulateMainFrameURLChanged(URL(string: "https://a.example.com/again")!)
+
+        #expect(icons(store) == [nil, nil, iconA])
+    }
+
     /// A slow icon that arrives once the page has moved to another site is dropped: it isn't the
     /// current visit's.
     @Test func aLateIconFromTheSiteLeftBehindIsDropped() {

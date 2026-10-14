@@ -17,12 +17,11 @@ final class HistoryMenuController: NSObject, NSMenuDelegate {
     private var listItems: [NSMenuItem] = []
     /// `NSMenuItem.target` doesn't retain; replaced on every rebuild along with the items.
     private var targets: [MenuItemActionTarget] = []
-    /// Decoded site icons (#117), by `faviconID` — kept across rebuilds, as the same few sites
-    /// fill the menu each time.
-    private var icons: [String: NSImage] = [:]
+    private let icons: HistoryFaviconImages
 
     init(orchestrator: Orchestrator) {
         self.orchestrator = orchestrator
+        icons = HistoryFaviconImages(png: orchestrator.historyFavicon)
     }
 
     /// Call once the menu's leading fixed items are in place; anything added afterwards stays
@@ -80,14 +79,6 @@ final class HistoryMenuController: NSObject, NSMenuDelegate {
     /// The visit's own site icon at 16pt (#117), or a globe when it has none — the 历史记录
     /// window's placeholder too.
     private func icon(for item: HistoryMenu.Item) -> NSImage? {
-        if let id = item.faviconID {
-            if let icon = icons[id] { return icon }
-            if let png = orchestrator.historyFavicon(id), let icon = NSImage(data: png) {
-                icon.size = NSSize(width: 16, height: 16)
-                icons[id] = icon
-                return icon
-            }
-        }
-        return NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
+        icons.image(for: item.faviconID) ?? NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
     }
 }

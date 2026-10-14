@@ -14,7 +14,7 @@ final class MainMenuBuilder {
     private var historyMenuController: HistoryMenuController?
     /// #108: the 历史记录 window, created the first time ⌘Y asks for it.
     private var historyWindowController: HistoryWindowController?
-    private var clearFromHistoryWindow: (Set<BrowsingDataKind>, BrowsingDataTimeRange) -> Void = { _, _ in }
+    private var clearFromHistoryWindow: BrowsingDataClearing = { _, _ in }
 
     /// - Parameters:
     ///   - orchestrator: supplies everything the menus do. Widget-bound items go through its
@@ -28,7 +28,7 @@ final class MainMenuBuilder {
     ///     window's 清除历史记录… (#115).
     func build(
         orchestrator: Orchestrator, activateApp: @escaping () -> Void, clearBrowsingData: @escaping () -> Void,
-        clearFromHistoryWindow: @escaping (Set<BrowsingDataKind>, BrowsingDataTimeRange) -> Void
+        clearFromHistoryWindow: @escaping BrowsingDataClearing
     ) -> NSMenu {
         self.clearFromHistoryWindow = clearFromHistoryWindow
         let mainMenu = NSMenu()

@@ -330,6 +330,7 @@ import Testing
         (query: "site:knitpeople.com   薪酬  ", shown: ["https://knitpeople.com/a"]),
         // Pasted with its scheme or path, it is still the host that counts.
         (query: "site:https://knitpeople.com/whatever", shown: ["https://knitpeople.com/b", "https://knitpeople.com/a"]),
+        (query: "site:knitpeople.com/whatever", shown: ["https://knitpeople.com/b", "https://knitpeople.com/a"]),
         // `site:` anywhere but the start is just text.
         (query: "薪酬 site:knitpeople.com", shown: []),
     ])
