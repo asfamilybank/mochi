@@ -2,24 +2,13 @@ import MochiCore
 import SwiftUI
 
 /// 清除浏览数据… (#107), after Chrome's 删除浏览数据: a time range and the kinds to clear, shown as a
-/// sheet on the settings window — and on the 历史记录 window, as its 清除历史记录… (#115,
-/// ADR-0031). The sheet is the confirmation step — nothing is cleared until 清除 is clicked — and
-/// `onClear` hands the choice to `SettingsController.clearBrowsingData`.
+/// sheet on the settings window. The sheet is the confirmation step — nothing is cleared until
+/// 清除 is clicked — and `onClear` hands the choice to `SettingsController.clearBrowsingData`.
 struct ClearBrowsingDataSheet: View {
-    let onClear: BrowsingDataClearing
+    let onClear: (Set<BrowsingDataKind>, BrowsingDataTimeRange) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var range = BrowsingDataTimeRange.defaultRange
-    @State private var kinds: Set<BrowsingDataKind>
-
-    /// - Parameter initialKinds: what is ticked as the sheet opens — the defaults, except from the
-    ///   历史记录 window, whose button says 清除历史记录… and so ticks 历史记录 alone.
-    init(
-        initialKinds: Set<BrowsingDataKind> = BrowsingDataKind.defaultSelection,
-        onClear: @escaping BrowsingDataClearing
-    ) {
-        self.onClear = onClear
-        _kinds = State(initialValue: initialKinds)
-    }
+    @State private var kinds = BrowsingDataKind.defaultSelection
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {

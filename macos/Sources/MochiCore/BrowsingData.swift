@@ -35,10 +35,6 @@ public enum BrowsingDataTimeRange: String, CaseIterable, Sendable {
     }
 }
 
-/// Clearing `kinds` within a range — `SettingsController.clearBrowsingData`, as handed to the
-/// 清除浏览数据 sheet wherever it is shown (#107, #115).
-public typealias BrowsingDataClearing = (Set<BrowsingDataKind>, BrowsingDataTimeRange) -> Void
-
 /// One tickable kind of 浏览数据 (#107). 历史记录 (#110) lives in `HistoryStore`, the next two are
 /// 网站数据 (WebKit's), and the exceptions live in `config.toml` — `SettingsController
 /// .clearBrowsingData` is the one place that says what clearing each kind means.

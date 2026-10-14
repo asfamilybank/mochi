@@ -182,6 +182,13 @@ public final class HistoryBrowser {
         reload()
     }
 
+    /// 清除历史记录… (ADR-0032): every visit within `range`, counted back from the store's now —
+    /// history alone, never website data, which is 清除浏览数据…'s to clear.
+    public func clearHistory(from range: BrowsingDataTimeRange) {
+        store.removeVisits(since: range.startDate(now: store.now()))
+        reload()
+    }
+
     /// 删除这一天 — every visit that day, searched for or not.
     public func deleteDay(_ day: Date) {
         store.deleteDay(containing: day)

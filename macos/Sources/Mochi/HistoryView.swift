@@ -7,7 +7,6 @@ import SwiftUI
 /// after everything that changes it, never a second source of truth.
 final class HistoryViewModel: ObservableObject {
     private let browser: HistoryBrowser
-    private let clearBrowsingData: BrowsingDataClearing
 
     /// The toolbar's search field (`HistoryWindowController`). Typing is searched once it pauses
     /// for `searchDelay` (#118), so a burst of keystrokes is one search rather than one each;
@@ -34,16 +33,12 @@ final class HistoryViewModel: ObservableObject {
     @Published private(set) var matchCount = 0
     /// The search as it was run, for the 没有找到结果 page to say what wasn't found.
     @Published private(set) var searchTerms = HistoryBrowser.SearchTerms(host: nil, text: "")
-    /// 清除历史记录… is showing (#115) — set by the toolbar button.
+    /// 清除历史记录… is showing (ADR-0032) — set by the toolbar button.
     @Published var isClearingHistory = false
     private let icons: HistoryFaviconImages
 
-    init(
-        browser: HistoryBrowser,
-        clearBrowsingData: @escaping BrowsingDataClearing
-    ) {
+    init(browser: HistoryBrowser) {
         self.browser = browser
-        self.clearBrowsingData = clearBrowsingData
         icons = HistoryFaviconImages(png: browser.favicon)
         // Nothing is read yet: the window controller removes what has expired, then resets the
         // folding, as the window opens.
@@ -137,21 +132,21 @@ final class HistoryViewModel: ObservableObject {
         icons.image(for: row.faviconID)
     }
 
-    /// 清除历史记录…'s 清除 — the very clearing the settings window's dialog does, then a re-read so
-    /// what went is gone from the list at once.
-    func clear(_ kinds: Set<BrowsingDataKind>, from range: BrowsingDataTimeRange) {
-        clearBrowsingData(kinds, range)
-        reload()
+    /// 清除历史记录…'s 清除: the visits within `range`, history alone; the list shows what is left
+    /// at once.
+    func clearHistory(from range: BrowsingDataTimeRange) {
+        browser.clearHistory(from: range)
+        publish()
     }
 }
 
 /// The 历史记录 window's content (#108; ADR-0018 — the window and its search field are AppKit).
 /// A timeline of foldable days, newest first (#116), each header with its 「N 项」; search results
-/// as one flat timeline (#118). Double-click opens a page in the widget; Delete or the context menu removes the
-/// selection; a day's header has 删除这一天. With one row selected, the context menu also copies
-/// its address (拷贝, ⌘C) and shows every visit to its host (显示此网站的所有记录, #119). The
-/// toolbar's 清除历史记录… shows the settings window's 清除浏览数据 sheet here, over this window
-/// (#115).
+/// as one flat timeline (#118). Double-click opens a page in the widget; Delete or the context
+/// menu removes the selection; a day's header has 删除这一天. With one row selected, the context
+/// menu also copies its address (拷贝, ⌘C) and shows every visit to its host (显示此网站的所有记录,
+/// #119). The toolbar's 清除历史记录… asks for a time range and clears history alone, over this
+/// window (ADR-0032).
 struct HistoryView: View {
     @ObservedObject var model: HistoryViewModel
 
@@ -165,7 +160,7 @@ struct HistoryView: View {
         }
         .frame(minWidth: 420, minHeight: 280)
         .sheet(isPresented: $model.isClearingHistory) {
-            ClearBrowsingDataSheet(initialKinds: [.history]) { kinds, range in model.clear(kinds, from: range) }
+            ClearHistorySheet { range in model.clearHistory(from: range) }
         }
     }
 

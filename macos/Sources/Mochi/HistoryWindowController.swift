@@ -27,12 +27,8 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSToo
     /// `NSApp` (CLAUDE.md).
     private let activateApp: () -> Void
 
-    /// - Parameter clearBrowsingData: `SettingsController.clearBrowsingData`, for 清除历史记录… (#115).
-    init(
-        browser: HistoryBrowser, activateApp: @escaping () -> Void,
-        clearBrowsingData: @escaping BrowsingDataClearing
-    ) {
-        model = HistoryViewModel(browser: browser, clearBrowsingData: clearBrowsingData)
+    init(browser: HistoryBrowser, activateApp: @escaping () -> Void) {
+        model = HistoryViewModel(browser: browser)
         self.activateApp = activateApp
         let hostingController = NSHostingController(rootView: HistoryView(model: model))
         // Only the minimum: the window is resizable and the list fills whatever it is given.
@@ -109,11 +105,11 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSToo
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
         if itemIdentifier == Self.clearItemIdentifier {
-            // #115: Safari's place for it, just left of the search field.
+            // #115: Safari's place for it, just left of the search field; history only (ADR-0032).
             let item = NSToolbarItem(itemIdentifier: itemIdentifier)
             item.title = "清除历史记录…"
             item.label = "清除历史记录"
-            item.toolTip = "清除历史记录，也可以选择一并清除网站数据"
+            item.toolTip = "按时间范围清除历史记录"
             item.isBordered = true
             item.target = self
             item.action = #selector(clearHistory(_:))

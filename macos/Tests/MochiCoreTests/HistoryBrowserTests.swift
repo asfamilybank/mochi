@@ -459,6 +459,28 @@ import Testing
         #expect(browser.days.count == 2)
     }
 
+    // MARK: 清除历史记录… (ADR-0032)
+
+    /// The window's own clearing: every visit within the range, counted back from the store's now,
+    /// and history alone — nothing else is touched, so there is nothing else to test for here.
+    @Test(arguments: [
+        (range: BrowsingDataTimeRange.pastHour, kept: ["/two-hours-ago", "/yesterday"]),
+        (range: .past24Hours, kept: ["/yesterday"]),
+        (range: .allTime, kept: []),
+    ])
+    func clearingRemovesTheVisitsWithinTheRange(_ row: (range: BrowsingDataTimeRange, kept: [String])) {
+        let store = makeStore()
+        visit(store, "https://example.com/yesterday", at: "2026-10-11 09:00")
+        visit(store, "https://example.com/two-hours-ago", at: "2026-10-12 08:00")
+        visit(store, "https://example.com/half-an-hour-ago", at: "2026-10-12 09:30")
+        let browser = openedBrowser(store)
+
+        browser.clearHistory(from: row.range)
+
+        #expect(store.visits(since: .distantPast).map(\.url.path) == row.kept)
+        #expect(browser.days.map(\.visits).reduce(0, +) == row.kept.count)
+    }
+
     // MARK: Opening
 
     @Test func openingHandsTheAddressOn() {

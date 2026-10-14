@@ -35,8 +35,8 @@ final class SettingsWindowController: NSWindowController {
         activateApp()
     }
 
-    /// The 历史记录 menu's 清除浏览数据… (#110): the very sheet 隐私与安全性 shows, over that pane.
-    /// The 历史记录 window shows the same sheet over itself instead (#115, ADR-0031).
+    /// The 历史记录 menu's 清除浏览数据… (#110): the very sheet 隐私与安全性 shows, over that pane —
+    /// one dialog, one place it lives, rather than a second copy in a window of its own.
     func showClearBrowsingData() {
         if let tabViewController = window?.contentViewController as? SettingsTabViewController,
             let index = SettingsPane.allCases.firstIndex(of: .privacy)
