@@ -668,6 +668,17 @@ final class FakePlatformOps: PlatformOps {
         mainFrameURLChangedHandlers[windowID]?(url)
     }
 
+    // #117: 历史记录's site icons
+    private var siteIconLoadedHandlers: [Int: (URL, Data) -> Void] = [:]
+
+    func onSiteIconLoaded(_ window: WidgetWindowHandle, perform handler: @escaping (URL, Data) -> Void) {
+        siteIconLoadedHandlers[(window as! FakeWidgetWindowHandle).id] = handler
+    }
+
+    func simulateSiteIconLoaded(_ png: Data, for pageURL: URL, windowID: Int = 1) {
+        siteIconLoadedHandlers[windowID]?(pageURL, png)
+    }
+
     /// Delivers one raw event, as the platform's listener would. Dropped while not observing —
     /// exactly what a real listener that was never installed (or was removed) does.
     func simulateInput(_ event: RawInputEvent) {

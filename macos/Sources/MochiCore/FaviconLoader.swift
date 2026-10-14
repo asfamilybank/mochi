@@ -13,11 +13,18 @@ import WebKit
 /// simpler they are: routing through one would hand a third party a request per site visited —
 /// a browsing-history feed Mochi has no business creating, least of all for a decorative glyph.
 final class FaviconLoader {
+    /// A fetched icon: drawn in the address bar, and kept with the visit in 历史记录 (#117).
+    struct SiteIcon {
+        let image: NSImage
+        /// `historyPixelSize` square, `nil` when it couldn't be encoded.
+        let png: Data?
+    }
+
     /// Icons already fetched, keyed by origin. An origin's icon almost never changes within a
     /// session, and without this every in-site navigation would re-download the same bytes.
     /// Bounded because a long session wandering across many sites would otherwise accumulate
     /// decoded images with nothing ever evicting them.
-    private var cache: [String: NSImage] = [:]
+    private var cache: [String: SiteIcon] = [:]
     private var cacheOrder: [String] = []
     private static let cacheLimit = 64
 
@@ -53,12 +60,16 @@ final class FaviconLoader {
     /// this is a 16pt glyph, so anything beyond this is bytes spent to be thrown away.
     private static let maxIconBytes = 512 * 1024
 
+    /// The icon as 历史记录 keeps it (#117): the 16pt glyph at 2×. Small enough that a distinct
+    /// icon is a couple of KB in `History.db`.
+    static let historyPixelSize = 32
+
     /// Asks `webView` for its document's icon links, downloads the best one, and calls
     /// `completion` on the main queue — with `nil` when the page has no usable icon.
     ///
     /// The caller is responsible for discarding a result that arrived after navigating away:
     /// this is network-latency-bound, so a fast second navigation can easily outrun it.
-    func loadIcon(for pageURL: URL, in webView: WKWebView, completion: @escaping (NSImage?) -> Void) {
+    func loadIcon(for pageURL: URL, in webView: WKWebView, completion: @escaping (SiteIcon?) -> Void) {
         guard let origin = Self.origin(of: pageURL) else {
             completion(nil)
             return
@@ -85,7 +96,7 @@ final class FaviconLoader {
     }
 
     /// Walks `candidates` in order, stopping at the first that yields a decodable image.
-    private func download(_ candidates: [URL], origin: String, completion: @escaping (NSImage?) -> Void) {
+    private func download(_ candidates: [URL], origin: String, completion: @escaping (SiteIcon?) -> Void) {
         var remaining = candidates
         guard !remaining.isEmpty else {
             remember(miss: origin)
@@ -142,7 +153,7 @@ final class FaviconLoader {
     /// `.ico` files carry several resolutions; `NSImage` keeps them all as separate
     /// representations and would otherwise hand AppKit whichever it feels like. This pins the
     /// drawn size so the leading icon can't come out blurry or oversized.
-    private static func decode(_ data: Data) -> NSImage? {
+    private static func decode(_ data: Data) -> SiteIcon? {
         guard let source = NSImage(data: data), source.isValid, source.size.width > 0 else { return nil }
         let side = iconPointSize
         let scaled = NSImage(size: NSSize(width: side, height: side))
@@ -153,10 +164,31 @@ final class FaviconLoader {
             from: .zero, operation: .sourceOver, fraction: 1)
         scaled.unlockFocus()
         scaled.accessibilityDescription = DesignTokens.AddressFieldLeadingIcon.siteIcon.accessibilityLabel
-        return scaled
+        return SiteIcon(image: scaled, png: historyPNG(of: source))
     }
 
-    private func remember(icon: NSImage, for origin: String) {
+    /// `source` drawn into exactly `historyPixelSize` pixels square — through `CGContext`, so the
+    /// size doesn't depend on the screen's backing scale the way `lockFocus` does — as a PNG.
+    private static func historyPNG(of source: NSImage) -> Data? {
+        let side = historyPixelSize
+        var proposed = CGRect(x: 0, y: 0, width: side, height: side)
+        guard let image = source.cgImage(forProposedRect: &proposed, context: nil, hints: nil),
+            let sRGB = CGColorSpace(name: CGColorSpace.sRGB),
+            let context = CGContext(
+                data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4, space: sRGB,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: side, height: side))
+        let png = NSMutableData()
+        guard let scaled = context.makeImage(),
+            let destination = CGImageDestinationCreateWithData(png, "public.png" as CFString, 1, nil)
+        else { return nil }
+        CGImageDestinationAddImage(destination, scaled, nil)
+        return CGImageDestinationFinalize(destination) ? png as Data : nil
+    }
+
+    private func remember(icon: SiteIcon, for origin: String) {
         if cache[origin] == nil {
             cacheOrder.append(origin)
             if cacheOrder.count > Self.cacheLimit {

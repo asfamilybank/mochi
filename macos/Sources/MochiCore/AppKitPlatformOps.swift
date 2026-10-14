@@ -1591,15 +1591,16 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         guard let pageURL = webView.url ?? currentURL,
             let requestedOrigin = FaviconLoader.origin(of: pageURL)
         else { return }
-        faviconLoader.loadIcon(for: pageURL, in: webView) { [weak self] image in
-            guard let self, let image else { return }
+        faviconLoader.loadIcon(for: pageURL, in: webView) { [weak self] icon in
+            guard let self, let icon else { return }
             // A slow fetch can land after the user has already moved on; the icon belongs to the
             // origin it was requested for, not to whatever is on screen when it arrives.
             guard let currentOrigin = self.currentURL.flatMap(FaviconLoader.origin(of:)),
                 currentOrigin == requestedOrigin
             else { return }
-            self.siteIcon = image
+            self.siteIcon = icon.image
             self.updateAddressFieldIcons()
+            if let png = icon.png { self.siteIconLoadedHandler?(pageURL, png) }
         }
     }
 
@@ -1829,6 +1830,13 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
 
     func setMainFrameURLChangedHandler(_ handler: @escaping (URL) -> Void) {
         mainFrameURLChangedHandler = handler
+    }
+
+    /// #117: the address bar's icon, handed on for the visit it belongs to.
+    private var siteIconLoadedHandler: ((URL, Data) -> Void)?
+
+    func setSiteIconLoadedHandler(_ handler: @escaping (URL, Data) -> Void) {
+        siteIconLoadedHandler = handler
     }
 
     /// A new document in the main frame (WebKit sends this for the main frame only) — after its
@@ -2386,6 +2394,11 @@ public final class AppKitPlatformOps: PlatformOps {
     public func onMainFrameURLChanged(_ window: WidgetWindowHandle, perform handler: @escaping (URL) -> Void) {
         guard let handle = handle(for: window) else { return }
         handle.setMainFrameURLChangedHandler(handler)
+    }
+
+    // #117
+    public func onSiteIconLoaded(_ window: WidgetWindowHandle, perform handler: @escaping (URL, Data) -> Void) {
+        handle(for: window)?.setSiteIconLoadedHandler(handler)
     }
 
     // MARK: 网页交互请求 (#66)

@@ -194,6 +194,13 @@ public protocol PlatformOps: AnyObject {
     /// A fragment-only change isn't reported either: it is still the same page.
     func onMainFrameURLChanged(_ window: WidgetWindowHandle, perform handler: @escaping (URL) -> Void)
 
+    /// Registers a handler invoked whenever the widget's page gets its site icon — the one the
+    /// address bar shows, fetched once a page has finished loading (#117, 历史记录): the page it
+    /// was fetched for, and the icon as a `FaviconLoader.historyPixelSize`-square PNG. An icon that
+    /// arrives once the page has moved to another origin is never reported. Never for a Popup
+    /// Window.
+    func onSiteIconLoaded(_ window: WidgetWindowHandle, perform handler: @escaping (URL, Data) -> Void)
+
     /// Registers a handler invoked whenever the Empty Page (#16) is shown or hidden — including
     /// by back/forward, which the view handles on its own (`EmptyPageHistory`) without a core
     /// round trip. The window title (`AddressBarController`) needs it: while the Empty Page is

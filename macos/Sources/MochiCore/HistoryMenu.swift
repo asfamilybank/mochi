@@ -8,6 +8,14 @@ public struct HistoryMenu: Equatable {
     public struct Item: Equatable {
         public let title: String
         public let url: URL
+        /// The visit's site icon (#117), for `Orchestrator.historyFavicon(_:)`.
+        public let faviconID: String?
+
+        public init(title: String, url: URL, faviconID: String? = nil) {
+            self.title = title
+            self.url = url
+            self.faviconID = faviconID
+        }
     }
 
     public struct Day: Equatable {
@@ -62,7 +70,7 @@ public struct HistoryMenu: Equatable {
     private static func item(for visit: HistoryVisit) -> Item {
         let shown = HistoryText.title(of: visit) ?? visit.url.absoluteString
         let cut = shown.count > maximumTitleLength ? shown.prefix(maximumTitleLength - 1) + "…" : shown
-        return Item(title: String(cut), url: visit.url)
+        return Item(title: String(cut), url: visit.url, faviconID: visit.faviconID)
     }
 
     /// 「10月11日 星期日」.

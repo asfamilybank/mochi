@@ -88,6 +88,16 @@ import Testing
         #expect(menu.today.map(\.title) == ["A", "B", "A"])
     }
 
+    /// #117: each item carries its own visit's icon.
+    @Test func anItemCarriesItsVisitsIcon() {
+        let menu = build([
+            HistoryVisit(id: 2, url: URL(string: "https://example.com/b")!, title: "B", visitedAt: now, faviconID: "b"),
+            HistoryVisit(id: 1, url: URL(string: "https://example.com/a")!, title: "A", visitedAt: now, faviconID: nil),
+        ])
+
+        #expect(menu.today.map(\.faviconID) == ["b", nil])
+    }
+
     /// The oldest moment the menu shows, for fetching just enough from the store.
     @Test func theMenuReachesBackToTheStartOfSixDaysAgo() {
         #expect(HistoryMenu.earliestDay(now: now, calendar: historyTestCalendar) == historyTestDate("2026-10-06 00:00"))

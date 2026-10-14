@@ -237,6 +237,96 @@ func historyTestDate(_ string: String) -> Date {
         #expect(store.visits(since: .distantPast).map(\.visitedAt) == [historyTestDate("2026-10-12 08:59")])
     }
 
+    // MARK: Favicons (#117)
+
+    private let iconA = Data("icon A".utf8)
+    private let iconB = Data("icon B".utf8)
+
+    @Test func aVisitKeepsTheIconItWasRecordedWith() throws {
+        let store = makeStore()
+        store.recordVisit(to: url("https://example.com/a"), favicon: iconA)
+        store.recordVisit(to: url("https://example.com/b"))
+
+        let visits = store.visits(since: .distantPast)
+
+        #expect(visits.map { $0.faviconID == nil } == [true, false])
+        #expect(store.favicon(try #require(visits[1].faviconID)) == iconA)
+    }
+
+    /// An icon that arrives after the visit is written to that visit alone — a site changing its
+    /// icon later doesn't redraw the visits made under the old one.
+    @Test func anIconLandsOnlyOnTheVisitItIsGivenFor() throws {
+        let store = makeStore()
+        let first = try #require(store.recordVisit(to: url("https://example.com/a")))
+        store.updateFavicon(iconA, ofVisit: first)
+        let second = try #require(store.recordVisit(to: url("https://example.com/a")))
+
+        store.updateFavicon(iconB, ofVisit: second)
+
+        let icons = store.visits(since: .distantPast).map { $0.faviconID.flatMap(store.favicon) }
+        #expect(icons == [iconB, iconA])
+    }
+
+    /// The same bytes are one icon, however many visits show it.
+    @Test func visitsWithTheSameIconShareIt() {
+        let store = makeStore()
+        store.recordVisit(to: url("https://example.com/a"), favicon: iconA)
+        store.recordVisit(to: url("https://example.com/b"), favicon: Data("icon A".utf8))
+        store.recordVisit(to: url("https://example.com/c"), favicon: iconB)
+
+        let ids = store.visits(since: .distantPast).map(\.faviconID)
+
+        #expect(ids[1] == ids[2])
+        #expect(ids[0] != ids[1])
+    }
+
+    @Test func anIconForAnUnknownVisitRecordsNothing() {
+        let store = makeStore()
+
+        store.updateFavicon(iconA, ofVisit: 42)
+
+        #expect(store.visits(since: .distantPast).isEmpty)
+    }
+
+    /// An icon no visit shows any more is gone with the last visit that showed it — whichever way
+    /// that visit went — so the icons never outlive the history they came with.
+    @Test(arguments: ["delete", "deleteDay", "retention", "clear", "replaced"])
+    func anIconGoesWithTheLastVisitShowingIt(_ removal: String) throws {
+        let store = makeStore()
+        clock.now = historyTestDate("2026-10-11 09:00")
+        let old = try #require(store.recordVisit(to: url("https://gone.example.com/"), favicon: iconA))
+        clock.now = historyTestDate("2026-10-12 09:00")
+        store.recordVisit(to: url("https://kept.example.com/"), favicon: iconB)
+        let goneIcon = try #require(store.visits(onDayOf: historyTestDate("2026-10-11 12:00")).first?.faviconID)
+        let keptIcon = try #require(store.visits(onDayOf: historyTestDate("2026-10-12 12:00")).first?.faviconID)
+
+        switch removal {
+        case "delete": store.deleteVisits([old])
+        case "deleteDay": store.deleteDay(containing: historyTestDate("2026-10-11 12:00"))
+        case "retention": store.removeVisits(before: historyTestDate("2026-10-12 00:00"))
+        case "clear":
+            // 清除浏览数据 from the start of the 11th takes both visits — and both icons.
+            store.removeVisits(since: historyTestDate("2026-10-11 00:00"))
+            #expect(store.favicon(keptIcon) == nil)
+        default: store.updateFavicon(iconB, ofVisit: old)
+        }
+
+        #expect(store.favicon(goneIcon) == nil)
+        if removal != "clear" { #expect(store.favicon(keptIcon) == iconB) }
+    }
+
+    /// Still shown by another visit, an icon stays when one of its visits goes.
+    @Test func anIconStillShownStays() throws {
+        let store = makeStore()
+        let first = try #require(store.recordVisit(to: url("https://example.com/a"), favicon: iconA))
+        store.recordVisit(to: url("https://example.com/b"), favicon: iconA)
+        let icon = try #require(store.visits(since: .distantPast).first?.faviconID)
+
+        store.deleteVisits([first])
+
+        #expect(store.favicon(icon) == iconA)
+    }
+
     // MARK: On disk
 
     private func makeTemporaryDirectory() throws -> URL {
@@ -254,11 +344,12 @@ func historyTestDate(_ string: String) -> Date {
 
         do {
             let store = HistoryStore(databaseURL: file, now: { clock.now }, calendar: historyTestCalendar)
-            store.updateTitle("A", ofVisit: store.recordVisit(to: url("https://example.com/a"))!)
+            store.updateTitle("A", ofVisit: store.recordVisit(to: url("https://example.com/a"), favicon: iconA)!)
         }
         let reopened = HistoryStore(databaseURL: file, now: { clock.now }, calendar: historyTestCalendar)
 
         #expect(reopened.visits(since: .distantPast).map(\.title) == ["A"])
+        #expect(reopened.visits(since: .distantPast).first?.faviconID.flatMap(reopened.favicon) == iconA)
     }
 
     /// No migration (#114): a file from when history kept one row per address still opens, its old

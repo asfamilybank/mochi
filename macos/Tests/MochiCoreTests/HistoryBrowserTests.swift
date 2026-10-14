@@ -121,6 +121,20 @@ import Testing
         #expect(row?.subtitle == nil)
     }
 
+    /// #117: a row shows its own visit's icon, read from the store.
+    @Test func aRowCarriesItsVisitsIcon() throws {
+        let store = makeStore()
+        let icon = Data("png".utf8)
+        clock.now = historyTestDate("2026-10-12 09:00")
+        store.recordVisit(to: URL(string: "https://example.com/a")!, favicon: icon)
+        visit(store, "https://example.com/b", at: "2026-10-12 09:30")
+        let browser = makeBrowser(store)
+
+        let rows = try #require(browser.sections(matching: "").first?.rows)
+
+        #expect(rows.map { $0.faviconID.flatMap(browser.favicon) } == [nil, icon])
+    }
+
     @Test func anEmptyHistoryHasNoSections() {
         #expect(makeBrowser(makeStore()).sections(matching: "").isEmpty)
     }

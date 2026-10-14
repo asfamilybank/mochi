@@ -167,6 +167,105 @@ import Testing
         #expect(store.visits(since: .distantPast).map(\.title) == ["Page A"])
     }
 
+    // MARK: Site icons (#117)
+
+    private let iconA = Data("icon of a.example.com".utf8)
+    private let iconB = Data("icon of b.example.com".utf8)
+
+    private func icons(_ store: HistoryStore) -> [Data?] {
+        store.visits(since: .distantPast).map { $0.faviconID.flatMap(store.favicon) }
+    }
+
+    /// The icon is fetched once the page has loaded, after its visit was recorded: it is written
+    /// to that visit.
+    @Test func anIconLandsOnTheVisitOfItsPage() {
+        let (fake, orchestrator, store) = makeOrchestrator()
+        defer { withExtendedLifetime(orchestrator) {} }
+        fake.simulateMainFrameURLChanged(URL(string: "https://a.example.com/one")!)
+
+        fake.simulateSiteIconLoaded(iconA, for: URL(string: "https://a.example.com/one")!)
+
+        #expect(icons(store) == [iconA])
+    }
+
+    /// A video site switching videos in the page records a visit but loads nothing: the new visit
+    /// takes the icon its site already has.
+    @Test func aVisitWithinTheSameSiteTakesItsIconRightAway() {
+        let (fake, orchestrator, store) = makeOrchestrator()
+        defer { withExtendedLifetime(orchestrator) {} }
+        fake.simulateMainFrameURLChanged(URL(string: "https://a.example.com/watch?v=1")!)
+        fake.simulateSiteIconLoaded(iconA, for: URL(string: "https://a.example.com/watch?v=1")!)
+
+        fake.simulateMainFrameURLChanged(URL(string: "https://A.EXAMPLE.COM/watch?v=2")!)
+
+        #expect(icons(store) == [iconA, iconA])
+    }
+
+    /// Moving to another site never carries the last site's icon along: the new visit waits for
+    /// its own.
+    @Test func aVisitToAnotherSiteWaitsForItsOwnIcon() {
+        let (fake, orchestrator, store) = makeOrchestrator()
+        defer { withExtendedLifetime(orchestrator) {} }
+        fake.simulateMainFrameURLChanged(URL(string: "https://a.example.com/")!)
+        fake.simulateSiteIconLoaded(iconA, for: URL(string: "https://a.example.com/")!)
+
+        fake.simulateMainFrameURLChanged(URL(string: "https://b.example.com/")!)
+        #expect(icons(store) == [nil, iconA])
+
+        fake.simulateSiteIconLoaded(iconB, for: URL(string: "https://b.example.com/")!)
+        #expect(icons(store) == [iconB, iconA])
+    }
+
+    /// A slow icon that arrives once the page has moved to another site is dropped: it isn't the
+    /// current visit's.
+    @Test func aLateIconFromTheSiteLeftBehindIsDropped() {
+        let (fake, orchestrator, store) = makeOrchestrator()
+        defer { withExtendedLifetime(orchestrator) {} }
+        fake.simulateMainFrameURLChanged(URL(string: "https://a.example.com/")!)
+        fake.simulateMainFrameURLChanged(URL(string: "https://b.example.com/")!)
+
+        fake.simulateSiteIconLoaded(iconA, for: URL(string: "https://a.example.com/")!)
+
+        #expect(icons(store) == [nil, nil])
+    }
+
+    /// Nothing recorded, nothing to give an icon to — nor does the last visit get it.
+    @Test func anIconForAnUnrecordedPageGoesNowhere() {
+        let (fake, orchestrator, store) = makeOrchestrator()
+        defer { withExtendedLifetime(orchestrator) {} }
+        fake.simulateMainFrameURLChanged(URL(string: "https://a.example.com/")!)
+        fake.simulateMainFrameURLChanged(URL(string: "about:blank")!)
+
+        fake.simulateSiteIconLoaded(iconA, for: URL(string: "https://a.example.com/")!)
+
+        #expect(icons(store) == [nil])
+    }
+
+    @Test func ghostModeVisitsGetTheirIconsToo() {
+        let (fake, orchestrator, store) = makeOrchestrator()
+        defer { withExtendedLifetime(orchestrator) {} }
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+        fake.simulateMainFrameURLChanged(URL(string: "https://a.example.com/next")!)
+
+        fake.simulateSiteIconLoaded(iconA, for: URL(string: "https://a.example.com/next")!)
+
+        #expect(icons(store) == [iconA])
+    }
+
+    /// The menu shows each visit's own icon.
+    @Test func theMenuCarriesEachVisitsIcon() {
+        let (fake, orchestrator, store) = makeOrchestrator()
+        defer { withExtendedLifetime(orchestrator) {} }
+        fake.simulateMainFrameURLChanged(URL(string: "https://a.example.com/")!)
+        fake.simulateSiteIconLoaded(iconA, for: URL(string: "https://a.example.com/")!)
+        fake.simulateMainFrameURLChanged(URL(string: "https://b.example.com/")!)
+
+        let items = orchestrator.historyMenu().today
+
+        #expect(items.map { $0.faviconID.flatMap(orchestrator.historyFavicon) } == [nil, iconA])
+        #expect(items.map { $0.faviconID.flatMap(store.favicon) } == [nil, iconA])
+    }
+
     // MARK: The menu
 
     @Test func theMenuIsBuiltFromTheStoreAtTheStoresNow() {

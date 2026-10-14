@@ -1,9 +1,10 @@
+import CryptoKit
 import Foundation
 import SQLite3
 
 /// One visit in the history (`CONTEXT.md`「历史记录」, ADR-0030): the widget's main page arriving at
-/// an address, at a moment, under the title the page reported then. Visiting the same address
-/// again is another visit — history is a timeline, not a list of addresses.
+/// an address, at a moment, under the title and site icon the page had then. Visiting the same
+/// address again is another visit — history is a timeline, not a list of addresses.
 public struct HistoryVisit: Equatable, Identifiable, Sendable {
     public typealias ID = Int64
 
@@ -12,12 +13,16 @@ public struct HistoryVisit: Equatable, Identifiable, Sendable {
     /// `nil` until the page reports one.
     public let title: String?
     public let visitedAt: Date
+    /// The site icon the visit was made under (#117) — a key for `HistoryStore.favicon(_:)`,
+    /// `nil` when none came. Visits whose icons are the same bytes share one.
+    public let faviconID: String?
 
-    public init(id: ID, url: URL, title: String?, visitedAt: Date) {
+    public init(id: ID, url: URL, title: String?, visitedAt: Date, faviconID: String? = nil) {
         self.id = id
         self.url = url
         self.title = title
         self.visitedAt = visitedAt
+        self.faviconID = faviconID
     }
 }
 
@@ -28,6 +33,9 @@ public struct HistoryVisit: Equatable, Identifiable, Sendable {
 /// Append-only, one row per visit (#114, ADR-0030): every change of the widget's main-page address
 /// adds a row, and what a visit was titled is written to that row alone. The address is stored
 /// minus its `#` fragment (a fragment only points somewhere inside the same page).
+///
+/// Each visit's site icon (#117) is kept apart, once per distinct PNG (keyed by its SHA-256), so a
+/// year of visits to one site is one copy of its icon. An icon goes as soon as no visit shows it.
 ///
 /// "Now" and the calendar that decides where one day ends and the next begins are injected, so
 /// day grouping can be tested across midnight without waiting for one.
@@ -92,16 +100,27 @@ public final class HistoryStore {
 
     // MARK: Recording
 
-    /// Records one visit to `url` at the injected "now", returning it for its title to be written
-    /// to — `nil` only when the database refused the row.
+    /// Records one visit to `url` at the injected "now", made under `favicon` (a PNG) when one is
+    /// already known, returning it for its title and icon to be written to — `nil` only when the
+    /// database refused the row.
     @discardableResult
-    public func recordVisit(to url: URL) -> HistoryVisit.ID? {
+    public func recordVisit(to url: URL, favicon: Data? = nil) -> HistoryVisit.ID? {
+        let faviconID = favicon.flatMap(storeFavicon)
         guard
             execute(
-                "INSERT INTO visits (url, title, visited_at) VALUES (?1, NULL, ?2)",
-                .text(Self.address(of: url)), .real(now().timeIntervalSinceReferenceDate))
+                "INSERT INTO visits (url, title, visited_at, favicon_hash) VALUES (?1, NULL, ?2, ?3)",
+                .text(Self.address(of: url)), .real(now().timeIntervalSinceReferenceDate),
+                faviconID.map(Value.text) ?? .null)
         else { return nil }
         return sqlite3_last_insert_rowid(db)
+    }
+
+    /// Sets the site icon of one visit (a PNG) — for an icon that arrives after the visit was
+    /// recorded. Does nothing for a visit that isn't (or is no longer) recorded.
+    public func updateFavicon(_ png: Data, ofVisit id: HistoryVisit.ID) {
+        guard let faviconID = storeFavicon(png) else { return }
+        execute("UPDATE visits SET favicon_hash = ?1 WHERE id = ?2", .text(faviconID), .integer(id))
+        removeUnshownFavicons()
     }
 
     /// Sets the title of one visit — the last title a page reports while it is up is the one kept.
@@ -123,6 +142,14 @@ public final class HistoryStore {
             where: "title LIKE ?1 ESCAPE '\\' OR url LIKE ?1 ESCAPE '\\'", .text("%\(escaped)%"))
     }
 
+    /// The PNG behind a visit's `faviconID`, `nil` once no visit shows it.
+    public func favicon(_ id: String) -> Data? {
+        guard let statement = prepare("SELECT png FROM favicons WHERE hash = ?1", [.text(id)]) else { return nil }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW, let bytes = sqlite3_column_blob(statement, 0) else { return nil }
+        return Data(bytes: bytes, count: Int(sqlite3_column_bytes(statement, 0)))
+    }
+
     /// Visits at or after `date`, newest first.
     public func visits(since date: Date) -> [HistoryVisit] {
         visits(where: "visited_at >= ?1", .real(date.timeIntervalSinceReferenceDate))
@@ -142,6 +169,7 @@ public final class HistoryStore {
         for id in ids {
             execute("DELETE FROM visits WHERE id = ?1", .integer(id))
         }
+        removeUnshownFavicons()
     }
 
     /// Removes every visit on the calendar day containing `day`.
@@ -150,16 +178,38 @@ public final class HistoryStore {
         execute(
             "DELETE FROM visits WHERE visited_at >= ?1 AND visited_at < ?2",
             .real(start.timeIntervalSinceReferenceDate), .real(end.timeIntervalSinceReferenceDate))
+        removeUnshownFavicons()
     }
 
     /// The retention limit: removes every visit before `date`.
     public func removeVisits(before date: Date) {
         execute("DELETE FROM visits WHERE visited_at < ?1", .real(date.timeIntervalSinceReferenceDate))
+        removeUnshownFavicons()
     }
 
     /// 清除浏览数据: removes every visit at or after `date`.
     public func removeVisits(since date: Date) {
         execute("DELETE FROM visits WHERE visited_at >= ?1", .real(date.timeIntervalSinceReferenceDate))
+        removeUnshownFavicons()
+    }
+
+    // MARK: - Favicons
+
+    /// Keeps one copy of `png`, returning its key — `nil` when the database refused it.
+    private func storeFavicon(_ png: Data) -> String? {
+        let hash = SHA256.hash(data: png).map { String(format: "%02x", $0) }.joined()
+        guard execute("INSERT OR IGNORE INTO favicons (hash, png) VALUES (?1, ?2)", .text(hash), .blob(png))
+        else { return nil }
+        return hash
+    }
+
+    /// Icons go with the last visit that showed them: what the history no longer has, it doesn't
+    /// keep a trace of either.
+    private func removeUnshownFavicons() {
+        execute(
+            """
+            DELETE FROM favicons WHERE NOT EXISTS (SELECT 1 FROM visits WHERE visits.favicon_hash = favicons.hash)
+            """)
     }
 
     // MARK: - SQLite
@@ -182,6 +232,8 @@ public final class HistoryStore {
         case text(String)
         case real(Double)
         case integer(Int64)
+        case blob(Data)
+        case null
     }
 
     /// `SQLITE_TRANSIENT`, which the C macro defines as `-1` cast to a destructor — Swift can't
@@ -224,9 +276,15 @@ public final class HistoryStore {
                 id INTEGER PRIMARY KEY,
                 url TEXT NOT NULL,
                 title TEXT,
-                visited_at REAL NOT NULL
+                visited_at REAL NOT NULL,
+                favicon_hash TEXT
             );
             CREATE INDEX IF NOT EXISTS visits_visited_at ON visits (visited_at);
+            CREATE INDEX IF NOT EXISTS visits_favicon_hash ON visits (favicon_hash);
+            CREATE TABLE IF NOT EXISTS favicons (
+                hash TEXT PRIMARY KEY NOT NULL,
+                png BLOB NOT NULL
+            );
             PRAGMA user_version = 2;
             """
         let schemaCode = sqlite3_exec(db, schema, nil, nil, nil)
@@ -281,6 +339,9 @@ public final class HistoryStore {
             case .text(let text): sqlite3_bind_text(statement, position, text, -1, Self.transient)
             case .real(let real): sqlite3_bind_double(statement, position, real)
             case .integer(let integer): sqlite3_bind_int64(statement, position, integer)
+            case .blob(let data):
+                _ = data.withUnsafeBytes { sqlite3_bind_blob(statement, position, $0.baseAddress, Int32($0.count), Self.transient) }
+            case .null: sqlite3_bind_null(statement, position)
             }
         }
         return statement
@@ -296,7 +357,7 @@ public final class HistoryStore {
 
     private func visits(where condition: String, _ values: Value...) -> [HistoryVisit] {
         let sql = """
-            SELECT id, url, title, visited_at FROM visits
+            SELECT id, url, title, visited_at, favicon_hash FROM visits
             WHERE \(condition) ORDER BY visited_at DESC, id DESC
             """
         guard let statement = prepare(sql, values) else { return [] }
@@ -309,7 +370,8 @@ public final class HistoryStore {
                 HistoryVisit(
                     id: sqlite3_column_int64(statement, 0), url: url,
                     title: sqlite3_column_text(statement, 2).map { String(cString: $0) },
-                    visitedAt: Date(timeIntervalSinceReferenceDate: sqlite3_column_double(statement, 3))))
+                    visitedAt: Date(timeIntervalSinceReferenceDate: sqlite3_column_double(statement, 3)),
+                    faviconID: sqlite3_column_text(statement, 4).map { String(cString: $0) }))
         }
         return result
     }

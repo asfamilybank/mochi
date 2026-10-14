@@ -18,9 +18,14 @@ public final class HistoryBrowser {
         public let subtitle: String?
         /// When it was visited, `HH:mm`.
         public let time: String
+        /// The visit's site icon (#117), for `HistoryBrowser.favicon(_:)`.
+        public let faviconID: String?
 
-        public init(id: HistoryVisit.ID, url: URL, title: String, subtitle: String?, time: String) {
+        public init(
+            id: HistoryVisit.ID, url: URL, title: String, subtitle: String?, time: String, faviconID: String? = nil
+        ) {
             self.id = id
+            self.faviconID = faviconID
             self.url = url
             self.title = title
             self.subtitle = subtitle
@@ -73,6 +78,12 @@ public final class HistoryBrowser {
         return Self.sections(of: visits, now: store.now(), calendar: store.calendar)
     }
 
+    /// The PNG behind a row's `faviconID` (#117) — read from the store, never fetched: opening the
+    /// window makes no network request.
+    public func favicon(_ id: String) -> Data? {
+        store.favicon(id)
+    }
+
     /// Only these visits — other visits to the same pages stay.
     public func delete(_ visits: Set<HistoryVisit.ID>) {
         store.deleteVisits(visits)
@@ -109,7 +120,7 @@ public final class HistoryBrowser {
         let address = visit.url.absoluteString
         return Row(
             id: visit.id, url: visit.url, title: title ?? address, subtitle: title == nil ? nil : address,
-            time: time.string(from: visit.visitedAt))
+            time: time.string(from: visit.visitedAt), faviconID: visit.faviconID)
     }
 
     private static func title(of day: Date, now: Date, calendar: Calendar) -> String {

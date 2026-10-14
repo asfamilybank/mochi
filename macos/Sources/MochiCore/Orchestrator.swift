@@ -518,17 +518,27 @@ public final class Orchestrator {
 
     // MARK: 历史记录 (#102)
 
-    /// The visit the page's title belongs to — the last one recorded (#114: titles land on that
-    /// visit alone), `nil` once the page has moved somewhere that isn't recorded.
+    /// The visit the page's title and icon belong to — the last one recorded (#114: they land on
+    /// that visit alone), `nil` once the page has moved somewhere that isn't recorded.
     private var historyVisit: HistoryVisit.ID?
+    /// `historyVisit`'s origin: an icon fetched for any other is not that visit's (#117).
+    private var historyVisitOrigin: String?
+    /// The last site icon the page got, and the origin it belongs to (#117) — what a visit
+    /// within the same site (a `pushState` that loads nothing, so fetches no icon) is made under.
+    private var historySiteIcon: (origin: String, png: Data)?
 
     /// Records the widget's main-page visits: `http`/`https` only, nothing while the Empty Page
     /// is up, Ghost Mode included (a video autoplaying the next one is still a visit). Popup
     /// Windows are never registered, so they never reach here.
     private func registerHistoryRecording(for window: WidgetWindowHandle, addressBarController: AddressBarController) {
         historyVisit = nil
+        historyVisitOrigin = nil
+        historySiteIcon = nil
         platformOps.onMainFrameURLChanged(window) { [weak self, weak addressBarController] url in
             self?.recordHistoryVisit(to: url, isShowingEmptyPage: addressBarController?.isShowingEmptyPage ?? false)
+        }
+        platformOps.onSiteIconLoaded(window) { [weak self] pageURL, png in
+            self?.updateHistorySiteIcon(png, for: pageURL)
         }
         addressBarController.onPageTitleChanged = { [weak self] title in
             self?.updateHistoryTitle(title)
@@ -540,9 +550,27 @@ public final class Orchestrator {
             scheme == "http" || scheme == "https"
         else {
             historyVisit = nil
+            historyVisitOrigin = nil
             return
         }
-        historyVisit = historyStore.recordVisit(to: url)
+        let origin = Self.historyOrigin(of: url)
+        let icon = historySiteIcon.flatMap { $0.origin == origin ? $0.png : nil }
+        historyVisit = historyStore.recordVisit(to: url, favicon: icon)
+        historyVisitOrigin = origin
+    }
+
+    /// #117: kept for the next visits within its site, and written to the current visit when it is
+    /// that site's — never to a visit somewhere else.
+    private func updateHistorySiteIcon(_ png: Data, for pageURL: URL) {
+        guard let origin = Self.historyOrigin(of: pageURL) else { return }
+        historySiteIcon = (origin, png)
+        guard let historyVisit, historyVisitOrigin == origin else { return }
+        historyStore?.updateFavicon(png, ofVisit: historyVisit)
+    }
+
+    /// The address bar's icon is per origin (`FaviconLoader`), case aside.
+    private static func historyOrigin(of url: URL) -> String? {
+        FaviconLoader.origin(of: url)?.lowercased()
     }
 
     private func updateHistoryTitle(_ title: String?) {
@@ -558,6 +586,11 @@ public final class Orchestrator {
         let now = historyStore.now()
         let earliest = HistoryMenu.earliestDay(now: now, calendar: historyStore.calendar)
         return HistoryMenu.build(visits: historyStore.visits(since: earliest), now: now, calendar: historyStore.calendar)
+    }
+
+    /// The PNG behind a 历史记录 menu item's `faviconID` (#117).
+    public func historyFavicon(_ id: String) -> Data? {
+        historyStore?.favicon(id)
     }
 
     /// Opens a page picked from history in the widget — reopening the widget first when it is

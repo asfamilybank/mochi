@@ -17,6 +17,8 @@ final class HistoryViewModel: ObservableObject {
     @Published private(set) var sections: [HistoryBrowser.Section] = []
     /// 清除历史记录… is showing (#115) — set by the toolbar button.
     @Published var isClearingHistory = false
+    /// Decoded site icons (#117), by `faviconID`: many rows share one, and a row is redrawn often.
+    private var icons: [String: NSImage] = [:]
 
     init(
         browser: HistoryBrowser,
@@ -56,6 +58,16 @@ final class HistoryViewModel: ObservableObject {
         browser.open(visits, shownIn: sections)
     }
 
+    /// A row's site icon, `nil` when its visit has none (the row shows a placeholder).
+    func icon(for row: HistoryBrowser.Row) -> NSImage? {
+        guard let id = row.faviconID else { return nil }
+        if let icon = icons[id] { return icon }
+        guard let png = browser.favicon(id), let icon = NSImage(data: png) else { return nil }
+        icon.size = NSSize(width: 16, height: 16)
+        icons[id] = icon
+        return icon
+    }
+
     /// 清除历史记录…'s 清除 — the very clearing the settings window's dialog does, then a re-read so
     /// what went is gone from the list at once.
     func clear(_ kinds: Set<BrowsingDataKind>, from range: BrowsingDataTimeRange) {
@@ -90,7 +102,7 @@ struct HistoryView: View {
             ForEach(model.sections) { section in
                 Section {
                     ForEach(section.rows) { row in
-                        HistoryRow(row: row)
+                        HistoryRow(row: row, icon: model.icon(for: row))
                     }
                 } header: {
                     Text(section.title)
@@ -128,9 +140,19 @@ struct HistoryView: View {
 
 private struct HistoryRow: View {
     let row: HistoryBrowser.Row
+    /// The visit's own site icon (#117); a globe stands in when it has none.
+    let icon: NSImage?
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
+        HStack(alignment: .top, spacing: 8) {
+            Group {
+                if let icon {
+                    Image(nsImage: icon).resizable().interpolation(.high)
+                } else {
+                    Image(systemName: "globe").foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 16, height: 16)
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.title)
                     .lineLimit(1)
@@ -143,7 +165,7 @@ private struct HistoryRow: View {
                         .truncationMode(.middle)
                 }
             }
-            Spacer(minLength: 0)
+            Spacer(minLength: 4)
             Text(row.time)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
