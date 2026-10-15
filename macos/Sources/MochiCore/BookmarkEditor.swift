@@ -21,8 +21,13 @@ final class BookmarkEditorPopover: NSObject, NSPopoverDelegate {
         popover.delegate = self
     }
 
-    /// Shows the editor hanging from the bottom edge of `view`.
+    /// Shows the editor hanging from the bottom edge of `view`. The popover is given its size
+    /// first: left to learn it from SwiftUI after showing, it opened as tall as the space under
+    /// the address bar and then shrank around its middle, ending up 200pt below the bar.
     func show(below view: NSView) {
+        if let content = popover.contentViewController?.view {
+            popover.contentSize = content.fittingSize
+        }
         popover.show(relativeTo: view.bounds, of: view, preferredEdge: .minY)
     }
 
