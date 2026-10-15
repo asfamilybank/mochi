@@ -468,8 +468,12 @@ public final class Orchestrator {
     /// whole address selected, reopening the widget first when there isn't one. The focus goes to
     /// the new window as soon as `openWidget()` has put it on screen — not after its startup page
     /// finishes loading, which would leave the user's first keystrokes going nowhere.
+    ///
+    /// An open widget is brought forward first, the same way: with 书签, 历史记录 or 设置 in front,
+    /// focusing the bar alone left that window key, and what was typed next went there.
+    /// `canPerform` keeps Ghost Mode out, so this never fronts a click-through window.
     private func openLocation() {
-        if window == nil { openWidget() }
+        openWidget()
         guard let window else { return }
         platformOps.focusAddressBar(in: window)
     }

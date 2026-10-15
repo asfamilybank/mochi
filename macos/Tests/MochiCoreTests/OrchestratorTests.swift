@@ -1440,6 +1440,18 @@ enum TrayScenario: Sendable {
         #expect(fake.createdFrames.count == 1)
     }
 
+    /// With another Mochi window in front (书签, 历史记录, 设置), ⌘L brings the widget forward —
+    /// key, so what is typed next reaches its address bar — before focusing the bar.
+    @Test func openLocationBringsTheOpenWidgetForwardFirst() {
+        let (fake, orchestrator) = makeOrchestrator(in: .normalMode)
+        let showsBefore = fake.shownWindowIDs.count
+
+        orchestrator.perform(.openLocation)
+
+        #expect(fake.shownWindowIDs.dropFirst(showsBefore) == [1])
+        #expect(fake.addressBarFocuses.map(\.showCount) == [showsBefore + 1])
+    }
+
     @Test func openLocationWorksOnTheEmptyPage() {
         let fake = FakePlatformOps()
         let config = WidgetConfig(url: nil)
