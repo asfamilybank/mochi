@@ -55,6 +55,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // #102: opened once, for the app's lifetime; a damaged file is moved aside, never fatal.
         // #110: shared with `SettingsController`, which clears it and applies its retention.
         let historyStore = HistoryStore(databaseURL: HistoryStore.defaultDatabaseURL)
+        // #121: a file of its own beside history's, which no clearing reaches (ADR-0033).
+        let bookmarkStore = BookmarkStore(databaseURL: BookmarkStore.defaultDatabaseURL)
 
         let orchestrator = Orchestrator(
             platformOps: platformOps,
@@ -64,7 +66,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             persist: persist,
             openSettings: { [unowned self] in self.settingsWindowController?.show() },
             openAbout: { AboutPanel.show() },
-            historyStore: historyStore
+            historyStore: historyStore,
+            bookmarkStore: bookmarkStore
         )
         self.orchestrator = orchestrator
 

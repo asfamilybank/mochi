@@ -10,12 +10,19 @@ import AppKit
 /// every time the menu is about to show or the key equivalent is pressed) — how the main menu
 /// greys out the items that need a widget while the widget is closed (#42), rather than anyone
 /// flipping `NSMenuItem.isEnabled` by hand at the right moments.
+///
+/// `title`, when given, is re-read at the same moment — for an item whose wording follows the
+/// state it acts on (书签's 添加书签…/编辑书签…, #121).
 public final class MenuItemActionTarget: NSObject, NSMenuItemValidation {
     private let action: () -> Void
     private let isEnabled: () -> Bool
+    private let title: (() -> String)?
 
-    public init(isEnabled: @escaping () -> Bool = { true }, action: @escaping () -> Void) {
+    public init(
+        isEnabled: @escaping () -> Bool = { true }, title: (() -> String)? = nil, action: @escaping () -> Void
+    ) {
         self.isEnabled = isEnabled
+        self.title = title
         self.action = action
     }
 
@@ -24,6 +31,7 @@ public final class MenuItemActionTarget: NSObject, NSMenuItemValidation {
     }
 
     public func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        isEnabled()
+        if let title { menuItem.title = title() }
+        return isEnabled()
     }
 }

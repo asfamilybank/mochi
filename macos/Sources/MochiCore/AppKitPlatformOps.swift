@@ -1454,6 +1454,20 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         controls.addressBar.field.currentEditor()?.selectAll(nil)
     }
 
+    /// The open bookmark editor (#121), held until it has answered and closed.
+    private var bookmarkEditor: BookmarkEditorPopover?
+
+    /// ⌘D's editor, hanging from the address bar — which never collapses into the toolbar's
+    /// overflow (ADR-0011), so it is always there to hang from.
+    func presentBookmarkEditor(name: String, answer: @escaping (BookmarkEditorAnswer) -> Void) {
+        let editor = BookmarkEditorPopover(name: name) { [weak self] result in
+            self?.bookmarkEditor = nil
+            answer(result)
+        }
+        bookmarkEditor = editor
+        editor.show(below: controls.addressBar)
+    }
+
     /// Leaves the editable state — but only once the field has genuinely lost its field editor.
     ///
     /// AppKit posts `textDidEndEditing:` *while it is installing* the field editor this very
@@ -2311,6 +2325,12 @@ public final class AppKitPlatformOps: PlatformOps {
     public func focusAddressBar(in window: WidgetWindowHandle) {
         guard let handle = handle(for: window) else { return }
         handle.focusAddressField()
+    }
+
+    public func presentBookmarkEditor(
+        name: String, in window: WidgetWindowHandle, answer: @escaping (BookmarkEditorAnswer) -> Void
+    ) {
+        handle(for: window)?.presentBookmarkEditor(name: name, answer: answer)
     }
 
     public func onURLSubmitted(_ window: WidgetWindowHandle, perform handler: @escaping (URL) -> Void) {

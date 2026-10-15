@@ -14,6 +14,8 @@ final class MainMenuBuilder {
     private var historyMenuController: HistoryMenuController?
     /// #108: the 历史记录 window, created the first time ⌘Y asks for it.
     private var historyWindowController: HistoryWindowController?
+    /// #121: the 书签 menu's delegate — `NSMenu.delegate` is weak.
+    private var bookmarkMenuController: BookmarkMenuController?
 
     /// - Parameters:
     ///   - orchestrator: supplies everything the menus do. Widget-bound items go through its
@@ -33,6 +35,7 @@ final class MainMenuBuilder {
         mainMenu.addItem(viewMenuItem(orchestrator: orchestrator))
         mainMenu.addItem(
             historyMenuItem(orchestrator: orchestrator, activateApp: activateApp, clearBrowsingData: clearBrowsingData))
+        mainMenu.addItem(bookmarksMenuItem(orchestrator: orchestrator))
         mainMenu.addItem(windowMenuItem())
         mainMenu.addItem(helpMenuItem())
         return mainMenu
@@ -198,6 +201,30 @@ final class MainMenuBuilder {
         historyWindowController?.toggle()
     }
 
+    // MARK: - Bookmarks menu
+
+    /// 书签 (#121, ADR-0033), where Safari has it: between 历史记录 and 窗口. ⌘D adds the page —
+    /// or, when it already is a bookmark, says 编辑书签… and only opens the editor; below it, every
+    /// bookmark in the user's order, rebuilt by `BookmarkMenuController` every time the menu opens.
+    private func bookmarksMenuItem(orchestrator: Orchestrator) -> NSMenuItem {
+        let menu = NSMenu(title: "书签")
+
+        let add = action(
+            BookmarkMenu.addItemTitle(isCurrentPageBookmarked: false), symbol: "bookmark", keyEquivalent: "d",
+            isEnabled: { orchestrator.canPerform(.addBookmark) },
+            liveTitle: { BookmarkMenu.addItemTitle(isCurrentPageBookmarked: orchestrator.isCurrentPageBookmarked) },
+            perform: { orchestrator.perform(.addBookmark) })
+        menu.addItem(add)
+
+        let bookmarkMenuController = BookmarkMenuController(orchestrator: orchestrator)
+        bookmarkMenuController.attach(to: menu)
+        self.bookmarkMenuController = bookmarkMenuController
+
+        let item = NSMenuItem()
+        item.submenu = menu
+        return item
+    }
+
     // MARK: - Window menu
 
     /// Minimize/Zoom are the only two items this app supplies by hand — everything else (the
@@ -261,9 +288,9 @@ final class MainMenuBuilder {
     private func action(
         _ title: String, symbol: String, keyEquivalent: String = "",
         modifierMask: NSEvent.ModifierFlags = [.command], isEnabled: @escaping () -> Bool = { true },
-        perform: @escaping () -> Void
+        liveTitle: (() -> String)? = nil, perform: @escaping () -> Void
     ) -> NSMenuItem {
-        let target = MenuItemActionTarget(isEnabled: isEnabled, action: perform)
+        let target = MenuItemActionTarget(isEnabled: isEnabled, title: liveTitle, action: perform)
         targets.append(target)
         let item = NSMenuItem(title: title, action: #selector(MenuItemActionTarget.invoke), keyEquivalent: keyEquivalent)
         item.target = target

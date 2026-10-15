@@ -1373,7 +1373,8 @@ enum TrayScenario: Sendable {
 
         fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
 
-        #expect(WidgetCommand.allCases.allSatisfy { orchestrator.canPerform($0) })
+        // ⌘D also needs a bookmark store and a web page (`OrchestratorBookmarkTests`).
+        #expect(WidgetCommand.allCases.filter { $0 != .addBookmark }.allSatisfy { orchestrator.canPerform($0) })
     }
 
     // #59: 历史记录 → 返回 / 前进, offered exactly when the toolbar's segments are
@@ -1600,6 +1601,7 @@ private extension FakePlatformOps {
         case .goBack: wentBackWindowIDs.count
         case .goForward: wentForwardWindowIDs.count
         case .openLocation: addressBarFocuses.count
+        case .addBookmark: bookmarkEditors.count
         }
     }
 

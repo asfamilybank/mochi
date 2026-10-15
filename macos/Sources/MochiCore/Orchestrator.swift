@@ -21,6 +21,9 @@ public enum WidgetCommand: CaseIterable, Sendable {
     /// 文件 → 打开位置… (⌘L, #61) — the one command that is offered *without* a widget: it
     /// reopens one first, then focuses its address bar.
     case openLocation
+    /// 书签 → 添加书签…/编辑书签… (⌘D, #121). Only on a web page, and never in Ghost Mode: it
+    /// opens an editor, and Ghost Mode takes nothing that needs the user (ADR-0012).
+    case addBookmark
 }
 
 public final class Orchestrator {
@@ -40,6 +43,8 @@ public final class Orchestrator {
     private let openAbout: () -> Void
     /// #102: `nil` keeps no history at all (most tests).
     private let historyStore: HistoryStore?
+    /// #121: `nil` keeps no bookmarks at all (most tests).
+    private let bookmarkStore: BookmarkStore?
     private var window: WidgetWindowHandle?
     private var ghostModeController: GhostModeController?
     private var addressBarController: AddressBarController?
@@ -63,7 +68,8 @@ public final class Orchestrator {
         persist: @escaping (@escaping (WidgetConfig) -> WidgetConfig) -> Void = { _ in },
         openSettings: @escaping () -> Void = {},
         openAbout: @escaping () -> Void = {},
-        historyStore: HistoryStore? = nil
+        historyStore: HistoryStore? = nil,
+        bookmarkStore: BookmarkStore? = nil
     ) {
         self.platformOps = platformOps
         self.currentConfig = currentConfig
@@ -73,6 +79,7 @@ public final class Orchestrator {
         self.openSettings = openSettings
         self.openAbout = openAbout
         self.historyStore = historyStore
+        self.bookmarkStore = bookmarkStore
     }
 
     /// Launch. Everything app-global — and therefore done exactly once, never again on a reopen
@@ -434,6 +441,8 @@ public final class Orchestrator {
             return window != nil
         case .stop:
             return window.map { platformOps.navigationState(of: $0).isLoading } ?? false
+        case .addBookmark:
+            return bookmarkStore != nil && bookmarkablePage != nil
         }
     }
 
@@ -450,6 +459,7 @@ public final class Orchestrator {
         case .goBack: window.map(platformOps.goBack(in:))
         case .goForward: window.map(platformOps.goForward(in:))
         case .openLocation: openLocation()
+        case .addBookmark: addOrEditBookmark()
         }
     }
 
@@ -538,13 +548,19 @@ public final class Orchestrator {
         historyVisitOrigin = nil
         historyVisitAddress = nil
         historySiteIcon = nil
+        currentPageURL = nil
+        currentPageTitle = nil
         platformOps.onMainFrameURLChanged(window) { [weak self, weak addressBarController] url in
+            self?.currentPageURL = url
             self?.recordHistoryVisit(to: url, isShowingEmptyPage: addressBarController?.isShowingEmptyPage ?? false)
+            self?.refreshBookmarkIconWithinSite(at: url)
         }
         platformOps.onSiteIconLoaded(window) { [weak self] pageURL, png in
             self?.updateHistorySiteIcon(png, for: pageURL)
+            self?.refreshBookmarkIcon(png, for: pageURL)
         }
         addressBarController.onPageTitleChanged = { [weak self] title in
+            self?.currentPageTitle = title
             self?.updateHistoryTitle(title)
         }
         // Leaving for the Empty Page ends the visit: coming back to the same address is a new one.
@@ -640,6 +656,93 @@ public final class Orchestrator {
     /// same through `SettingsController` and `HistoryBrowser`.
     private func removeExpiredHistory() {
         historyStore?.removeVisits(olderThan: currentConfig().historyRetention)
+    }
+
+    // MARK: 书签 (#121, ADR-0033)
+
+    /// The widget's main page as the platform last reported it — the page ⌘D bookmarks.
+    private var currentPageURL: URL?
+    private var currentPageTitle: String?
+
+    /// The page ⌘D would bookmark: the widget's main page, when it is a web page and the Empty
+    /// Page isn't covering it.
+    private var bookmarkablePage: URL? {
+        guard window != nil, addressBarController?.isShowingEmptyPage == false, let url = currentPageURL,
+            let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https"
+        else { return nil }
+        return url
+    }
+
+    /// Whether the page ⌘D would act on is a bookmark already — what turns 添加书签… into
+    /// 编辑书签….
+    public var isCurrentPageBookmarked: Bool {
+        guard let bookmarkStore, let page = bookmarkablePage else { return false }
+        return bookmarkStore.bookmark(for: page) != nil
+    }
+
+    /// ⌘D: the page becomes a bookmark at once — named after its title, or its address while it
+    /// has none, under the site's icon — then the editor opens on it. A page that already is one
+    /// only gets the editor.
+    private func addOrEditBookmark() {
+        guard let bookmarkStore, let window, let page = bookmarkablePage else { return }
+        let bookmark: Bookmark
+        if let existing = bookmarkStore.bookmark(for: page) {
+            bookmark = existing
+        } else {
+            let title = currentPageTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let origin = Self.historyOrigin(of: page)
+            let icon = historySiteIcon.flatMap { $0.origin == origin ? $0.png : nil }
+            guard case .success(let added) = bookmarkStore.add(
+                name: title.isEmpty ? page.absoluteString : title, url: page, favicon: icon)
+            else { return }
+            bookmark = added
+        }
+        platformOps.presentBookmarkEditor(name: bookmark.name, in: window) { [weak self] answer in
+            self?.bookmarkEditorAnswered(answer, for: bookmark.id)
+        }
+    }
+
+    private func bookmarkEditorAnswered(_ answer: BookmarkEditorAnswer, for id: Bookmark.ID) {
+        switch answer {
+        case .done(let name):
+            let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !name.isEmpty { bookmarkStore?.rename(id, to: name) }
+        case .cancel:
+            break
+        case .remove:
+            bookmarkStore?.delete([id])
+        }
+    }
+
+    /// The main menu's 书签 list, rebuilt from the store each time the menu opens.
+    public func bookmarkMenu() -> BookmarkMenu {
+        BookmarkMenu.build(bookmarks: bookmarkStore?.all() ?? [])
+    }
+
+    /// The PNG behind a bookmark's `faviconID`.
+    public func bookmarkFavicon(_ id: String) -> Data? {
+        bookmarkStore?.favicon(id)
+    }
+
+    /// Opens a bookmark in the widget — exactly as opening from history does (`CONTEXT.md`): a
+    /// closed widget reopens straight at it, and Ghost Mode is followed, not left.
+    public func openBookmark(_ url: URL) {
+        openFromHistory(url)
+    }
+
+    /// A site icon loaded for a bookmarked page becomes that bookmark's, when it differs.
+    private func refreshBookmarkIcon(_ png: Data, for pageURL: URL) {
+        guard let bookmark = bookmarkStore?.bookmark(for: pageURL),
+            bookmark.faviconID != HistoryStore.faviconHash(of: png)
+        else { return }
+        bookmarkStore?.updateFavicon(png, of: bookmark.id)
+    }
+
+    /// Reaching a bookmarked page within the site loads no icon of its own (#117) — the site's
+    /// is the bookmark's.
+    private func refreshBookmarkIconWithinSite(at url: URL) {
+        guard let icon = historySiteIcon, icon.origin == Self.historyOrigin(of: url) else { return }
+        refreshBookmarkIcon(icon.png, for: url)
     }
 
     // MARK: 网页交互请求 (#66)

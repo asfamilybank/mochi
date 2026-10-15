@@ -80,6 +80,10 @@ public enum DefaultHotkeys {
     /// window. `0x10` is `kVK_ANSI_Y`.
     public static let showAllHistory = Hotkey(keyCode: 0x10, modifierFlags: cmd)
 
+    /// ⌘D — the 书签 menu's 添加书签… (#121), which adds the page and opens its editor.
+    /// `0x02` is `kVK_ANSI_D`.
+    public static let addBookmark = Hotkey(keyCode: 0x02, modifierFlags: cmd)
+
     /// The fixed local menu shortcuts #37 built into `MainMenuBuilder` (⌘R/⌘+/⌘-/⌘0/⌘,) — never
     /// routed through `GlobalHotkeyRegistry` at all (a local `NSMenuItem` key equivalent only
     /// dispatches through the responder chain while Mochi is the key window), but still listed
@@ -103,6 +107,7 @@ public enum DefaultHotkeys {
         // claiming it would steal 隐藏其他 from every app all over again.
         Hotkey(keyCode: 0x04, modifierFlags: cmd | option),
         showAllHistory,                             // ⌘Y 显示全部历史记录 (#102)
+        addBookmark,                                // ⌘D 添加书签… (#121)
     ]
 }
 

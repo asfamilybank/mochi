@@ -359,6 +359,24 @@ final class FakePlatformOps: PlatformOps {
         addressBarFocuses.append((handle.id, shownWindowIDs.contains(handle.id), loadedURLs.count))
     }
 
+    // #121: 书签
+    /// Every `presentBookmarkEditor` call, by name and window.
+    private(set) var bookmarkEditors: [(name: String, windowID: Int)] = []
+    private var bookmarkEditorAnswer: ((BookmarkEditorAnswer) -> Void)?
+
+    func presentBookmarkEditor(
+        name: String, in window: WidgetWindowHandle, answer: @escaping (BookmarkEditorAnswer) -> Void
+    ) {
+        bookmarkEditors.append((name, (window as! FakeWidgetWindowHandle).id))
+        bookmarkEditorAnswer = answer
+    }
+
+    /// Leaves the open editor the way the user did — once, as the platform does.
+    func simulateBookmarkEditorAnswered(_ answer: BookmarkEditorAnswer) {
+        bookmarkEditorAnswer?(answer)
+        bookmarkEditorAnswer = nil
+    }
+
     // MARK: 系统权限 (#98, ADR-0026)
 
     /// What `systemPermissionStatus(_:)` answers; a permission not listed reads as granted.

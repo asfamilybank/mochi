@@ -79,6 +79,16 @@ public struct TrayMenuItem {
 /// Where the widget's page stands in its history and loading (#57) — the *effective* answers, the
 /// same ones the Normal Mode toolbar's back/forward segments show: back and forward include
 /// `EmptyPageHistory`'s steps onto and off the Empty Page, not just the web view's own list.
+/// How the bookmark editor (#121) was left.
+public enum BookmarkEditorAnswer: Equatable, Sendable {
+    /// 完成, Return, or a click outside: keep the bookmark under `name`.
+    case done(name: String)
+    /// Esc: keep the bookmark as it was before the editor opened.
+    case cancel
+    /// 移除: the page is no longer a bookmark.
+    case remove
+}
+
 public struct NavigationState: Equatable {
     public var canGoBack: Bool
     public var canGoForward: Bool
@@ -330,6 +340,11 @@ public protocol PlatformOps: AnyObject {
     /// Puts the address bar into editing with its whole address selected (#61, 打开位置… ⌘L) —
     /// the same path a click on the bar takes, so it works on the Empty Page too.
     func focusAddressBar(in window: WidgetWindowHandle)
+    /// The bookmark editor (#121, ADR-0033): a popover under the address bar holding the
+    /// bookmark's `name` for editing, with 完成 and 移除. The bookmark already exists when it opens
+    /// — ⌘D has added it — so `answer` is told what to make of it, exactly once.
+    func presentBookmarkEditor(
+        name: String, in window: WidgetWindowHandle, answer: @escaping (BookmarkEditorAnswer) -> Void)
 
     // MARK: 系统权限 (#98, ADR-0026) — one set of calls for every `SystemPermission`.
 
