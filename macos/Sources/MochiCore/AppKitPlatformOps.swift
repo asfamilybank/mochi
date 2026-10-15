@@ -1537,8 +1537,10 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
 
     /// ⌘D's editor, hanging from the address bar — which never collapses into the toolbar's
     /// overflow (ADR-0011), so it is always there to hang from.
-    func presentBookmarkEditor(name: String, answer: @escaping (BookmarkEditorAnswer) -> Void) {
-        let editor = BookmarkEditorPopover(name: name) { [weak self] result in
+    func presentBookmarkEditor(
+        name: String, offersRemove: Bool, answer: @escaping (BookmarkEditorAnswer) -> Void
+    ) {
+        let editor = BookmarkEditorPopover(name: name, offersRemove: offersRemove) { [weak self] result in
             self?.bookmarkEditor = nil
             answer(result)
         }
@@ -2420,9 +2422,10 @@ public final class AppKitPlatformOps: PlatformOps {
     }
 
     public func presentBookmarkEditor(
-        name: String, in window: WidgetWindowHandle, answer: @escaping (BookmarkEditorAnswer) -> Void
+        name: String, offersRemove: Bool, in window: WidgetWindowHandle,
+        answer: @escaping (BookmarkEditorAnswer) -> Void
     ) {
-        handle(for: window)?.presentBookmarkEditor(name: name, answer: answer)
+        handle(for: window)?.presentBookmarkEditor(name: name, offersRemove: offersRemove, answer: answer)
     }
 
     public func onURLSubmitted(_ window: WidgetWindowHandle, perform handler: @escaping (URL) -> Void) {

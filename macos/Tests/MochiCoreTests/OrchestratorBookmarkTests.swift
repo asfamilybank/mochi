@@ -40,6 +40,8 @@ import Testing
         #expect(bookmarks.all().map(\.name) == ["asfamilybank/mochi"])
         #expect(bookmarks.all().map(\.url) == [page])
         #expect(fake.bookmarkEditors.map(\.name) == ["asfamilybank/mochi"])
+        // 移除 is offered only on a page that already was a bookmark (#121).
+        #expect(fake.bookmarkEditors.map(\.offersRemove) == [false])
     }
 
     /// A page with no title yet is bookmarked under its address.
@@ -90,6 +92,7 @@ import Testing
 
         #expect(bookmarks.all().map(\.name) == ["我的仓库"])
         #expect(fake.bookmarkEditors.map(\.name) == ["我的仓库"])
+        #expect(fake.bookmarkEditors.map(\.offersRemove) == [true])
     }
 
     @Test(arguments: [
@@ -318,8 +321,8 @@ import Testing
 
     // MARK: Clearing leaves bookmarks alone
 
-    /// No clearing reaches bookmarks (ADR-0033): every kind of 清除浏览数据 over all time, and
-    /// 清除历史记录 from the history window.
+    /// No clearing reaches bookmarks (ADR-0033): every kind of 清除浏览数据 over all time,
+    /// 清除历史记录 from the history window, and 移除所有网站数据.
     @Test func clearingLeavesBookmarksAndTheirIcons() throws {
         let history = HistoryStore(databaseURL: nil)
         let (fake, orchestrator, bookmarks) = makeOrchestrator(historyStore: history)
@@ -332,6 +335,7 @@ import Testing
 
         settings.clearBrowsingData(Set(BrowsingDataKind.allCases), from: .allTime)
         try #require(orchestrator.makeHistoryBrowser()).clearHistory(from: .allTime)
+        settings.removeDataOfAllWebsites {}
 
         #expect(bookmarks.all().map(\.name) == ["Mochi"])
         #expect(bookmarks.all().first?.faviconID.flatMap(bookmarks.favicon) == iconA)

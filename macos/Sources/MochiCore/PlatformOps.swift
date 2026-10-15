@@ -76,9 +76,6 @@ public struct TrayMenuItem {
     public static let separator = TrayMenuItem(separator: ())
 }
 
-/// Where the widget's page stands in its history and loading (#57) — the *effective* answers, the
-/// same ones the Normal Mode toolbar's back/forward segments show: back and forward include
-/// `EmptyPageHistory`'s steps onto and off the Empty Page, not just the web view's own list.
 /// Where the address bar's suggestions come from (#122): candidates for the words typed, and
 /// the icon behind a candidate's `faviconID`.
 public struct AddressSuggestionSource {
@@ -107,6 +104,9 @@ public enum BookmarkEditorAnswer: Equatable, Sendable {
     case remove
 }
 
+/// Where the widget's page stands in its history and loading (#57) — the *effective* answers, the
+/// same ones the Normal Mode toolbar's back/forward segments show: back and forward include
+/// `EmptyPageHistory`'s steps onto and off the Empty Page, not just the web view's own list.
 public struct NavigationState: Equatable {
     public var canGoBack: Bool
     public var canGoForward: Bool
@@ -362,10 +362,12 @@ public protocol PlatformOps: AnyObject {
     /// widget. The bar asks it on every keystroke; it reads the history at that moment.
     func setAddressSuggestionSource(_ source: AddressSuggestionSource, in window: WidgetWindowHandle)
     /// The bookmark editor (#121, ADR-0033): a popover under the address bar holding the
-    /// bookmark's `name` for editing, with 完成 and 移除. The bookmark already exists when it opens
-    /// — ⌘D has added it — so `answer` is told what to make of it, exactly once.
+    /// bookmark's `name` for editing, with 完成 — and 移除 when `offersRemove`, on a page that
+    /// already was a bookmark. The bookmark already exists when it opens — ⌘D has added it — so
+    /// `answer` is told what to make of it, exactly once.
     func presentBookmarkEditor(
-        name: String, in window: WidgetWindowHandle, answer: @escaping (BookmarkEditorAnswer) -> Void)
+        name: String, offersRemove: Bool, in window: WidgetWindowHandle,
+        answer: @escaping (BookmarkEditorAnswer) -> Void)
 
     // MARK: 系统权限 (#98, ADR-0026) — one set of calls for every `SystemPermission`.
 

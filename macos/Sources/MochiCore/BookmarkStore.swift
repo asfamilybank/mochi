@@ -83,8 +83,8 @@ public final class BookmarkStore {
 
     // MARK: Changing
 
-    /// Adds a bookmark at the end of the list — or, when `url`'s address already is one, names
-    /// that one and adds nothing.
+    /// Adds a bookmark at the end of the list. When `url`'s address already is one, adds nothing
+    /// and fails with that bookmark.
     @discardableResult
     public func add(name: String, url: URL, favicon: Data? = nil) -> Result<Bookmark, BookmarkRefusal> {
         if let existing = bookmark(for: url) { return .failure(.alreadyBookmarked(existing)) }

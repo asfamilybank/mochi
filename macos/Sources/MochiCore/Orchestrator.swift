@@ -670,9 +670,10 @@ public final class Orchestrator {
             candidates: { [weak self] words in
                 guard let self else { return [] }
                 var history: [AddressSuggestionCandidate] = []
+                var since = Date.distantPast
                 if let historyStore {
                     let now = historyStore.now()
-                    var since = now.addingTimeInterval(-HistoryStore.suggestionWindow)
+                    since = now.addingTimeInterval(-HistoryStore.suggestionWindow)
                     if let cutoff = currentConfig().historyRetention.cutoff(now: now, calendar: historyStore.calendar) {
                         since = max(since, cutoff)
                     }
@@ -680,9 +681,17 @@ public final class Orchestrator {
                 }
                 let bookmarks = bookmarkStore?.all() ?? []
                 let names = Dictionary(bookmarks.map { ($0.url, $0.name) }, uniquingKeysWith: { first, _ in first })
-                let visited = Set(history.map(\.url))
+                var found = Set(history.map(\.url))
+                // A bookmark the words find by its name alone isn't among the history's matches;
+                // its visits still count.
+                let others = bookmarks.filter { !found.contains($0.url) }
+                if let historyStore, !others.isEmpty {
+                    let visited = historyStore.suggestionCandidates(at: others.map(\.url), since: since)
+                    history += visited
+                    found.formUnion(visited.map(\.url))
+                }
                 return history.map { candidate in names[candidate.url].map(candidate.bookmarked(as:)) ?? candidate }
-                    + bookmarks.filter { !visited.contains($0.url) }.map(Self.suggestionCandidate)
+                    + bookmarks.filter { !found.contains($0.url) }.map(Self.suggestionCandidate)
             },
             bookmarks: { [weak self] in (self?.bookmarkStore?.all() ?? []).map(Self.suggestionCandidate) },
             favicon: { [weak self] id in self?.historyStore?.favicon(id) ?? self?.bookmarkStore?.favicon(id) })
@@ -719,12 +728,14 @@ public final class Orchestrator {
 
     /// ⌘D: the page becomes a bookmark at once — named after its title, or its address while it
     /// has none, under the site's icon — then the editor opens on it. A page that already is one
-    /// only gets the editor.
+    /// only gets the editor, with 移除.
     private func addOrEditBookmark() {
         guard let bookmarkStore, let window, let page = bookmarkablePage else { return }
         let bookmark: Bookmark
+        let wasBookmarked: Bool
         if let existing = bookmarkStore.bookmark(for: page) {
             bookmark = existing
+            wasBookmarked = true
         } else {
             let title = currentPageTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let origin = Self.historyOrigin(of: page)
@@ -733,8 +744,10 @@ public final class Orchestrator {
                 name: title.isEmpty ? page.absoluteString : title, url: page, favicon: icon)
             else { return }
             bookmark = added
+            wasBookmarked = false
         }
-        platformOps.presentBookmarkEditor(name: bookmark.name, in: window) { [weak self] answer in
+        platformOps.presentBookmarkEditor(name: bookmark.name, offersRemove: wasBookmarked, in: window) {
+            [weak self] answer in
             self?.bookmarkEditorAnswered(answer, for: bookmark.id)
         }
     }

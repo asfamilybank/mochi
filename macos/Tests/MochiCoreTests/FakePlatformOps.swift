@@ -368,14 +368,15 @@ final class FakePlatformOps: PlatformOps {
     }
 
     // #121: 书签
-    /// Every `presentBookmarkEditor` call, by name and window.
-    private(set) var bookmarkEditors: [(name: String, windowID: Int)] = []
+    /// Every `presentBookmarkEditor` call, by name, whether it offered 移除, and window.
+    private(set) var bookmarkEditors: [(name: String, offersRemove: Bool, windowID: Int)] = []
     private var bookmarkEditorAnswer: ((BookmarkEditorAnswer) -> Void)?
 
     func presentBookmarkEditor(
-        name: String, in window: WidgetWindowHandle, answer: @escaping (BookmarkEditorAnswer) -> Void
+        name: String, offersRemove: Bool, in window: WidgetWindowHandle,
+        answer: @escaping (BookmarkEditorAnswer) -> Void
     ) {
-        bookmarkEditors.append((name, (window as! FakeWidgetWindowHandle).id))
+        bookmarkEditors.append((name, offersRemove, (window as! FakeWidgetWindowHandle).id))
         bookmarkEditorAnswer = answer
     }
 

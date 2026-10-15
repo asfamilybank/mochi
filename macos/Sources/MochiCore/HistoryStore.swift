@@ -195,7 +195,8 @@ public final class HistoryStore {
     // MARK: Address bar suggestions (#122, ADR-0034)
 
     /// How much one visit adds to its address's frecency, by how long ago it was — Firefox's
-    /// buckets: a visit this week outweighs several a season ago.
+    /// buckets: a visit this week outweighs several a season ago. The address bar never looks past
+    /// `suggestionWindow`, so `oldVisitWeight` only counts when asked with no `since`.
     private static let frecencyWeights: [(days: Double, weight: Double)] = [
         (4, 100), (14, 70), (31, 50), (90, 30),
     ]
@@ -203,7 +204,7 @@ public final class HistoryStore {
     /// How far back the address bar looks: 90 days. Scanning a heavy year on every keystroke
     /// costs more than a keystroke may, and a visit older than this adds next to nothing to
     /// frecency anyway — Chrome's address bar likewise only considers recent pages. Older pages
-    /// are still found in the 历史记录 window.
+    /// are still found in the 历史记录 window (ADR-0034).
     public static let suggestionWindow: TimeInterval = 90 * 86_400
 
     /// The addresses the address bar may suggest for `words` — each one once, with the title of
@@ -211,29 +212,45 @@ public final class HistoryStore {
     /// frecent first, at most `limit`. Computed from the visits every time (ADR-0030/0034), so
     /// deleting visits takes their suggestions along with no further step.
     ///
-    /// A coarse filter: each word (lowercase) has to appear somewhere in a visit's address or
-    /// title; where in it is `AddressEditingSession`'s to judge. Only visits at or after `since`
-    /// count — the retention limit, for visits not yet removed.
-    public func suggestionCandidates(matching words: [String], since: Date?, limit: Int = 200)
+    /// A coarse filter: each word has to appear somewhere in a visit's address or title, case
+    /// aside; where in it is `AddressEditingSession`'s to judge. `limit` is generous because that
+    /// judgement comes after it. Only visits at or after `since` count — the retention limit, for
+    /// visits not yet removed.
+    public func suggestionCandidates(matching words: [String], since: Date?, limit: Int = 500)
         -> [AddressSuggestionCandidate]
     {
-        let now = now().timeIntervalSinceReferenceDate
-        var values: [SQLiteDatabase.Value] = [.real(since?.timeIntervalSinceReferenceDate ?? -Double.greatestFiniteMagnitude)]
-        var conditions = ["visited_at >= ?1"]
-        for word in words {
+        var values: [SQLiteDatabase.Value] = []
+        let conditions = words.map { word in
             values.append(.text("%" + Self.escapedForLike(word) + "%"))
-            let position = values.count
-            conditions.append("(url LIKE ?\(position) ESCAPE '\\' OR title LIKE ?\(position) ESCAPE '\\')")
+            return "(url LIKE ?\(values.count + 1) ESCAPE '\\' OR title LIKE ?\(values.count + 1) ESCAPE '\\')"
         }
+        return suggestionCandidates(where: conditions, values, since: since, limit: limit)
+    }
+
+    /// The same, for exactly these addresses — a bookmark the words find by its name alone (#125).
+    public func suggestionCandidates(at urls: [URL], since: Date?) -> [AddressSuggestionCandidate] {
+        guard !urls.isEmpty else { return [] }
+        let values = urls.map { SQLiteDatabase.Value.text(Self.address(of: $0)) }
+        let list = (2...urls.count + 1).map { "?\($0)" }.joined(separator: ", ")
+        return suggestionCandidates(where: ["url IN (\(list))"], values, since: since, limit: urls.count)
+    }
+
+    /// `conditions` number their own parameters from `?2` — `?1` is `since`.
+    private func suggestionCandidates(
+        where conditions: [String], _ conditionValues: [SQLiteDatabase.Value], since: Date?, limit: Int
+    ) -> [AddressSuggestionCandidate] {
+        let now = now().timeIntervalSinceReferenceDate
+        let values: [SQLiteDatabase.Value] =
+            [.real(since?.timeIntervalSinceReferenceDate ?? -Double.greatestFiniteMagnitude)] + conditionValues
+            + [.integer(Int64(limit))]
         let weights = Self.frecencyWeights.map { bucket in
             "WHEN visited_at >= \(now - bucket.days * 86_400) THEN \(bucket.weight)"
         }.joined(separator: " ")
-        values.append(.integer(Int64(limit)))
         let sql = """
             WITH ranked AS (
                 SELECT url, MAX(visited_at) AS last_visited,
                     SUM(CASE \(weights) ELSE \(Self.oldVisitWeight) END) AS frecency
-                FROM visits WHERE \(conditions.joined(separator: " AND "))
+                FROM visits WHERE \((["visited_at >= ?1"] + conditions).joined(separator: " AND "))
                 GROUP BY url ORDER BY frecency DESC, last_visited DESC LIMIT ?\(values.count)
             )
             SELECT url, last_visited, frecency,

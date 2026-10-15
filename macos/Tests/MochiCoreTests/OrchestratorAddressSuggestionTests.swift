@@ -166,4 +166,21 @@ import Testing
 
         #expect(source.favicon(id) == icon)
     }
+
+    /// A bookmark found by its name alone — not by its address or any title — still ranks by how
+    /// often it was visited.
+    @Test func aBookmarkFoundByItsNameKeepsItsVisits() throws {
+        let (fake, orchestrator, store, bookmarks) = makeOrchestratorWithBookmarks()
+        defer { withExtendedLifetime(orchestrator) {} }
+        visit(store, "https://github.com/", title: "GitHub", at: "2026-10-12 08:00")
+        visit(store, "https://github.com/", title: "GitHub", at: "2026-10-12 09:00")
+        try bookmarks.add(name: "工作", url: URL(string: "https://github.com/")!).get()
+
+        let candidates = fake.addressSuggestionSources[1]?.candidates(["工作"]) ?? []
+
+        let github = try #require(candidates.first { $0.url.host == "github.com" })
+        #expect(github.frecency == 200)
+        #expect(github.title == "GitHub")
+        #expect(github.lastVisitedAt == historyTestDate("2026-10-12 09:00"))
+    }
 }
