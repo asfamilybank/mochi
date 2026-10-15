@@ -106,6 +106,7 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 - 验证「关于」面板这类需要点菜单的 UI：`osascript` 走 System Events 点 `menu item 1 of menu 1 of menu bar item 2 of menu bar 1`——**`menu bar item 1` 是苹果菜单**，点它会打开「关于本机」而不是应用的关于面板。拿窗口 ID 用 `CGWindowListCopyWindowInfo` 按 owner 过滤，再 `screencapture -l<id>`。
 - **裸 `swift run` 会失败**：`error: multiple executable products available: MochiIconGen, Mochi`。自 #52 起包里有两个可执行产品（app 本体和图标生成器），SwiftPM 没有「默认产品」这种设置，必须写全 `swift run Mochi`。生成占位图标是 `swift run MochiIconGen`。
 - 构建/测试：`cd macos && swift build` / `swift test`。cwd 有时会在会话中途（尤其是穿插了 Skill/Agent 调用之后）跳回仓库根目录，报 `Could not find Package.swift in this directory or any of its parent directories` 时先 `cd macos` 重试，不是构建配置坏了。
+- 跑历史记录或地址栏的性能基准：`MOCHI_HISTORY_BENCH=1 swift test -c release --filter "HistoryPerformanceTests/<测试名>"`，默认是关闭的；debug 构建跑出来的数字没有参考价值。
 - 运行时配置文件：`~/Library/Application Support/Mochi/config.toml`。
 - ADR-0008 的 macOS 26 baseline 落到 `Package.swift` 需要 `swift-tools-version:6.2`+ 才能写 `.macOS(.v26)`；同时要加 `swiftLanguageModes: [.v5]`（在 `Package(...)` 参数列表里排在 `targets:` 之后，顺序反了编译器报错），否则默认转成 Swift 6 严格并发检查，`MochiCore` 里直接调 AppKit/WebKit 的同步方法会全部报 actor-isolation 错误。
 - `NSGlassEffectView`/`NSGlassEffectContainerView`（真 Liquid Glass 材质）已经在本机 SDK 里（`AppKit.framework/Headers/NSGlassEffectView.h`），ADR-0008 不是画饼，可以直接用。
@@ -196,6 +197,9 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 - 界面验证要触发页面行为又不想动用户鼠标：测试 config 里写 `custom_script`（每次导航注入，可调 `alert`/`window.open`/`w.opener`）配合 `data:` 启动页；在设置面板里点控件会真实写入 config，所以一律先换测试 config。
 - 删 `WidgetConfig` 字段不需要写迁移：`parse` 遇到不认识的 TOML 键会直接忽略，app 退出时又会整份重写 `config.toml`，旧键自然消失。但要补一条测试钉住「带旧键的配置仍能解析、`serialized()` 里不再出现这个键」，免得以后有人把解析改成严格模式。
 - 从 Bash 工具启动的 `.build/debug/Mochi` 会继承 Claude.app 的「辅助功能」授权：`NSEvent` 全局监听真能收到按键，可以做真机端到端测试。具体做法：先 `osascript` 把 Finder 切到前台，再用 `CGEvent(...).post(tap: .cghidEventTap)` 发按键（修饰键单按要把 `type` 设成 `.flagsChanged`，flags 里带上设备位，例如右 ⌥ 是 `0x40`）；页面状态让测试页自己写进 `document.title`，再用 `CGWindowListCopyWindowInfo` 读 `kCGWindowName` 拿到。
+- `osascript … set frontmost of process "Mochi"` 之后，有可能所有窗口都不是 key window（`AXMain`/`AXFocused` 都是 false）：按键发出去了但谁都没收到，⌥⌘B 这类开关会走「打开」分支。发按键前用 System Events 读一下 `AXMain`，不对的话就用 AX 点那个多余窗口的关闭按钮，让主窗口重新成为 key window。Claude.app 大约 0.2 秒就会把前台抢回去，所以每发一个按键之前都要重新切一次前台，被跳过就重试。`type` 一段文字要逐个字符发，否则中途重试会把前面已经打出去的字再打一遍。
+- 真机测试往地址栏里敲本地页面时，要把 `http://` 写全：不写的话会被补成 `https://`，`http.server` 那边只看得到一堆乱码请求，返回 400。敲的地址是书签或历史记录里某个网址的前缀时，会被行内补全成那个网址（#124），想打开短的那个，先按一次 ⌫ 去掉补全，再回车。
+- 用 `cmp` 核对用户的 `History.db` 在测试前后有没有变化，几乎总会报「不同」：新代码打开它时会补建 schema 里新增的索引（比如 #122 的 `visits_url`）。应该比 `select count(*), max(id), max(visited_at) from visits`。用户的配置如果启动到空页面，开调试实例本身不会记任何访问。
 - 摄像头、麦克风、下载文件夹被拒过一次之后，再去系统设置里打开，**必须重开 Mochi 才生效**；反过来，正在用的时候在系统设置里关掉，也要重开才会被拒（摄像头、麦克风实测）（系统会弹「退出并重新打开」，选「以后」就一直不生效）；只有辅助功能是打开就生效。写验证清单时把「重开」列成单独一步。自选下载文件夹放在 `~/Documents` 下，跨重启也不会弹授权框（ADR-0026「后续」）。
 - **系统权限算在发起进程头上**：终端或 Bash 启动的 Mochi 申请的权限会记到终端/Claude 名下。验证系统权限流程必须先把 Release 产物 `ditto` 到 `/Applications/Mochi.app`（旧版本先挪去备份），再用 `open` 启动。替换后 cdhash 会变，ADR-0026 的升级陷阱随之出现：辅助功能的开关显示打开但实际无效，在系统设置里关了再开没用，只能移除后重新添加。
 - 把最新代码装到本机：`scripts/package.sh`，然后把旧的 `/Applications/Mochi.app` 挪进 `~/.Trash/Mochi-app-before-<时间戳>/`，`hdiutil attach -nobrowse` 挂上 dmg，`ditto` 拷到 `/Applications`，再 `hdiutil detach`；替换前先确认 `pgrep -x Mochi` 为空。核对产物里有没有新代码用 `LC_ALL=C grep -c -a -F '<中文文案>' Contents/MacOS/Mochi`：`strings` 只认 ASCII；15 字节以内的短 Swift 字符串（比如 `" 个匹配项"`）会编进指令里，搜不到不代表没打进去。
@@ -240,5 +244,7 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 commit message 里写 `Closes #<n>`，push 后让 GitHub 自动关闭——不要手动跑 `gh issue close`。
 
 一个 commit 要关闭多个 issue 时，`Closes #13, #14, #15` 这种逗号列表只会关闭紧跟关键字的第一个，其余只是被关联（cross-reference）不会关闭——每个号码前都要重复关键字：`Closes #13`、`Closes #14`、`Closes #15` 各自一行（或都用 `Closes` 而不是省略后续的关键字）。
+
+还没 push 的 commit 补 `Closes #n` 会用到 `--amend`，哈希会跟着变。所以先建好票、amend 完，再去写引用这个 commit 的文字；CLAUDE.md 和 ADR 里引用修复时，写票号，别写哈希。
 
 用 `Closes #<n>` 的 commit 关掉一张带「真机验证清单」评论的票时，要同时把清单勾好：拿 `gh api repos/asfamilybank/mochi/issues/<n>/comments` 查到评论 id，在 scratchpad 里生成新的 body 文件，再把 `gh api --method PATCH repos/asfamilybank/mochi/issues/comments/<id> -F body=@<文件> --silent` 交给用户执行（改评论不在豁免里；加 `--silent` 就不会把整段 JSON 吐进分页器）。执行后用 `gh api …/comments/<id> --jq .updated_at` 确认更新成功。
