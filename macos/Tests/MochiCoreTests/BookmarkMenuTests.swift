@@ -38,6 +38,14 @@ import Testing
         #expect(BookmarkMenu.addItemTitle(isCurrentPageBookmarked: row.isBookmarked) == row.title)
     }
 
+    /// ⌥⌘B (显示所有书签, #123) belongs to the 书签 menu too.
+    @Test func showAllBookmarksIsAReservedMenuShortcut() {
+        let showAllBookmarks = Hotkey(keyCode: 0x0B, modifierFlags: 0x0100 | 0x0800)
+        #expect(DefaultHotkeys.showAllBookmarks == showAllBookmarks)
+        #expect(HotkeyDisplay.describe(showAllBookmarks) == "⌥⌘B")
+        #expect(DefaultHotkeys.reservedLocalMenuShortcuts.contains(showAllBookmarks))
+    }
+
     /// ⌘D belongs to the 书签 menu, so no global hotkey or mapping may take it.
     @Test func addBookmarkIsAReservedMenuShortcut() {
         let addBookmark = Hotkey(keyCode: 0x02, modifierFlags: 0x0100)

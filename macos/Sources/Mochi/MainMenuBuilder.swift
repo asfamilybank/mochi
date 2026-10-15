@@ -16,6 +16,8 @@ final class MainMenuBuilder {
     private var historyWindowController: HistoryWindowController?
     /// #121: the 书签 menu's delegate — `NSMenu.delegate` is weak.
     private var bookmarkMenuController: BookmarkMenuController?
+    /// #123: the 书签 window, created the first time ⌥⌘B asks for it.
+    private var bookmarksWindowController: BookmarksWindowController?
 
     /// - Parameters:
     ///   - orchestrator: supplies everything the menus do. Widget-bound items go through its
@@ -35,7 +37,7 @@ final class MainMenuBuilder {
         mainMenu.addItem(viewMenuItem(orchestrator: orchestrator))
         mainMenu.addItem(
             historyMenuItem(orchestrator: orchestrator, activateApp: activateApp, clearBrowsingData: clearBrowsingData))
-        mainMenu.addItem(bookmarksMenuItem(orchestrator: orchestrator))
+        mainMenu.addItem(bookmarksMenuItem(orchestrator: orchestrator, activateApp: activateApp))
         mainMenu.addItem(windowMenuItem())
         mainMenu.addItem(helpMenuItem())
         return mainMenu
@@ -206,7 +208,8 @@ final class MainMenuBuilder {
     /// 书签 (#121, ADR-0033), where Safari has it: between 历史记录 and 窗口. ⌘D adds the page —
     /// or, when it already is a bookmark, says 编辑书签… and only opens the editor; below it, every
     /// bookmark in the user's order, rebuilt by `BookmarkMenuController` every time the menu opens.
-    private func bookmarksMenuItem(orchestrator: Orchestrator) -> NSMenuItem {
+    /// 显示所有书签 (⌥⌘B, #123) opens and closes the 书签 window.
+    private func bookmarksMenuItem(orchestrator: Orchestrator, activateApp: @escaping () -> Void) -> NSMenuItem {
         let menu = NSMenu(title: "书签")
 
         let add = action(
@@ -215,6 +218,10 @@ final class MainMenuBuilder {
             liveTitle: { BookmarkMenu.addItemTitle(isCurrentPageBookmarked: orchestrator.isCurrentPageBookmarked) },
             perform: { orchestrator.perform(.addBookmark) })
         menu.addItem(add)
+        let showAll = action("显示所有书签", symbol: "book", keyEquivalent: "b", modifierMask: [.command, .option]) {
+            [weak self] in self?.toggleBookmarksWindow(orchestrator: orchestrator, activateApp: activateApp)
+        }
+        menu.addItem(showAll)
 
         let bookmarkMenuController = BookmarkMenuController(orchestrator: orchestrator)
         bookmarkMenuController.attach(to: menu)
@@ -223,6 +230,14 @@ final class MainMenuBuilder {
         let item = NSMenuItem()
         item.submenu = menu
         return item
+    }
+
+    /// ⌥⌘B opens the 书签 window, and closes it again when it is the window in front (#123).
+    private func toggleBookmarksWindow(orchestrator: Orchestrator, activateApp: @escaping () -> Void) {
+        if bookmarksWindowController == nil, let browser = orchestrator.makeBookmarkBrowser() {
+            bookmarksWindowController = BookmarksWindowController(browser: browser, activateApp: activateApp)
+        }
+        bookmarksWindowController?.toggle()
     }
 
     // MARK: - Window menu

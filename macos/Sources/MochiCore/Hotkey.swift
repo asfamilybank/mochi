@@ -84,6 +84,10 @@ public enum DefaultHotkeys {
     /// `0x02` is `kVK_ANSI_D`.
     public static let addBookmark = Hotkey(keyCode: 0x02, modifierFlags: cmd)
 
+    /// ⌥⌘B — the 书签 menu's 显示所有书签 (#123), which opens and closes the 书签 window.
+    /// `0x0B` is `kVK_ANSI_B`.
+    public static let showAllBookmarks = Hotkey(keyCode: 0x0B, modifierFlags: cmd | option)
+
     /// The fixed local menu shortcuts #37 built into `MainMenuBuilder` (⌘R/⌘+/⌘-/⌘0/⌘,) — never
     /// routed through `GlobalHotkeyRegistry` at all (a local `NSMenuItem` key equivalent only
     /// dispatches through the responder chain while Mochi is the key window), but still listed
@@ -108,6 +112,7 @@ public enum DefaultHotkeys {
         Hotkey(keyCode: 0x04, modifierFlags: cmd | option),
         showAllHistory,                             // ⌘Y 显示全部历史记录 (#102)
         addBookmark,                                // ⌘D 添加书签… (#121)
+        showAllBookmarks,                           // ⌥⌘B 显示所有书签 (#123)
     ]
 }
 

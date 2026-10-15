@@ -122,8 +122,14 @@ public final class BookmarkStore {
         guard let from = order.firstIndex(of: id) else { return }
         order.remove(at: from)
         order.insert(id, at: min(max(index, 0), order.count))
+        setOrder(order)
+    }
+
+    /// Puts the bookmarks in `order`, all at once; any left out keep their place after them.
+    public func setOrder(_ order: [Bookmark.ID]) {
+        let rest = all().map(\.id).filter { !order.contains($0) }
         db.transaction {
-            order.enumerated().allSatisfy { position, id in
+            (order + rest).enumerated().allSatisfy { position, id in
                 db.execute("UPDATE bookmarks SET position = ?1 WHERE id = ?2", .integer(Int64(position)), .integer(id))
             }
         }

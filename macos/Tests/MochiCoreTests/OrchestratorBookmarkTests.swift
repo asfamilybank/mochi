@@ -232,6 +232,41 @@ import Testing
         #expect(fake.loadedURLs.last?.windowID == 2)
     }
 
+    // MARK: The 书签 window (#123)
+
+    @Test func theWindowOpensABookmarkTheWayTheMenuDoes() throws {
+        let (fake, orchestrator, bookmarks) = makeOrchestrator()
+        defer { withExtendedLifetime(orchestrator) {} }
+        let bookmark = try bookmarks.add(name: "Mochi", url: page).get()
+        fake.simulateWindowWillClose()
+        let browser = try #require(orchestrator.makeBookmarkBrowser())
+        browser.reload()
+
+        browser.open([bookmark.id])
+
+        #expect(fake.loadedURLs.last.map { [$0.url.absoluteString, "\($0.windowID)"] } == [page.absoluteString, "2"])
+    }
+
+    /// The menu is rebuilt from the same store, so it follows what the window changes.
+    @Test func theMenuFollowsWhatTheWindowChanges() throws {
+        let (_, orchestrator, bookmarks) = makeOrchestrator()
+        defer { withExtendedLifetime(orchestrator) {} }
+        let bookmark = try bookmarks.add(name: "Mochi", url: page).get()
+        let browser = try #require(orchestrator.makeBookmarkBrowser())
+        browser.reload()
+
+        _ = browser.edit(bookmark.id, name: "麻糬", address: page.absoluteString)
+
+        #expect(orchestrator.bookmarkMenu().items.map(\.title) == ["麻糬"])
+    }
+
+    @Test func withoutAStoreThereIsNoWindow() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { WidgetConfig() })
+
+        #expect(orchestrator.makeBookmarkBrowser() == nil)
+    }
+
     // MARK: Icons follow the site
 
     @Test func visitingABookmarkUpdatesAChangedIcon() throws {

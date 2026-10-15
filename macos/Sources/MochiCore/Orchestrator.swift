@@ -749,6 +749,13 @@ public final class Orchestrator {
         openFromHistory(url)
     }
 
+    /// #123: what the 书签 window (⌥⌘B) shows and does — the same store the menu is rebuilt from,
+    /// and the same `openBookmark`. `nil` without a store.
+    public func makeBookmarkBrowser() -> BookmarkBrowser? {
+        guard let bookmarkStore else { return nil }
+        return BookmarkBrowser(store: bookmarkStore) { [weak self] url in self?.openBookmark(url) }
+    }
+
     /// A site icon loaded for a bookmarked page becomes that bookmark's, when it differs.
     private func refreshBookmarkIcon(_ png: Data, for pageURL: URL) {
         guard let bookmark = bookmarkStore?.bookmark(for: pageURL),
