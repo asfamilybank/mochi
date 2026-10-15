@@ -1089,6 +1089,25 @@ import Testing
         #expect(fake.websiteDataRemovals.count == 1)
     }
 
+    /// #117: a visit's site icon belongs to history, not to 缓存的图片和文件 — clearing the caches
+    /// (or every kind of website data) leaves history's icons as they were.
+    @Test func clearingTheCachesLeavesHistorysIcons() throws {
+        let history = makeHistory()
+        let icon = Data("an icon".utf8)
+        let visit = try #require(history.visits(since: .distantPast).first)
+        history.updateFavicon(icon, ofVisit: visit.id)
+        let iconID = try #require(history.visits(since: .distantPast).first?.faviconID)
+        let fake = FakePlatformOps()
+        let controller = makeHistoryController(store: PersistedStore(WidgetConfig()), platformOps: fake, history: history)
+
+        controller.clearBrowsingData([.cache], from: .allTime)
+        controller.clearBrowsingData([.websiteData, .cache, .pagePermissionExceptions], from: .allTime)
+
+        #expect(fake.websiteDataRemovals.count == 2)
+        #expect(history.favicon(iconID) == icon)
+        #expect(history.visits(since: .distantPast).first?.faviconID == iconID)
+    }
+
     @Test func historyIsClearedAlongWithWebsiteData() {
         let history = makeHistory()
         let fake = FakePlatformOps()
