@@ -29,6 +29,13 @@ import Testing
         }
     }
 
+    /// Every page suggested: the one completed in the field (#124), then the list's.
+    private func suggested(_ session: AddressEditingSession) -> [String] {
+        let completed: [String] =
+            if session.completionRange != nil, case .open(let url)? = session.rows.first { [url.absoluteString] } else { [] }
+        return completed + pages(session)
+    }
+
     // MARK: Beginning
 
     @Test func itStartsWithThePagesAddressAndNoList() {
@@ -98,7 +105,7 @@ import Testing
 
         session.textChanged(to: row.typed, byDeleting: false)
 
-        #expect(pages(session) == (row.matches ? ["https://www.github.com/asfamilybank/mochi"] : []))
+        #expect(suggested(session) == (row.matches ? ["https://www.github.com/asfamilybank/mochi"] : []))
     }
 
     /// A word start inside latin text is where the run of letters and digits begins; CJK has no
@@ -126,7 +133,7 @@ import Testing
             candidate("https://github.com/c", frecency: 100),
         ])
 
-        session.textChanged(to: "github", byDeleting: false)
+        session.textChanged(to: "com", byDeleting: false)
 
         #expect(pages(session) == ["https://github.com/b", "https://github.com/c", "https://github.com/a"])
     }
@@ -137,7 +144,7 @@ import Testing
             candidate("https://github.com/b", visited: "2026-10-12 09:00"),
         ])
 
-        session.textChanged(to: "github", byDeleting: false)
+        session.textChanged(to: "com", byDeleting: false)
 
         #expect(pages(session) == ["https://github.com/b", "https://github.com/a"])
     }
@@ -146,7 +153,7 @@ import Testing
     @Test func theListHoldsEightRowsAtMost() {
         let session = session((0..<20).map { candidate("https://github.com/\($0)", frecency: Double(100 - $0)) })
 
-        session.textChanged(to: "github", byDeleting: false)
+        session.textChanged(to: "com", byDeleting: false)
 
         #expect(session.rows.count == 8)
         #expect(pages(session) == (0..<7).map { "https://github.com/\($0)" })
@@ -155,7 +162,7 @@ import Testing
     @Test func eachAddressIsListedOnce() {
         let session = session([candidate("https://github.com/"), candidate("https://github.com/")])
 
-        session.textChanged(to: "github", byDeleting: false)
+        session.textChanged(to: "com", byDeleting: false)
 
         #expect(pages(session) == ["https://github.com/"])
     }
@@ -177,7 +184,7 @@ import Testing
 
     @Test func movingDownShowsTheSelectedPagesAddressAndReturnOpensIt() {
         let session = session([candidate("https://github.com/a", frecency: 200), candidate("https://github.com/b")])
-        session.textChanged(to: "github", byDeleting: false)
+        session.textChanged(to: "com", byDeleting: false)
 
         session.moveSelection(by: 1)
         #expect(session.selectedIndex == 1)
@@ -190,18 +197,18 @@ import Testing
 
     @Test func movingBackToTheFirstRowPutsTheTypedTextBack() {
         let session = session([candidate("https://github.com/a")])
-        session.textChanged(to: "github", byDeleting: false)
+        session.textChanged(to: "com", byDeleting: false)
         session.moveSelection(by: 1)
 
         session.moveSelection(by: -1)
 
         #expect(session.selectedIndex == 0)
-        #expect(session.fieldText == "github")
+        #expect(session.fieldText == "com")
     }
 
     @Test func theSelectionStaysWithinTheList() {
         let session = session([candidate("https://github.com/a")])
-        session.textChanged(to: "github", byDeleting: false)
+        session.textChanged(to: "com", byDeleting: false)
 
         session.moveSelection(by: -1)
         #expect(session.selectedIndex == 0)
@@ -214,7 +221,8 @@ import Testing
         (typed: "git", target: "https://www.google.com/search?q=git"),
     ])
     func returnOnTheFirstRowDoesWhatItSays(_ row: (typed: String, target: String)) {
-        let session = session([candidate("https://github.com/a")])
+        // Listed by its title alone, so nothing is completed (#124).
+        let session = session([candidate("https://example.com/a", title: "github.com git")])
         session.textChanged(to: row.typed, byDeleting: false)
 
         #expect(session.enter() == .navigate(URL(string: row.target)!))
@@ -235,7 +243,7 @@ import Testing
 
     @Test func clickingARowOpensIt() {
         let session = session([candidate("https://github.com/a")])
-        session.textChanged(to: "github", byDeleting: false)
+        session.textChanged(to: "com", byDeleting: false)
 
         #expect(session.choose(row: 1) == .navigate(URL(string: "https://github.com/a")!))
         #expect(session.choose(row: 9) == .none)
@@ -245,12 +253,12 @@ import Testing
 
     @Test func escapeFirstClosesTheListThenRestoresTheAddressThenEndsEditing() {
         let session = session([candidate("https://github.com/a")])
-        session.textChanged(to: "github", byDeleting: false)
+        session.textChanged(to: "com", byDeleting: false)
         session.moveSelection(by: 1)
 
         #expect(session.escape() == .none)
         #expect(!session.isListVisible)
-        #expect(session.fieldText == "github")
+        #expect(session.fieldText == "com")
 
         #expect(session.escape() == .none)
         #expect(session.fieldText == "https://current.example.com/")
@@ -261,7 +269,7 @@ import Testing
     /// On the Empty Page there is no address to go back to: the second step clears the field.
     @Test func onTheEmptyPageTheSecondStepClears() {
         let session = session(original: "", [candidate("https://github.com/a")])
-        session.textChanged(to: "github", byDeleting: false)
+        session.textChanged(to: "com", byDeleting: false)
 
         #expect(session.escape() == .none)
         #expect(session.escape() == .none)
@@ -287,11 +295,137 @@ import Testing
     /// Typing again after Esc closed the list opens it again.
     @Test func typingAfterEscapeShowsTheListAgain() {
         let session = session([candidate("https://github.com/a")])
-        session.textChanged(to: "github", byDeleting: false)
+        session.textChanged(to: "com", byDeleting: false)
         _ = session.escape()
 
-        session.textChanged(to: "github.", byDeleting: false)
+        session.textChanged(to: "com.", byDeleting: false)
 
         #expect(session.isListVisible)
+    }
+
+    // MARK: Inline completion (#124)
+
+    /// The part the field shows beyond what was typed — selected, so typing on replaces it.
+    private func completion(_ session: AddressEditingSession) -> String? {
+        guard let range = session.completionRange else { return nil }
+        return (session.fieldText as NSString).substring(with: range)
+    }
+
+    @Test func theLikeliestAddressIsCompletedInTheField() {
+        let session = session([candidate("https://github.com/", title: "GitHub")])
+
+        session.textChanged(to: "git", byDeleting: false)
+
+        #expect(session.fieldText == "github.com")
+        #expect(completion(session) == "hub.com")
+        #expect(session.rows.first == .open(URL(string: "https://github.com/")!))
+        #expect(session.enter() == .navigate(URL(string: "https://github.com/")!))
+    }
+
+    /// The completed page is the first row; it isn't listed again below.
+    @Test func theCompletedPageIsNotListedTwice() {
+        let session = session([candidate("https://github.com/"), candidate("https://github.com/explore", frecency: 50)])
+
+        session.textChanged(to: "git", byDeleting: false)
+
+        #expect(pages(session) == ["https://github.com/explore"])
+    }
+
+    /// The likeliest address *starting with* what was typed, even when a page matched only by
+    /// its title ranks above it (ADR-0034 accepts completing a deep page).
+    @Test func theCompletionIsTheBestRankedAddressThatStartsWithTheText() {
+        let session = session([
+            candidate("https://liaoxuefeng.com/wiki/git", title: "Git 教程", frecency: 500),
+            candidate("https://github.com/asfamilybank/mochi", frecency: 300),
+            candidate("https://github.com/", frecency: 100),
+        ])
+
+        session.textChanged(to: "git", byDeleting: false)
+
+        #expect(session.fieldText == "github.com/asfamilybank/mochi")
+        #expect(pages(session) == ["https://liaoxuefeng.com/wiki/git", "https://github.com/"])
+    }
+
+    @Test(arguments: [
+        (typed: "https://git", field: "https://github.com"),
+        (typed: "www.git", field: "www.github.com"),
+        (typed: "GIT", field: "GIThub.com"),
+        (typed: "github.com/", field: "github.com/"),
+    ])
+    func whatWasTypedIsKeptAsTyped(_ row: (typed: String, field: String)) {
+        let session = session([candidate("https://www.github.com/")])
+
+        session.textChanged(to: row.typed, byDeleting: false)
+
+        #expect(session.fieldText == row.field)
+    }
+
+    @Test func nothingIsCompletedWithoutAnAddressStartingWithTheText() {
+        let session = session([candidate("https://example.com/", title: "Git 教程")])
+
+        session.textChanged(to: "git", byDeleting: false)
+
+        #expect(session.fieldText == "git")
+        #expect(session.completionRange == nil)
+        #expect(session.rows.first == .search(query: "git", engine: .google))
+    }
+
+    /// Typing on keeps the completion while it still fits, and drops it once it doesn't.
+    @Test func typingOnKeepsTheCompletionOnlyWhileItFits() {
+        let session = session([candidate("https://github.com/")])
+        session.textChanged(to: "git", byDeleting: false)
+
+        session.textChanged(to: "gith", byDeleting: false)
+        #expect(session.fieldText == "github.com")
+
+        session.textChanged(to: "githx", byDeleting: false)
+        #expect(session.fieldText == "githx")
+        #expect(session.completionRange == nil)
+    }
+
+    /// Deleting must be able to take the completed part away — it isn't put straight back.
+    @Test func deletingCompletesNothingUntilTheNextCharacterTyped() {
+        let session = session([candidate("https://github.com/")])
+        session.textChanged(to: "gith", byDeleting: false)
+
+        session.textChanged(to: "gith", byDeleting: true)
+        #expect(session.fieldText == "gith")
+        #expect(session.completionRange == nil)
+        #expect(session.rows.first == .search(query: "gith", engine: .google))
+
+        session.textChanged(to: "githu", byDeleting: false)
+        #expect(session.fieldText == "github.com")
+    }
+
+    @Test func aSearchIsNeverCompleted() {
+        let session = session([candidate("https://github.com/")])
+
+        session.textChanged(to: "git hub", byDeleting: false)
+
+        #expect(session.fieldText == "git hub")
+        #expect(session.completionRange == nil)
+    }
+
+    @Test func theFirstEscapeTakesTheCompletionAway() {
+        let session = session([candidate("https://github.com/")])
+        session.textChanged(to: "git", byDeleting: false)
+
+        #expect(session.escape() == .none)
+
+        #expect(session.fieldText == "git")
+        #expect(session.completionRange == nil)
+        #expect(session.enter() == .navigate(URL(string: "https://www.google.com/search?q=git")!))
+    }
+
+    @Test func movingBackToTheFirstRowBringsTheCompletionBack() {
+        let session = session([candidate("https://github.com/"), candidate("https://github.com/explore", frecency: 50)])
+        session.textChanged(to: "git", byDeleting: false)
+
+        session.moveSelection(by: 1)
+        #expect(session.completionRange == nil)
+        session.moveSelection(by: -1)
+
+        #expect(session.fieldText == "github.com")
+        #expect(completion(session) == "hub.com")
     }
 }

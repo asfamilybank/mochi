@@ -60,6 +60,10 @@ public enum AddressEditingOutcome: Equatable, Sendable {
 ///   the text — open it as an address, or search it — and below come up to seven pages from
 ///   history whose address or title has a word starting with each word typed (`https://` and
 ///   `www.` aside), the more frecent first.
+/// - Inline completion (#124): the best-ranked page whose address (`https://`, `www.` aside)
+///   starts with what was typed is completed in the field, the added part selected so typing on
+///   replaces it; the first row then opens that page. Never after a deletion — until the next
+///   character typed — and never for a search.
 /// - ↑↓ move through the list, and the field shows the selected page's address; Return opens the
 ///   selection, a click opens the row clicked.
 /// - Esc takes three steps, skipping any with nothing to do: close the list, keeping what was
@@ -83,6 +87,13 @@ public final class AddressEditingSession {
     public private(set) var rows: [AddressSuggestionRow] = []
     /// The highlighted row while the list is up; the first row unless ↑↓ moved it.
     public private(set) var selectedIndex: Int?
+    /// The completed part of `fieldText`, in UTF-16 units — what the field selects (#124).
+    public var completionRange: NSRange? {
+        guard let inlineCompletion, fieldText == typedText + inlineCompletion else { return nil }
+        return NSRange(location: (typedText as NSString).length, length: (inlineCompletion as NSString).length)
+    }
+    /// What the field shows after what was typed, completing it to `completedURL`.
+    private var inlineCompletion: String?
     /// What the user typed, which `fieldText` leaves when ↑↓ show another row's address.
     private var typedText: String
     /// Where Return goes when the first row is selected.
@@ -116,10 +127,17 @@ public final class AddressEditingSession {
             }
         firstRowTarget = meaning.url
         let words = Self.words(in: text)
-        let pages = Self.rank(candidates(words).filter { Self.matches($0, words: words) })
-            .prefix(Self.maximumRows - 1)
+        var ranked = Self.rank(candidates(words).filter { Self.matches($0, words: words) })
+        inlineCompletion = nil
+        if !byDeleting, let (completed, suffix) = Self.completion(of: text, from: ranked) {
+            inlineCompletion = suffix
+            fieldText = text + suffix
+            firstRowTarget = completed.url
+            ranked.removeAll { $0.url == completed.url }
+        }
+        let pages = ranked.prefix(Self.maximumRows - 1)
             .map { AddressSuggestionRow.page(AddressSuggestionPage(url: $0.url, title: $0.title, faviconID: $0.faviconID)) }
-        rows = [firstRow] + pages
+        rows = [inlineCompletion == nil ? firstRow : .open(firstRowTarget ?? meaning.url)] + pages
         selectedIndex = 0
         isListVisible = true
     }
@@ -130,7 +148,8 @@ public final class AddressEditingSession {
         guard isListVisible, let selectedIndex else { return }
         let index = min(max(selectedIndex + delta, 0), rows.count - 1)
         self.selectedIndex = index
-        fieldText = target(ofRow: index).flatMap { index == 0 ? nil : $0.absoluteString } ?? typedText
+        fieldText = target(ofRow: index).flatMap { index == 0 ? nil : $0.absoluteString }
+            ?? typedText + (inlineCompletion ?? "")
     }
 
     /// Return: the selected row, or — with the list closed — whatever the field holds.
@@ -149,8 +168,9 @@ public final class AddressEditingSession {
 
     /// Esc, one step at a time.
     public func escape() -> AddressEditingOutcome {
-        if isListVisible {
+        if isListVisible || inlineCompletion != nil {
             fieldText = typedText
+            inlineCompletion = nil
             closeList()
             return .none
         }
@@ -187,6 +207,33 @@ public final class AddressEditingSession {
             .filter { seen.insert($0.url).inserted }
     }
 
+    // MARK: - Completion
+
+    /// The best-ranked candidate whose address — shown without `https://`, `www.` or a bare
+    /// host's trailing `/` — starts with `text` (itself without `https://`/`www.`), and what of
+    /// that address follows `text`. Nothing for text with whitespace in it: that is a search.
+    private static func completion(of text: String, from ranked: [AddressSuggestionCandidate])
+        -> (AddressSuggestionCandidate, String)?
+    {
+        guard !text.contains(where: \.isWhitespace) else { return nil }
+        let typed = stripCommonPrefixes(text.lowercased())
+        guard !typed.isEmpty else { return nil }
+        for candidate in ranked {
+            let shown = completionText(of: candidate.url)
+            guard shown.lowercased().hasPrefix(typed), shown.count > typed.count else { continue }
+            return (candidate, String(shown.dropFirst(typed.count)))
+        }
+        return nil
+    }
+
+    private static func completionText(of url: URL) -> String {
+        var text = stripCommonPrefixes(url.absoluteString)
+        if (url.path == "/" || url.path.isEmpty), url.query == nil, url.fragment == nil, text.hasSuffix("/") {
+            text.removeLast()
+        }
+        return text
+    }
+
     // MARK: - Matching
 
     /// The words typed, lowercased, each without a leading `https://`/`http://` or `www.` — the
@@ -198,10 +245,10 @@ public final class AddressEditingSession {
 
     private static func stripCommonPrefixes(_ text: String) -> String {
         var text = Substring(text)
-        for scheme in ["https://", "http://"] where text.hasPrefix(scheme) {
+        for scheme in ["https://", "http://"] where text.lowercased().hasPrefix(scheme) {
             text = text.dropFirst(scheme.count)
         }
-        if text.hasPrefix("www.") { text = text.dropFirst(4) }
+        if text.lowercased().hasPrefix("www.") { text = text.dropFirst(4) }
         return String(text)
     }
 

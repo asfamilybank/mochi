@@ -1480,14 +1480,15 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         showAddressSuggestions()
     }
 
-    /// Draws what the session says: the field's text, and the list or none.
+    /// Draws what the session says: the field's text — with an inline completion selected, so
+    /// typing on replaces it (#124) — and the list or none.
     private func showAddressSuggestions() {
         guard let session = addressEditingSession else { return }
         let field = controls.addressBar.field
         if field.stringValue != session.fieldText {
             field.stringValue = session.fieldText
             let end = (session.fieldText as NSString).length
-            field.currentEditor()?.selectedRange = NSRange(location: end, length: 0)
+            field.currentEditor()?.selectedRange = session.completionRange ?? NSRange(location: end, length: 0)
         }
         if session.isListVisible {
             addressSuggestionPanel.show(rows: session.rows, selected: session.selectedIndex, below: controls.addressBar)
