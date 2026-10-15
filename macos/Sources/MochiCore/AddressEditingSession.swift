@@ -9,28 +9,51 @@ public struct AddressSuggestionCandidate: Equatable, Sendable {
     public let faviconID: String?
     public let lastVisitedAt: Date
     /// How often and how lately the address was visited — recent visits weigh more
-    /// (`HistoryStore.suggestionCandidates`).
+    /// (`HistoryStore.suggestionCandidates`). `0` for a bookmark never visited.
     public let frecency: Double
+    /// The bookmark's name when the address is one (#125) — shown in place of the page's title.
+    public let bookmarkName: String?
 
-    public init(url: URL, title: String?, faviconID: String?, lastVisitedAt: Date, frecency: Double) {
+    public init(
+        url: URL, title: String?, faviconID: String?, lastVisitedAt: Date, frecency: Double,
+        bookmarkName: String? = nil
+    ) {
         self.url = url
         self.title = title
         self.faviconID = faviconID
         self.lastVisitedAt = lastVisitedAt
         self.frecency = frecency
+        self.bookmarkName = bookmarkName
+    }
+
+    /// The same address, now known to be a bookmark named `name`.
+    public func bookmarked(as name: String) -> AddressSuggestionCandidate {
+        AddressSuggestionCandidate(
+            url: url, title: title, faviconID: faviconID, lastVisitedAt: lastVisitedAt, frecency: frecency,
+            bookmarkName: name)
     }
 }
 
 /// A page row in the suggestion list.
 public struct AddressSuggestionPage: Equatable, Sendable {
     public let url: URL
+    /// The bookmark's name for a bookmark, the page's title otherwise.
     public let title: String?
     public let faviconID: String?
+    /// Marked as a bookmark in the list (#125).
+    public let isBookmark: Bool
 
-    public init(url: URL, title: String?, faviconID: String?) {
+    public init(url: URL, title: String?, faviconID: String?, isBookmark: Bool = false) {
         self.url = url
         self.title = title
         self.faviconID = faviconID
+        self.isBookmark = isBookmark
+    }
+
+    init(_ candidate: AddressSuggestionCandidate) {
+        self.init(
+            url: candidate.url, title: candidate.bookmarkName ?? candidate.title, faviconID: candidate.faviconID,
+            isBookmark: candidate.bookmarkName != nil)
     }
 }
 
@@ -40,7 +63,7 @@ public enum AddressSuggestionRow: Equatable, Sendable {
     case open(URL)
     /// The first row when Return searches: 「用 Google 搜索 “git”」.
     case search(query: String, engine: SearchEngine)
-    /// A page from history.
+    /// A page from history, or a bookmark.
     case page(AddressSuggestionPage)
 }
 
@@ -68,11 +91,17 @@ public enum AddressEditingOutcome: Equatable, Sendable {
 ///   selection, a click opens the row clicked.
 /// - Esc takes three steps, skipping any with nothing to do: close the list, keeping what was
 ///   typed; put the page's address back (on the Empty Page, clear the field); leave the field.
+/// - Bookmarks (#125): before anything is typed, the list is every bookmark in the user's order,
+///   nothing selected. Once typing, bookmarks are matched by their name as well, rank above pages
+///   visited about as often, and show their name with a bookmark mark.
 ///
 /// Suggestions come only from what is on this Mac — nothing typed leaves it before Return.
 public final class AddressEditingSession {
-    /// Rows in the list, the first among them.
+    /// Rows in the list while typing, the first among them. The bookmarks listed before typing
+    /// are all listed, and the list scrolls.
     public static let maximumRows = 8
+    /// What being a bookmark adds to a page's frecency: more than one visit this week.
+    static let bookmarkBonus: Double = 150
 
     /// What the field showed when editing began — the page's address, or nothing on the Empty Page.
     public let originalText: String
@@ -99,8 +128,10 @@ public final class AddressEditingSession {
     /// Where Return goes when the first row is selected.
     private var firstRowTarget: URL?
 
+    /// - Parameter bookmarks: every bookmark, in the user's order — listed until something is
+    ///   typed.
     public init(
-        originalText: String, searchEngine: SearchEngine,
+        originalText: String, searchEngine: SearchEngine, bookmarks: [AddressSuggestionCandidate] = [],
         candidates: @escaping ([String]) -> [AddressSuggestionCandidate]
     ) {
         self.originalText = originalText
@@ -108,6 +139,10 @@ public final class AddressEditingSession {
         self.candidates = candidates
         fieldText = originalText
         typedText = originalText
+        if !bookmarks.isEmpty {
+            rows = bookmarks.map { .page(AddressSuggestionPage($0)) }
+            isListVisible = true
+        }
     }
 
     // MARK: Events
@@ -135,8 +170,7 @@ public final class AddressEditingSession {
             firstRowTarget = completed.url
             ranked.removeAll { $0.url == completed.url }
         }
-        let pages = ranked.prefix(Self.maximumRows - 1)
-            .map { AddressSuggestionRow.page(AddressSuggestionPage(url: $0.url, title: $0.title, faviconID: $0.faviconID)) }
+        let pages = ranked.prefix(Self.maximumRows - 1).map { AddressSuggestionRow.page(AddressSuggestionPage($0)) }
         rows = [inlineCompletion == nil ? firstRow : .open(firstRowTarget ?? meaning.url)] + pages
         selectedIndex = 0
         isListVisible = true
@@ -145,11 +179,14 @@ public final class AddressEditingSession {
     /// ↑ (`-1`) or ↓ (`+1`), staying within the list. The field follows the selection: a page's
     /// address, or back to what was typed on the first row.
     public func moveSelection(by delta: Int) {
-        guard isListVisible, let selectedIndex else { return }
-        let index = min(max(selectedIndex + delta, 0), rows.count - 1)
-        self.selectedIndex = index
-        fieldText = target(ofRow: index).flatMap { index == 0 ? nil : $0.absoluteString }
-            ?? typedText + (inlineCompletion ?? "")
+        guard isListVisible, !rows.isEmpty else { return }
+        let index = min(max((selectedIndex ?? -1) + delta, 0), rows.count - 1)
+        selectedIndex = index
+        if case .page(let page) = rows[index] {
+            fieldText = page.url.absoluteString
+        } else {
+            fieldText = typedText + (inlineCompletion ?? "")
+        }
     }
 
     /// Return: the selected row, or — with the list closed — whatever the field holds.
@@ -199,11 +236,15 @@ public final class AddressEditingSession {
         }
     }
 
-    /// The more frecent first, then the more recently visited; each address once.
+    /// The more frecent first — a bookmark counting `bookmarkBonus` more — then the more recently
+    /// visited; each address once.
     private static func rank(_ candidates: [AddressSuggestionCandidate]) -> [AddressSuggestionCandidate] {
         var seen: Set<URL> = []
+        func score(_ candidate: AddressSuggestionCandidate) -> Double {
+            candidate.frecency + (candidate.bookmarkName == nil ? 0 : bookmarkBonus)
+        }
         return candidates
-            .sorted { ($0.frecency, $0.lastVisitedAt) > ($1.frecency, $1.lastVisitedAt) }
+            .sorted { (score($0), $0.lastVisitedAt) > (score($1), $1.lastVisitedAt) }
             .filter { seen.insert($0.url).inserted }
     }
 
@@ -252,11 +293,14 @@ public final class AddressEditingSession {
         return String(text)
     }
 
-    /// Every word typed starts a word of the address (without its scheme and `www.`) or the title.
+    /// Every word typed starts a word of the address (without its scheme and `www.`), the title
+    /// or the bookmark's name.
     private static func matches(_ candidate: AddressSuggestionCandidate, words: [String]) -> Bool {
-        let address = stripCommonPrefixes(candidate.url.absoluteString.lowercased())
-        let title = candidate.title?.lowercased() ?? ""
-        return words.allSatisfy { startsAWord($0, in: address) || startsAWord($0, in: title) }
+        let texts = [
+            stripCommonPrefixes(candidate.url.absoluteString.lowercased()), candidate.title?.lowercased() ?? "",
+            candidate.bookmarkName?.lowercased() ?? "",
+        ]
+        return words.allSatisfy { word in texts.contains { startsAWord(word, in: $0) } }
     }
 
     /// Whether `word` occurs in `text` where a word begins: at the start, after anything that isn't

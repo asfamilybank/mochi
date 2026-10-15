@@ -110,4 +110,60 @@ import Testing
 
         #expect(suggested(fake, ["git"]).isEmpty)
     }
+
+    // MARK: Bookmarks (#125)
+
+    private func makeOrchestratorWithBookmarks() -> (FakePlatformOps, Orchestrator, HistoryStore, BookmarkStore) {
+        let fake = FakePlatformOps()
+        let clock = clock
+        let store = HistoryStore(databaseURL: nil, now: { clock.now }, calendar: historyTestCalendar)
+        let bookmarks = BookmarkStore(databaseURL: nil)
+        let orchestrator = Orchestrator(
+            platformOps: fake, currentConfig: { WidgetConfig(url: URL(string: "https://start.example.com")!) },
+            historyStore: store, bookmarkStore: bookmarks)
+        orchestrator.start()
+        return (fake, orchestrator, store, bookmarks)
+    }
+
+    @Test func theBookmarksAreGivenInTheirOrderReadWhenAsked() throws {
+        let (fake, orchestrator, _, bookmarks) = makeOrchestratorWithBookmarks()
+        defer { withExtendedLifetime(orchestrator) {} }
+        try bookmarks.add(name: "B", url: URL(string: "https://b.example.com/")!).get()
+        try bookmarks.add(name: "A", url: URL(string: "https://a.example.com/")!).get()
+
+        let given = fake.addressSuggestionSources[1]?.bookmarks() ?? []
+
+        #expect(given.map(\.bookmarkName) == ["B", "A"])
+        #expect(given.map(\.url.absoluteString) == ["https://b.example.com/", "https://a.example.com/"])
+    }
+
+    /// A bookmarked page that was visited is one candidate: the history's counts, the bookmark's
+    /// name. A bookmark never visited is a candidate too.
+    @Test func bookmarksAndHistoryAreOneCandidatePerAddress() throws {
+        let (fake, orchestrator, store, bookmarks) = makeOrchestratorWithBookmarks()
+        defer { withExtendedLifetime(orchestrator) {} }
+        visit(store, "https://github.com/", title: "GitHub", at: "2026-10-12 09:00")
+        try bookmarks.add(name: "代码", url: URL(string: "https://github.com/")!).get()
+        try bookmarks.add(name: "Gitea", url: URL(string: "https://gitea.example.com/")!).get()
+
+        let candidates = fake.addressSuggestionSources[1]?.candidates(["git"]) ?? []
+
+        #expect(candidates.map(\.url.absoluteString).sorted() == ["https://gitea.example.com/", "https://github.com/"])
+        let github = try #require(candidates.first { $0.url.host == "github.com" })
+        #expect(github.bookmarkName == "代码")
+        #expect(github.title == "GitHub")
+        #expect(github.frecency > 0)
+    }
+
+    @Test func aBookmarksIconIsFoundToo() throws {
+        let (fake, orchestrator, _, bookmarks) = makeOrchestratorWithBookmarks()
+        defer { withExtendedLifetime(orchestrator) {} }
+        let icon = Data([0x89, 0x50, 0x4E, 0x47, 0x1])
+        try bookmarks.add(name: "A", url: URL(string: "https://a.example.com/")!, favicon: icon).get()
+
+        let source = try #require(fake.addressSuggestionSources[1])
+        let id = try #require(source.bookmarks().first?.faviconID)
+
+        #expect(source.favicon(id) == icon)
+    }
 }

@@ -14,6 +14,9 @@ final class AddressSuggestionPanel {
 
     private let panel: NSPanel
     private let stack = NSStackView()
+    /// The bookmarks listed before typing (#125) may be many: past `visibleRows` the list scrolls.
+    private let scrollView = NSScrollView()
+    private static let visibleRows = AddressEditingSession.maximumRows
     /// A click on row `index`.
     var onChoose: ((Int) -> Void)?
     /// The PNG behind a page row's `faviconID`.
@@ -41,11 +44,26 @@ final class AddressSuggestionPanel {
         stack.spacing = 0
         stack.alignment = .leading
         stack.translatesAutoresizingMaskIntoConstraints = false
-        background.addSubview(stack)
+        let document = FlippedView()
+        document.translatesAutoresizingMaskIntoConstraints = false
+        document.addSubview(stack)
+        scrollView.documentView = document
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        background.addSubview(scrollView)
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: background.topAnchor, constant: Self.inset),
-            stack.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: Self.inset),
-            stack.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -Self.inset),
+            scrollView.topAnchor.constraint(equalTo: background.topAnchor, constant: Self.inset),
+            scrollView.bottomAnchor.constraint(equalTo: background.bottomAnchor, constant: -Self.inset),
+            scrollView.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: Self.inset),
+            scrollView.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -Self.inset),
+            document.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
+            stack.topAnchor.constraint(equalTo: document.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: document.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: document.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: document.trailingAnchor),
         ])
         panel.setAccessibilityRole(.list)
         panel.setAccessibilityLabel("地址栏建议")
@@ -69,7 +87,7 @@ final class AddressSuggestionPanel {
 
         let anchorRect = parent.convertToScreen(anchor.convert(anchor.bounds, to: nil))
         let width = max(anchorRect.width, Self.minimumWidth)
-        let height = CGFloat(rows.count) * Self.rowHeight + 2 * Self.inset
+        let height = CGFloat(min(rows.count, Self.visibleRows)) * Self.rowHeight + 2 * Self.inset
         panel.setFrame(
             NSRect(x: anchorRect.minX, y: anchorRect.minY - 6 - height, width: width, height: height), display: true)
         if panel.parent !== parent {
@@ -77,6 +95,12 @@ final class AddressSuggestionPanel {
             parent.addChildWindow(panel, ordered: .above)
         }
         panel.orderFront(nil)
+        if let selected, stack.arrangedSubviews.indices.contains(selected) {
+            stack.layoutSubtreeIfNeeded()
+            stack.arrangedSubviews[selected].scrollToVisible(stack.arrangedSubviews[selected].bounds)
+        } else {
+            scrollView.contentView.scroll(to: .zero)
+        }
     }
 
     func hide() {
@@ -98,6 +122,10 @@ final class AddressSuggestionPanel {
             return NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
         }
     }
+}
+
+private final class FlippedView: NSView {
+    override var isFlipped: Bool { true }
 }
 
 /// Never key, so the address bar keeps typing while the list is up.
@@ -127,18 +155,27 @@ private final class SuggestionRowView: NSView {
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         addSubview(iconView)
         addSubview(label)
+        // #125: a bookmark is marked at the row's end.
+        let mark = NSImageView(image: NSImage(systemSymbolName: "bookmark.fill", accessibilityDescription: nil) ?? NSImage())
+        mark.contentTintColor = iconView.contentTintColor
+        mark.symbolConfiguration = .init(pointSize: 11, weight: .regular)
+        mark.translatesAutoresizingMaskIntoConstraints = false
+        mark.isHidden = !Self.isBookmark(row)
+        addSubview(mark)
         NSLayoutConstraint.activate([
             iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
             iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
             iconView.widthAnchor.constraint(equalToConstant: 16),
             iconView.heightAnchor.constraint(equalToConstant: 16),
             label.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 8),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -10),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: mark.leadingAnchor, constant: -8),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            mark.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            mark.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
-        setAccessibilityLabel(label.stringValue)
+        setAccessibilityLabel(Self.isBookmark(row) ? "书签：\(label.stringValue)" : label.stringValue)
         setAccessibilitySelected(isSelected)
     }
 
@@ -162,6 +199,10 @@ private final class SuggestionRowView: NSView {
     override func accessibilityPerformPress() -> Bool {
         onClick?()
         return true
+    }
+
+    private static func isBookmark(_ row: AddressSuggestionRow) -> Bool {
+        if case .page(let page) = row { page.isBookmark } else { false }
     }
 
     private static func text(for row: AddressSuggestionRow, isSelected: Bool) -> NSAttributedString {

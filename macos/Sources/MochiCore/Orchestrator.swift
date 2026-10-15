@@ -661,20 +661,38 @@ public final class Orchestrator {
 
     // MARK: 地址栏建议 (#122, ADR-0034)
 
-    /// The history's candidates for the words typed, read when asked: the last 90 days
-    /// (`HistoryStore.suggestionWindow`), and nothing the retention setting has expired.
+    /// The candidates for the words typed, read when asked: the history's — the last 90 days
+    /// (`HistoryStore.suggestionWindow`), nothing the retention setting has expired — with the
+    /// bookmarks (#125) folded in, one candidate per address. Bookmarks are few, so all of them
+    /// go along and the session does the matching.
     private func addressSuggestionSource() -> AddressSuggestionSource {
         AddressSuggestionSource(
             candidates: { [weak self] words in
-                guard let self, let historyStore else { return [] }
-                let now = historyStore.now()
-                var since = now.addingTimeInterval(-HistoryStore.suggestionWindow)
-                if let cutoff = currentConfig().historyRetention.cutoff(now: now, calendar: historyStore.calendar) {
-                    since = max(since, cutoff)
+                guard let self else { return [] }
+                var history: [AddressSuggestionCandidate] = []
+                if let historyStore {
+                    let now = historyStore.now()
+                    var since = now.addingTimeInterval(-HistoryStore.suggestionWindow)
+                    if let cutoff = currentConfig().historyRetention.cutoff(now: now, calendar: historyStore.calendar) {
+                        since = max(since, cutoff)
+                    }
+                    history = historyStore.suggestionCandidates(matching: words, since: since)
                 }
-                return historyStore.suggestionCandidates(matching: words, since: since)
+                let bookmarks = bookmarkStore?.all() ?? []
+                let names = Dictionary(bookmarks.map { ($0.url, $0.name) }, uniquingKeysWith: { first, _ in first })
+                let visited = Set(history.map(\.url))
+                return history.map { candidate in names[candidate.url].map(candidate.bookmarked(as:)) ?? candidate }
+                    + bookmarks.filter { !visited.contains($0.url) }.map(Self.suggestionCandidate)
             },
-            favicon: { [weak self] id in self?.historyStore?.favicon(id) })
+            bookmarks: { [weak self] in (self?.bookmarkStore?.all() ?? []).map(Self.suggestionCandidate) },
+            favicon: { [weak self] id in self?.historyStore?.favicon(id) ?? self?.bookmarkStore?.favicon(id) })
+    }
+
+    /// A bookmark as a suggestion of its own, never visited (as far as the history says).
+    private static func suggestionCandidate(_ bookmark: Bookmark) -> AddressSuggestionCandidate {
+        AddressSuggestionCandidate(
+            url: bookmark.url, title: nil, faviconID: bookmark.faviconID, lastVisitedAt: .distantPast, frecency: 0,
+            bookmarkName: bookmark.name)
     }
 
     // MARK: 书签 (#121, ADR-0033)

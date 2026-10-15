@@ -1460,10 +1460,13 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// From what the field holds now — the page's address, or nothing on the Empty Page.
     private func beginAddressEditingSession() {
         let source = addressSuggestionSource
-        addressEditingSession = AddressEditingSession(
+        let session = AddressEditingSession(
             originalText: controls.addressBar.field.stringValue, searchEngine: searchEngineProvider(),
-            candidates: source.candidates)
+            bookmarks: source.bookmarks(), candidates: source.candidates)
+        addressEditingSession = session
         addressSuggestionPanel.favicon = source.favicon
+        // #125: the bookmarks, before anything is typed.
+        showAddressSuggestions()
     }
 
     private func endAddressEditingSession() {

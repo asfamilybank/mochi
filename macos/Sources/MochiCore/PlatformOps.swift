@@ -83,12 +83,16 @@ public struct TrayMenuItem {
 /// the icon behind a candidate's `faviconID`.
 public struct AddressSuggestionSource {
     public let candidates: ([String]) -> [AddressSuggestionCandidate]
+    /// Every bookmark in the user's order (#125) — listed before anything is typed.
+    public let bookmarks: () -> [AddressSuggestionCandidate]
     public let favicon: (String) -> Data?
 
     public init(
-        candidates: @escaping ([String]) -> [AddressSuggestionCandidate], favicon: @escaping (String) -> Data?
+        candidates: @escaping ([String]) -> [AddressSuggestionCandidate],
+        bookmarks: @escaping () -> [AddressSuggestionCandidate] = { [] }, favicon: @escaping (String) -> Data?
     ) {
         self.candidates = candidates
+        self.bookmarks = bookmarks
         self.favicon = favicon
     }
 }

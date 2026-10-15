@@ -428,4 +428,124 @@ import Testing
         #expect(session.fieldText == "github.com")
         #expect(completion(session) == "hub.com")
     }
+
+    // MARK: Bookmarks (#125)
+
+    private func bookmark(_ url: String, name: String, frecency: Double = 0) -> AddressSuggestionCandidate {
+        AddressSuggestionCandidate(
+            url: URL(string: url)!, title: nil, faviconID: nil,
+            lastVisitedAt: frecency == 0 ? .distantPast : historyTestDate("2026-10-12 09:00"),
+            frecency: frecency, bookmarkName: name)
+    }
+
+    private func bookmarkSession(
+        original: String = "https://current.example.com/", bookmarks: [AddressSuggestionCandidate],
+        _ candidates: [AddressSuggestionCandidate] = []
+    ) -> AddressEditingSession {
+        AddressEditingSession(originalText: original, searchEngine: .google, bookmarks: bookmarks) { _ in candidates }
+    }
+
+    /// Clicking into the bar lists every bookmark in the user's order, before anything is typed.
+    @Test func beforeTypingTheListIsEveryBookmark() {
+        let bookmarks = (0..<10).map { bookmark("https://b\($0).example.com/", name: "B\($0)") }
+        let session = bookmarkSession(bookmarks: bookmarks)
+
+        #expect(session.isListVisible)
+        #expect(session.selectedIndex == nil)
+        #expect(pages(session) == (0..<10).map { "https://b\($0).example.com/" })
+        #expect(session.rows.allSatisfy { if case .page(let page) = $0 { page.isBookmark } else { false } })
+        #expect(session.rows.first == .page(AddressSuggestionPage(url: bookmarks[0].url, title: "B0", faviconID: nil, isBookmark: true)))
+    }
+
+    @Test(arguments: ["https://current.example.com/", ""])
+    func withoutBookmarksNothingIsListedBeforeTyping(_ original: String) {
+        let session = bookmarkSession(original: original, bookmarks: [])
+
+        #expect(!session.isListVisible)
+    }
+
+    @Test func onTheEmptyPageTheBookmarksAreListedToo() {
+        let session = bookmarkSession(original: "", bookmarks: [bookmark("https://a.example.com/", name: "A")])
+
+        #expect(pages(session) == ["https://a.example.com/"])
+    }
+
+    /// ↓ walks the bookmarks, Return opens one; Return untouched stays on the page.
+    @Test func theBookmarksCanBePickedBeforeTyping() {
+        let session = bookmarkSession(bookmarks: [
+            bookmark("https://a.example.com/", name: "A"), bookmark("https://b.example.com/", name: "B"),
+        ])
+
+        #expect(session.enter() == .navigate(URL(string: "https://current.example.com/")!))
+        session.moveSelection(by: 1)
+        session.moveSelection(by: 1)
+
+        #expect(session.fieldText == "https://b.example.com/")
+        #expect(session.enter() == .navigate(URL(string: "https://b.example.com/")!))
+    }
+
+    @Test func escapeBeforeTypingClosesTheBookmarksThenLeaves() {
+        let session = bookmarkSession(bookmarks: [bookmark("https://a.example.com/", name: "A")])
+        session.moveSelection(by: 1)
+
+        #expect(session.escape() == .none)
+        #expect(!session.isListVisible)
+        #expect(session.fieldText == "https://current.example.com/")
+        #expect(session.escape() == .endEditing)
+    }
+
+    @Test func typingReplacesTheBookmarksWithSuggestions() {
+        let session = bookmarkSession(bookmarks: [bookmark("https://a.example.com/", name: "A")])
+
+        session.textChanged(to: "swift testing", byDeleting: false)
+
+        #expect(session.rows.first == .search(query: "swift testing", engine: .google))
+        #expect(pages(session).isEmpty)
+    }
+
+    /// A bookmark's own name is searched as well as its address and the page's title.
+    @Test func aBookmarksNameIsMatched() {
+        let session = session([bookmark("https://example.com/x", name: "我的仓库 Mochi")])
+
+        session.textChanged(to: "仓库", byDeleting: false)
+
+        #expect(pages(session) == ["https://example.com/x"])
+    }
+
+    @Test func aBookmarkRowShowsItsNameAndIsMarked() {
+        let visited = AddressSuggestionCandidate(
+            url: URL(string: "https://example.com/x")!, title: "Page title", faviconID: nil,
+            lastVisitedAt: historyTestDate("2026-10-12 09:00"), frecency: 100, bookmarkName: "我的书签")
+        let session = session([visited])
+
+        session.textChanged(to: "page", byDeleting: false)
+
+        #expect(
+            session.rows.dropFirst().first
+                == .page(AddressSuggestionPage(url: visited.url, title: "我的书签", faviconID: nil, isBookmark: true)))
+    }
+
+    /// A bookmark ranks above a page visited about as much.
+    @Test func bookmarksRankHigher() {
+        let session = session([
+            candidate("https://a.example.com/", title: "Swift", frecency: 100),
+            bookmark("https://b.example.com/", name: "Swift", frecency: 70),
+        ])
+
+        session.textChanged(to: "swift", byDeleting: false)
+
+        #expect(pages(session) == ["https://b.example.com/", "https://a.example.com/"])
+    }
+
+    /// Bookmarks are completed inline like any address (#124).
+    @Test func aBookmarkIsCompletedInline() {
+        let session = session([
+            candidate("https://github.com/", frecency: 100),
+            bookmark("https://github.com/asfamilybank/mochi", name: "Mochi", frecency: 0),
+        ])
+
+        session.textChanged(to: "git", byDeleting: false)
+
+        #expect(session.fieldText == "github.com/asfamilybank/mochi")
+    }
 }
