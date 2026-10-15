@@ -79,6 +79,20 @@ public struct TrayMenuItem {
 /// Where the widget's page stands in its history and loading (#57) — the *effective* answers, the
 /// same ones the Normal Mode toolbar's back/forward segments show: back and forward include
 /// `EmptyPageHistory`'s steps onto and off the Empty Page, not just the web view's own list.
+/// Where the address bar's suggestions come from (#122): candidates for the words typed, and
+/// the icon behind a candidate's `faviconID`.
+public struct AddressSuggestionSource {
+    public let candidates: ([String]) -> [AddressSuggestionCandidate]
+    public let favicon: (String) -> Data?
+
+    public init(
+        candidates: @escaping ([String]) -> [AddressSuggestionCandidate], favicon: @escaping (String) -> Data?
+    ) {
+        self.candidates = candidates
+        self.favicon = favicon
+    }
+}
+
 /// How the bookmark editor (#121) was left.
 public enum BookmarkEditorAnswer: Equatable, Sendable {
     /// 完成, Return, or a click outside: keep the bookmark under `name`.
@@ -340,6 +354,9 @@ public protocol PlatformOps: AnyObject {
     /// Puts the address bar into editing with its whole address selected (#61, 打开位置… ⌘L) —
     /// the same path a click on the bar takes, so it works on the Empty Page too.
     func focusAddressBar(in window: WidgetWindowHandle)
+    /// Where the address bar's suggestions come from (#122, ADR-0034), handed over once per
+    /// widget. The bar asks it on every keystroke; it reads the history at that moment.
+    func setAddressSuggestionSource(_ source: AddressSuggestionSource, in window: WidgetWindowHandle)
     /// The bookmark editor (#121, ADR-0033): a popover under the address bar holding the
     /// bookmark's `name` for editing, with 完成 and 移除. The bookmark already exists when it opens
     /// — ⌘D has added it — so `answer` is told what to make of it, exactly once.

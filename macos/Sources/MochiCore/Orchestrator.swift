@@ -257,6 +257,7 @@ public final class Orchestrator {
         }
         registerWebInteractionRequestHandlers(for: window)
         registerHistoryRecording(for: window, addressBarController: addressBarController)
+        platformOps.setAddressSuggestionSource(addressSuggestionSource(), in: window)
 
         let ghostModeController = GhostModeController(platformOps: platformOps, window: window, currentConfig: currentConfig)
         self.ghostModeController = ghostModeController
@@ -656,6 +657,24 @@ public final class Orchestrator {
     /// same through `SettingsController` and `HistoryBrowser`.
     private func removeExpiredHistory() {
         historyStore?.removeVisits(olderThan: currentConfig().historyRetention)
+    }
+
+    // MARK: 地址栏建议 (#122, ADR-0034)
+
+    /// The history's candidates for the words typed, read when asked: the last 90 days
+    /// (`HistoryStore.suggestionWindow`), and nothing the retention setting has expired.
+    private func addressSuggestionSource() -> AddressSuggestionSource {
+        AddressSuggestionSource(
+            candidates: { [weak self] words in
+                guard let self, let historyStore else { return [] }
+                let now = historyStore.now()
+                var since = now.addingTimeInterval(-HistoryStore.suggestionWindow)
+                if let cutoff = currentConfig().historyRetention.cutoff(now: now, calendar: historyStore.calendar) {
+                    since = max(since, cutoff)
+                }
+                return historyStore.suggestionCandidates(matching: words, since: since)
+            },
+            favicon: { [weak self] id in self?.historyStore?.favicon(id) })
     }
 
     // MARK: 书签 (#121, ADR-0033)

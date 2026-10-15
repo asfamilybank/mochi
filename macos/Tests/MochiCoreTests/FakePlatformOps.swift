@@ -359,6 +359,14 @@ final class FakePlatformOps: PlatformOps {
         addressBarFocuses.append((handle.id, shownWindowIDs.contains(handle.id), loadedURLs.count))
     }
 
+    // #122: 地址栏建议
+    /// The source each window's address bar was given, by window id.
+    private(set) var addressSuggestionSources: [Int: AddressSuggestionSource] = [:]
+
+    func setAddressSuggestionSource(_ source: AddressSuggestionSource, in window: WidgetWindowHandle) {
+        addressSuggestionSources[(window as! FakeWidgetWindowHandle).id] = source
+    }
+
     // #121: 书签
     /// Every `presentBookmarkEditor` call, by name and window.
     private(set) var bookmarkEditors: [(name: String, windowID: Int)] = []

@@ -81,6 +81,7 @@ public final class HistoryStore {
         CREATE INDEX IF NOT EXISTS visits_visited_at ON visits (visited_at);
         CREATE INDEX IF NOT EXISTS visits_favicon_hash ON visits (favicon_hash);
         CREATE INDEX IF NOT EXISTS visits_host ON visits (host, visited_at);
+        CREATE INDEX IF NOT EXISTS visits_url ON visits (url, visited_at);
         CREATE TABLE IF NOT EXISTS favicons (
             hash TEXT PRIMARY KEY NOT NULL,
             png BLOB NOT NULL
@@ -139,13 +140,17 @@ public final class HistoryStore {
     /// empty query matches everything. `host` narrows them to the visits to exactly that host,
     /// case aside (`site:`, #118) — not to a longer host it is the start or end of.
     public func search(_ query: String, host: String? = nil) -> [HistoryVisit] {
-        let escaped = query
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "%", with: "\\%")
-            .replacingOccurrences(of: "_", with: "\\_")
+        let escaped = Self.escapedForLike(query)
         let matches = "(title LIKE ?1 ESCAPE '\\' OR url LIKE ?1 ESCAPE '\\')"
         guard let host else { return visits(where: matches, .text("%\(escaped)%")) }
         return visits(where: "host = ?2 AND \(matches)", .text("%\(escaped)%"), .text(host.lowercased()))
+    }
+
+    /// `text` matched literally inside a `LIKE … ESCAPE '\\'` pattern.
+    private static func escapedForLike(_ text: String) -> String {
+        text.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "%", with: "\\%")
+            .replacingOccurrences(of: "_", with: "\\_")
     }
 
     /// The PNG behind a visit's `faviconID`, `nil` once no visit shows it.
@@ -185,6 +190,68 @@ public final class HistoryStore {
         return visits(
             where: "visited_at >= ?1 AND visited_at < ?2",
             .real(start.timeIntervalSinceReferenceDate), .real(end.timeIntervalSinceReferenceDate))
+    }
+
+    // MARK: Address bar suggestions (#122, ADR-0034)
+
+    /// How much one visit adds to its address's frecency, by how long ago it was — Firefox's
+    /// buckets: a visit this week outweighs several a season ago.
+    private static let frecencyWeights: [(days: Double, weight: Double)] = [
+        (4, 100), (14, 70), (31, 50), (90, 30),
+    ]
+    private static let oldVisitWeight: Double = 10
+    /// How far back the address bar looks: 90 days. Scanning a heavy year on every keystroke
+    /// costs more than a keystroke may, and a visit older than this adds next to nothing to
+    /// frecency anyway — Chrome's address bar likewise only considers recent pages. Older pages
+    /// are still found in the 历史记录 window.
+    public static let suggestionWindow: TimeInterval = 90 * 86_400
+
+    /// The addresses the address bar may suggest for `words` — each one once, with the title of
+    /// its latest visit that had one, its latest icon and visit, and its frecency — the most
+    /// frecent first, at most `limit`. Computed from the visits every time (ADR-0030/0034), so
+    /// deleting visits takes their suggestions along with no further step.
+    ///
+    /// A coarse filter: each word (lowercase) has to appear somewhere in a visit's address or
+    /// title; where in it is `AddressEditingSession`'s to judge. Only visits at or after `since`
+    /// count — the retention limit, for visits not yet removed.
+    public func suggestionCandidates(matching words: [String], since: Date?, limit: Int = 200)
+        -> [AddressSuggestionCandidate]
+    {
+        let now = now().timeIntervalSinceReferenceDate
+        var values: [SQLiteDatabase.Value] = [.real(since?.timeIntervalSinceReferenceDate ?? -Double.greatestFiniteMagnitude)]
+        var conditions = ["visited_at >= ?1"]
+        for word in words {
+            values.append(.text("%" + Self.escapedForLike(word) + "%"))
+            let position = values.count
+            conditions.append("(url LIKE ?\(position) ESCAPE '\\' OR title LIKE ?\(position) ESCAPE '\\')")
+        }
+        let weights = Self.frecencyWeights.map { bucket in
+            "WHEN visited_at >= \(now - bucket.days * 86_400) THEN \(bucket.weight)"
+        }.joined(separator: " ")
+        values.append(.integer(Int64(limit)))
+        let sql = """
+            WITH ranked AS (
+                SELECT url, MAX(visited_at) AS last_visited,
+                    SUM(CASE \(weights) ELSE \(Self.oldVisitWeight) END) AS frecency
+                FROM visits WHERE \(conditions.joined(separator: " AND "))
+                GROUP BY url ORDER BY frecency DESC, last_visited DESC LIMIT ?\(values.count)
+            )
+            SELECT url, last_visited, frecency,
+                (SELECT title FROM visits t WHERE t.url = ranked.url AND t.title IS NOT NULL
+                    ORDER BY t.visited_at DESC LIMIT 1),
+                (SELECT favicon_hash FROM visits t WHERE t.url = ranked.url AND t.favicon_hash IS NOT NULL
+                    ORDER BY t.visited_at DESC LIMIT 1)
+            FROM ranked ORDER BY frecency DESC, last_visited DESC
+            """
+        var result: [AddressSuggestionCandidate] = []
+        db.query(sql, values) { row in
+            guard let urlText = row.text(0), let url = URL(string: urlText) else { return }
+            result.append(
+                AddressSuggestionCandidate(
+                    url: url, title: row.text(3), faviconID: row.text(4),
+                    lastVisitedAt: Date(timeIntervalSinceReferenceDate: row.double(1)), frecency: row.double(2)))
+        }
+        return result
     }
 
     // MARK: Removing

@@ -60,4 +60,18 @@ struct HistoryPerformanceTests {
         #expect(keywords < Self.budget)
         #expect(site < Self.budget)
     }
+
+    /// The address bar asks on every keystroke (#122): a first letter that is in nearly every
+    /// address is the worst case, a narrower word the usual one.
+    @Test func addressBarCandidatesStayWithinBudget() {
+        let (store, _) = Self.heavyHistory()
+
+        let since = store.now().addingTimeInterval(-HistoryStore.suggestionWindow)
+        let broad = Self.time { _ = store.suggestionCandidates(matching: ["s"], since: since) }
+        let narrow = Self.time { _ = store.suggestionCandidates(matching: ["site42"], since: since) }
+
+        print("history bench: address bar broad \(broad), narrow \(narrow)")
+        #expect(broad < Self.budget)
+        #expect(narrow < Self.budget)
+    }
 }

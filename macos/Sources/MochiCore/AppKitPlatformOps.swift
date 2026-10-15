@@ -1429,12 +1429,86 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         guard !isEditingAddressField else { return }
         isEditingAddressField = true
         updateAddressFieldDisplay()
+        beginAddressEditingSession()
         DispatchQueue.main.async { [weak self] in
             guard let self, self.isEditingAddressField,
                 self.controls.addressBar.field.currentEditor() == nil
             else { return }
             self.isEditingAddressField = false
+            self.endAddressEditingSession()
             self.updateAddressFieldDisplay()
+        }
+    }
+
+    // MARK: 地址栏建议 (#122, ADR-0034)
+
+    /// Where this bar's suggestions come from (`PlatformOps.setAddressSuggestionSource`).
+    var addressSuggestionSource = AddressSuggestionSource(candidates: { _ in [] }, favicon: { _ in nil })
+    /// The stretch of editing under way — what the field shows and the list under it.
+    private var addressEditingSession: AddressEditingSession?
+    private lazy var addressSuggestionPanel: AddressSuggestionPanel = {
+        let panel = AddressSuggestionPanel()
+        panel.onChoose = { [weak self] index in
+            guard let self, let session = self.addressEditingSession else { return }
+            self.apply(session.choose(row: index))
+        }
+        return panel
+    }()
+    /// Set by a delete command just before the text change it causes.
+    private var addressFieldChangeIsDeletion = false
+
+    /// From what the field holds now — the page's address, or nothing on the Empty Page.
+    private func beginAddressEditingSession() {
+        let source = addressSuggestionSource
+        addressEditingSession = AddressEditingSession(
+            originalText: controls.addressBar.field.stringValue, searchEngine: searchEngineProvider(),
+            candidates: source.candidates)
+        addressSuggestionPanel.favicon = source.favicon
+    }
+
+    private func endAddressEditingSession() {
+        addressEditingSession = nil
+        addressSuggestionPanel.hide()
+    }
+
+    func controlTextDidChange(_ obj: Notification) {
+        guard let field = obj.object as? NSTextField, field === controls.addressBar.field,
+            let session = addressEditingSession
+        else { return }
+        session.textChanged(to: field.stringValue, byDeleting: addressFieldChangeIsDeletion)
+        addressFieldChangeIsDeletion = false
+        showAddressSuggestions()
+    }
+
+    /// Draws what the session says: the field's text, and the list or none.
+    private func showAddressSuggestions() {
+        guard let session = addressEditingSession else { return }
+        let field = controls.addressBar.field
+        if field.stringValue != session.fieldText {
+            field.stringValue = session.fieldText
+            let end = (session.fieldText as NSString).length
+            field.currentEditor()?.selectedRange = NSRange(location: end, length: 0)
+        }
+        if session.isListVisible {
+            addressSuggestionPanel.show(rows: session.rows, selected: session.selectedIndex, below: controls.addressBar)
+        } else {
+            addressSuggestionPanel.hide()
+        }
+    }
+
+    private func apply(_ outcome: AddressEditingOutcome) {
+        switch outcome {
+        case .none:
+            showAddressSuggestions()
+        case .navigate(let url):
+            endAddressEditingSession()
+            urlSubmittedHandler?(url)
+            // Blurs the field, which fires `controlTextDidEndEditing` and reverts the display back
+            // to the (new) page's title once it loads — story #4's "submit closes edit mode".
+            window.makeFirstResponder(nil)
+        case .endEditing:
+            endAddressEditingSession()
+            window.makeFirstResponder(nil)
         }
     }
 
@@ -1483,6 +1557,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         DispatchQueue.main.async { [weak self] in
             guard let self, self.controls.addressBar.field.currentEditor() == nil else { return }
             self.isEditingAddressField = false
+            self.endAddressEditingSession()
             self.updateAddressFieldDisplay()
         }
     }
@@ -1810,16 +1885,25 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         decisionHandler(navigationAction.shouldPerformDownload ? .download : .allow, preferences)
     }
 
+    /// Return, Esc and ↑↓ go to the editing session (#122); deletions are noted so the session
+    /// can tell them from typing.
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-        guard control === controls.addressBar.field, commandSelector == #selector(NSResponder.insertNewline(_:)) else {
+        guard control === controls.addressBar.field, let session = addressEditingSession else { return false }
+        switch commandSelector {
+        case #selector(NSResponder.insertNewline(_:)):
+            apply(session.enter())
+        case #selector(NSResponder.cancelOperation(_:)), #selector(NSTextView.complete(_:)):
+            apply(session.escape())
+        case #selector(NSResponder.moveUp(_:)):
+            session.moveSelection(by: -1)
+            apply(.none)
+        case #selector(NSResponder.moveDown(_:)):
+            session.moveSelection(by: 1)
+            apply(.none)
+        default:
+            if NSStringFromSelector(commandSelector).hasPrefix("delete") { addressFieldChangeIsDeletion = true }
             return false
         }
-        guard let url = AddressInput.resolve(controls.addressBar.field.stringValue, searchEngine: searchEngineProvider())
-        else { return true }
-        urlSubmittedHandler?(url)
-        // Blurs the field, which fires `controlTextDidEndEditing` and reverts the display back to
-        // the (new) page's title once it loads — matches story #4's "submit closes edit mode".
-        window.makeFirstResponder(nil)
         return true
     }
 
@@ -2325,6 +2409,10 @@ public final class AppKitPlatformOps: PlatformOps {
     public func focusAddressBar(in window: WidgetWindowHandle) {
         guard let handle = handle(for: window) else { return }
         handle.focusAddressField()
+    }
+
+    public func setAddressSuggestionSource(_ source: AddressSuggestionSource, in window: WidgetWindowHandle) {
+        handle(for: window)?.addressSuggestionSource = source
     }
 
     public func presentBookmarkEditor(

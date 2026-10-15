@@ -51,18 +51,36 @@ public enum AddressInput {
     ///   or a dotted hostname (optionally with port/path) → prefixed with `https://`.
     /// - Anything else → a search with `searchEngine`.
     public static func resolve(_ input: String, searchEngine: SearchEngine) -> URL? {
+        interpret(input, searchEngine: searchEngine)?.url
+    }
+
+    /// What `resolve` decided, and why (#122): an address to open, or a search — which the
+    /// address bar's suggestion list spells out as its first row.
+    public enum Meaning: Equatable, Sendable {
+        case address(URL)
+        case search(query: String, url: URL)
+
+        public var url: URL {
+            switch self {
+            case .address(let url), .search(_, let url): url
+            }
+        }
+    }
+
+    /// `resolve`, keeping whether the text was read as an address or a search.
+    public static func interpret(_ input: String, searchEngine: SearchEngine) -> Meaning? {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         let hasWhitespace = trimmed.unicodeScalars.contains { CharacterSet.whitespacesAndNewlines.contains($0) }
         if !hasWhitespace {
             if hasExplicitScheme(trimmed), let url = URL(string: trimmed) {
-                return url
+                return .address(url)
             }
             if looksLikeHost(trimmed), let url = URL(string: "https://\(trimmed)") {
-                return url
+                return .address(url)
             }
         }
-        return searchEngine.searchURL(for: trimmed)
+        return searchEngine.searchURL(for: trimmed).map { .search(query: trimmed, url: $0) }
     }
 
     private static func hasExplicitScheme(_ text: String) -> Bool {
