@@ -45,7 +45,7 @@ Mochi 按你输入的内容决定是打开网址还是搜索：
 
 建议只来自这台 Mac 上的书签和最近 90 天的历史记录。按 Return 之前，你输入的内容不会发给搜索引擎或任何网站。清除历史记录之后，建议也会跟着变。
 
-<!-- 📷 images/open-pages-suggestions.png — 地址栏建议下拉列表（窗口 ID 截图；它是独立窗口，截不全就标需人工） -->
+![在地址栏输入 wiki，行内补全成 wikipedia.org，下拉列表里有书签和历史记录](../images/open-pages-suggestions.png)
 
 ## 换搜索引擎
 
@@ -54,7 +54,7 @@ Mochi 按你输入的内容决定是打开网址还是搜索：
 
 改完马上生效，下一次在地址栏搜索就会用新的搜索引擎。
 
-<!-- 📷 images/settings-general.png — 「设置 › 通用」（窗口 ID 截图，与设置参考共用） -->
+![「设置 › 通用」面板](../images/settings-general.png)
 
 ## 设置每次打开时先看到什么
 

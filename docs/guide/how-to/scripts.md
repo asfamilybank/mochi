@@ -4,7 +4,7 @@
 
 所有相关设置都在「设置 › 脚本」里。按 ⌘,（Command + 逗号）打开设置，选「脚本」。
 
-<!-- 📷 images/settings-scripts.png — 「设置 › 脚本」（窗口 ID 截图，与设置参考共用） -->
+![「设置 › 脚本」面板](../images/settings-scripts.png)
 
 ## 三种来源
 

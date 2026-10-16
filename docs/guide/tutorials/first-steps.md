@@ -15,7 +15,7 @@
 
 打开 Mochi。还没挪过窗口的话，它出现在主显示器的正中间，里面是**空页面**：它是 Mochi 自己的页面，不是某个网站。还没打开过任何网页时，Mochi 就显示它。
 
-<!-- 📷 images/first-steps-empty-page.png — 空页面和热键速览（窗口 ID 截图） -->
+![空页面，中间是热键速览](../images/first-steps-empty-page.png)
 
 空页面中间有一份「热键」速览，列出现在生效的按键。默认是这样：
 
@@ -44,7 +44,7 @@
 2. 输入 `bilibili.com`，按 Return（回车）。不用写 `https://`，Mochi 会自动补上。
 3. 网页打开后，点一个你想看的视频。它会在同一个窗口里打开：Mochi 一个窗口只放一个网页，没有标签页。
 
-<!-- 📷 images/first-steps-address-bar.png — 地址栏输入状态（窗口 ID 截图） -->
+![在地址栏输入 bilibili.com，下方出现「打开 bilibili.com」建议](../images/first-steps-address-bar.png)
 
 视频开始播放后，你会看到地址栏里显示的是网页的标题；鼠标移上去或者点一下，才显示网址。视频没有自己开始播放，就在网页上点一下播放按钮。
 

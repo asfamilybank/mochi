@@ -211,7 +211,7 @@ docs/guide/
   - 哪些按键需要辅助功能权限（不带 ⌃ 也不带 ⌘ 的组合键，比如 ⌥P）？怎么授予？升级后为什么要重新添加？
   - 冲突提示（「与……冲突」「这个组合会被占用……」）怎么处理？
 - 📷 `images/settings-video-control.png` — 「设置 › 幽灵模式」里的视频控制分组（窗口 ID 截图，按需裁剪）
-- 📷 `images/settings-accessibility-hint.png` — 「需要辅助功能权限」提示（窗口 ID 截图；需要测试机处于缺权限的状态，做不到就省略）
+- ~~📷 `images/settings-accessibility-hint.png`~~ — 不截：要截它得先撤掉辅助功能权限，已与用户确认省略
 
 ### `how-to/hotkey-forwarding.md` 把热键变成网页按键
 
@@ -488,7 +488,7 @@ docs/guide/
 | `settings-general.png` | 设置 › 通用 | 窗口 ID | 设置参考、打开网页 |
 | `settings-ghost-mode.png` | 设置 › 幽灵模式 | 窗口 ID | 设置参考、幽灵模式 |
 | `settings-video-control.png` | 视频控制分组 | 窗口 ID | 视频控制 |
-| `settings-accessibility-hint.png` | 需要辅助功能权限提示 | 窗口 ID（条件不满足就省略） | 视频控制 |
+| ~~`settings-accessibility-hint.png`~~ | 需要辅助功能权限提示 | 不截（已与用户确认） | 视频控制 |
 | `settings-hotkey-forwarding.png` | 热键传递映射表 | 窗口 ID | 热键传递 |
 | `settings-websites.png` / `settings-websites-camera.png` | 设置 › 网站 | 窗口 ID | 设置参考、摄像头 |
 | `settings-privacy.png` | 设置 › 隐私与安全性 | 窗口 ID | 设置参考 |

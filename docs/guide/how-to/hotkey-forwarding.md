@@ -4,7 +4,7 @@
 
 热键传递里的每一条设置叫一条映射：一个触发键，加上要发给网页的按键。
 
-<!-- 📷 images/settings-hotkey-forwarding.png — 热键传递映射表，至少含一条示例映射（窗口 ID 截图） -->
+![「热键传递」分组，有一条示例映射：轻按右 ⌃ 发送 D](../images/settings-hotkey-forwarding.png)
 
 ## 热键传递还是视频控制
 

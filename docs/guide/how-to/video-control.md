@@ -2,7 +2,7 @@
 
 视频控制让你在别的应用里打字、开会时，也能暂停、播放、后退、前进 Mochi 里的视频，不用切换到 Mochi，也不用退出幽灵模式。
 
-<!-- 📷 images/settings-video-control.png — 「设置 › 幽灵模式」里的视频控制分组（窗口 ID 截图，按需裁剪） -->
+![「视频控制」分组，三个功能各自的触发方式和按键](../images/settings-video-control.png)
 
 ## 默认按键
 
@@ -79,8 +79,6 @@
 - 怎么授予：见故障排除里的[幽灵模式下，视频控制的组合键（如 ⌥P）没反应](troubleshooting.md#幽灵模式下视频控制的组合键如-p没反应)。
 - 每次升级 Mochi 后都要把它移除再重新添加：见[升级 Mochi](upgrade.md#重新添加辅助功能权限)。
 - 为什么只有这类组合键需要：见[按键是怎么被 Mochi 听到的](../explanation/how-keys-are-heard.md#为什么有的组合键需要辅助功能权限)。
-
-<!-- 📷 images/settings-accessibility-hint.png — 「需要辅助功能权限」提示（窗口 ID 截图；需要测试机处于缺权限的状态，做不到就省略） -->
 
 ## 冲突提示
 
