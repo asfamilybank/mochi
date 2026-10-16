@@ -70,3 +70,5 @@ git grep -n "旧的界面文案" -- docs/guide/ README.md
 ```
 
 手册首页写着它对照的 Mochi 版本，每次发版时核对一遍。
+
+哪类改动要查哪几页、哪些截图要重截、截图怎么截，见 [docs/agents/user-guide.md](docs/agents/user-guide.md)。
