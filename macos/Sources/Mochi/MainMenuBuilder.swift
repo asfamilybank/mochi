@@ -266,8 +266,8 @@ final class MainMenuBuilder {
     /// item of its own (its only help strings are the menu title and the "未找到“%@”的帮助。"
     /// alert), and that alert is what `showHelp:` shows for an app without a help book — the
     /// dead end the Xcode template's "<app> Help" item leads to. So the placeholder is kept out
-    /// by construction: nothing here routes to `showHelp:`; 「Mochi 帮助」 opens the README
-    /// instead.
+    /// by construction: nothing here routes to `showHelp:`; 「Mochi 帮助」 opens the user guide
+    /// on GitHub instead.
     private func helpMenuItem() -> NSMenuItem {
         let menu = NSMenu(title: "帮助")
 

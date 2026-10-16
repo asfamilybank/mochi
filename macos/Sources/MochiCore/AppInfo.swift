@@ -13,9 +13,10 @@ public enum AppInfo {
     /// The project's home, linked from the About panel's credits (#62).
     public static let repositoryURL = URL(string: "https://github.com/asfamilybank/mochi")!
 
-    /// Where the Help menu's 「Mochi 帮助」 goes (#62): the README on GitHub — Mochi ships no help
-    /// book of its own.
-    public static let helpURL = URL(string: "https://github.com/asfamilybank/mochi#readme")!
+    /// Where the Help menu's 「Mochi 帮助」 goes (#62): the user guide's home on GitHub (#128) —
+    /// Mochi ships no help book of its own. GitHub renders `docs/guide/README.md` when the
+    /// directory is opened, so the link survives pages being added or renamed inside it.
+    public static let helpURL = URL(string: "https://github.com/asfamilybank/mochi/tree/main/docs/guide")!
 
     /// Where 「反馈问题」 goes, from both the Help menu and the About panel's credits (#62).
     public static let issuesURL = URL(string: "https://github.com/asfamilybank/mochi/issues")!
