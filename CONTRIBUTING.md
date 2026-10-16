@@ -63,12 +63,4 @@ Issue 和需求 spec 都在本仓库的 GitHub Issues 里，见 [docs/agents/iss
 
 ## 修改界面文案时同步更新手册
 
-[用户手册](docs/guide/README.md)里的界面名称、默认热键和设置项，都按源码里的界面文案逐字书写。改了界面文案、默认热键或设置项（增删、改名、改默认值、改生效时机）之后，用 `git grep` 在 `docs/guide/` 里搜一遍旧的文字，把受影响的页面一起改掉：
-
-```bash
-git grep -n "旧的界面文案" -- docs/guide/ README.md
-```
-
-手册首页写着它对照的 Mochi 版本，每次发版时核对一遍。
-
-哪类改动要查哪几页、哪些截图要重截、截图怎么截，见 [docs/agents/user-guide.md](docs/agents/user-guide.md)。
+[用户手册](docs/guide/README.md)按源码里的界面文案逐字书写，改了界面文案、默认热键或设置项之后要同步更新，做法见 [docs/agents/user-guide.md](docs/agents/user-guide.md)。

@@ -2,7 +2,7 @@
 
 本手册对照 Mochi 0.3 编写。
 
-还没装 Mochi？安装和第一次打开时的放行步骤请看 [README 的「安装」一节](../../README.md#安装)。
+还没装 Mochi？安装和第一次打开时的放行步骤见 [README 的「安装」一节](../../README.md#安装)。
 
 遇到问题，先看 [故障排除](how-to/troubleshooting.md)：按症状查原因和做法。
 

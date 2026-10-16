@@ -57,6 +57,6 @@
 
 ## 遇到问题
 
-- [在系统设置里打开了摄像头、麦克风或下载文件夹权限，Mochi 里还是用不了](troubleshooting.md#在系统设置里打开了摄像头麦克风或下载文件夹权限mochi-里还是用不了)
+- [在系统设置里打开了摄像头、麦克风或文件和文件夹权限，Mochi 里还是用不了](troubleshooting.md#在系统设置里打开了摄像头麦克风或文件和文件夹权限mochi-里还是用不了)
 
 这项权限什么时候需要，见 [Mochi 存放的数据与系统权限](../reference/data-and-permissions.md#系统权限)。

@@ -80,7 +80,7 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 
 砍掉已上线功能时，文档要改这几处：新开一个 ADR；被推翻的旧 ADR 顶部加一行引用；`CONTEXT.md` 删掉这个术语，改记在相关术语的 `_Avoid_` 里并链到新 ADR；`docs/design-language.md` 里描述这个行为的句子也要改。先 `git grep` 中文名和英文名各搜一遍。
 
-修改界面文案、默认热键、设置项时，用 `git grep` 按旧文字搜一遍 `docs/guide/` 和 `README.md`，看用户手册是否需要同步；要查哪几页、哪些截图要重截、截图怎么截，见 [docs/agents/user-guide.md](docs/agents/user-guide.md)。
+修改界面文案、默认热键、设置项后，用户手册可能要跟着改，怎么同步见 [docs/agents/user-guide.md](docs/agents/user-guide.md)。
 
 ### macOS app (`macos/`)
 

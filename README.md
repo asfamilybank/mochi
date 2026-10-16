@@ -35,7 +35,7 @@ xattr -dr com.apple.quarantine /Applications/Mochi.app
 
 > 网上流传的「右键 →『打开』」那条老办法在 macOS 15 之后已经被移除，照着做只会白折腾。
 
-为什么会被拦下、放行是否安全，请看[为什么第一次打开会被拦下](docs/guide/explanation/unsigned-app.md)。以后换新版本请看[升级 Mochi](docs/guide/how-to/upgrade.md)，不想用了请看[卸载 Mochi](docs/guide/how-to/uninstall.md)。
+为什么会被拦下、放行是否安全，见[为什么第一次打开会被拦下](docs/guide/explanation/unsigned-app.md)。以后换新版本见[升级 Mochi](docs/guide/how-to/upgrade.md)，不想用了见[卸载 Mochi](docs/guide/how-to/uninstall.md)。
 
 ## 开始使用
 
@@ -58,4 +58,4 @@ xattr -dr com.apple.quarantine /Applications/Mochi.app
 
 ---
 
-想参与开发，请看 [CONTRIBUTING.md](CONTRIBUTING.md)。
+想参与开发，见 [CONTRIBUTING.md](CONTRIBUTING.md)。

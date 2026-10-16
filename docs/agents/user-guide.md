@@ -114,6 +114,12 @@ git grep -n "旧的界面文案" -- docs/guide/ README.md
 3. 网页用本机 `python3 -m http.server --bind 127.0.0.1` 提供的中性测试页，或者公开的中性页面（如维基百科）。测试用的书签和历史记录，可以在换好测试数据的 Mochi 里实际打开网页、添加书签产生，也可以按当前 schema 用 `sqlite3` 手写测试库。
 4. 截完退出 Mochi，删掉测试数据，把备份挪回原位。再核对一遍 `config.toml` 的 `shasum` 和历史记录的查询结果，跟第 2 步记下的一致才算还原好。
 
+### 子窗口会跟着主窗口一起截
+
+地址栏下拉的建议面板和书签编辑气泡是主窗口的子窗口：对主窗口执行 `screencapture -l<主窗口 id>` 时，它们会一并截进去。`open-pages-suggestions.png`、`bookmark-editor.png` 都是这样直接截主窗口得到的，不用另外合成。
+
+设置窗口上的 sheet（「清除浏览数据」「管理网站和数据」）不会这样，截设置窗口时带不上它们，要按 sheet 自己的窗口 id 单独截。
+
 ### 托盘菜单
 
 - 用 AX 按下 `AXExtrasMenuBar` 里 Mochi 的状态项。菜单会作为 Mochi 自己的一个 layer 101 窗口出现，用 `CGWindowListCopyWindowInfo` 查到它的窗口 ID，再 `screencapture -l<id>`。
