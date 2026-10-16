@@ -124,5 +124,6 @@
 ## 相关页面
 
 - [设置项一览](settings.md)
+- [普通模式与幽灵模式对照](modes.md)
 - [打开网页与设置启动页](../how-to/open-pages.md)
 - [摆放和关闭窗口](../how-to/window-placement.md)
