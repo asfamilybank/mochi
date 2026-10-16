@@ -35,6 +35,8 @@ xattr -dr com.apple.quarantine /Applications/Mochi.app
 
 > 网上流传的「右键 →『打开』」那条老办法在 macOS 15 之后已经被移除，照着做只会白折腾。
 
+为什么会被拦下、放行是否安全，请看[为什么第一次打开会被拦下](docs/guide/explanation/unsigned-app.md)。以后换新版本请看[升级 Mochi](docs/guide/how-to/upgrade.md)，不想用了请看[卸载 Mochi](docs/guide/how-to/uninstall.md)。
+
 ## 开始使用
 
 装好之后，打开[用户手册](docs/guide/README.md)，从那里找到你要看的那一页。
@@ -50,31 +52,9 @@ xattr -dr com.apple.quarantine /Applications/Mochi.app
 
 ## 反馈问题
 
+遇到问题，可以先看手册里的[故障排除](docs/guide/how-to/troubleshooting.md)，按症状查原因和做法。
+
 遇到问题或者有建议，请到 [GitHub Issues](https://github.com/asfamilybank/mochi/issues) 提交。
-
-## 常见问题
-
-**幽灵模式里，视频控制的组合键（如 ⌥P）没反应**
-
-视频控制里不带 ⌃ 或 ⌘ 的组合键（如 ⌥P、⇧F5）要靠「辅助功能」权限才能在其他应用里听到按键（系统把这类按键当成打字，只放行给受辅助功能信任的应用）；默认的轻按、连按两次，以及带 ⌃ 或 ⌘ 的组合键都不需要任何权限。缺这项权限时，设置的「幽灵模式」面板顶部和托盘菜单里会给出提示。
-
-Mochi 只做 ad-hoc 签名，系统按每一版的签名记账，所以每次升级之后，「系统设置 → 隐私与安全性 → 辅助功能」里 Mochi 的开关**看着还开着，实际已经失效**。在列表里选中 Mochi，点下方的「−」把它移除，再点「+」把 `/Applications/Mochi.app` 重新添加进来并打开开关，不用重新打开 Mochi，马上就会生效。
-
-**在系统设置里打开了摄像头、麦克风或下载文件夹权限，Mochi 里还是用不了**
-
-这几项权限只要被拒过一次，之后在「系统设置 → 隐私与安全性」里再打开，系统会提示需要退出并重新打开 Mochi，请照做：选「以后」的话，Mochi 重新打开之前仍然拿不到这项权限，设置里的提示也不会消失。辅助功能不受影响，打开就生效。
-
-## 卸载
-
-把 `/Applications/Mochi.app` 移到废纸篓即可。如果想连数据一起清掉，再删除 `~/Library/Application Support/Mochi`（配置文件 `config.toml`）和 `~/Library/Caches/com.daidalma.mochi`、`~/Library/WebKit/com.daidalma.mochi`、`~/Library/HTTPStorages/com.daidalma.mochi.binarycookies`（网站缓存与登录态）。
-
-授予过的系统权限（辅助功能、摄像头、麦克风、下载文件夹）由系统按应用身份保管，**不会随卸载或删除数据而消失**，重新安装后仍然在。要彻底清除，在终端执行：
-
-```bash
-tccutil reset All com.daidalma.mochi
-```
-
-或者到「系统设置 → 隐私与安全性」的对应页面里把 Mochi 逐项移除。
 
 ---
 
