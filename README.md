@@ -39,7 +39,7 @@ xattr -dr com.apple.quarantine /Applications/Mochi.app
 
 ## 开始使用
 
-装好之后，打开[用户手册](docs/guide/README.md)，从那里找到你要看的那一页。
+装好之后，跟着入门教程[上手：把视频放在桌面角落，边工作边看](docs/guide/tutorials/first-steps.md)走一遍，十几分钟就能学会核心用法。
 
 ## 用户手册
 
