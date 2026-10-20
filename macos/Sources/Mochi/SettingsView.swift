@@ -21,7 +21,7 @@ enum SettingsPane: CaseIterable {
 
     /// Fixed for every pane, like Safari's: only the height follows the content, so switching
     /// panes never makes the window jump sideways.
-    static let width: CGFloat = 540
+    static let width: CGFloat = 580
     /// Around every pane's content, so the content area is the pane plus this on each side.
     static let padding: CGFloat = 20
 
