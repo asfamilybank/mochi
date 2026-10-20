@@ -144,6 +144,9 @@ struct EmptyPageView: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 5)
                     .strokeBorder(color(palette.border), lineWidth: 0.5))
+            // #139: the grid offers the keys column less than a row with a "×2" needs, and a cap
+            // like「右 ⌘」would wrap at its space, its ⌘ cut off below. A cap is never narrower than its key.
+            .fixedSize()
     }
 
     private var palette: DesignTokens.GlassPalette { DesignTokens.glassPalette(dark: isDark) }
