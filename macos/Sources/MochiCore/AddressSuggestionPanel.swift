@@ -216,9 +216,14 @@ private final class SuggestionRowView: NSView {
         let primary: NSColor = isSelected ? .alternateSelectedControlTextColor : .labelColor
         let secondary: NSColor = isSelected ? .alternateSelectedControlTextColor : .secondaryLabelColor
         let font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        // #144: an attributed string wraps by word unless it says otherwise, whatever the label's
+        // `lineBreakMode` — a long row would wrap onto a second line past the row's height.
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byTruncatingTail
         let text = NSMutableAttributedString()
         func append(_ string: String, _ color: NSColor) {
-            text.append(NSAttributedString(string: string, attributes: [.foregroundColor: color, .font: font]))
+            text.append(NSAttributedString(
+                string: string, attributes: [.foregroundColor: color, .font: font, .paragraphStyle: paragraph]))
         }
         switch row {
         case .open(let url):
