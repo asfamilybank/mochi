@@ -118,7 +118,7 @@ git grep -n "旧的界面文案" -- docs/guide/ README.md
 
 地址栏下拉的建议面板和书签编辑气泡是主窗口的子窗口：对主窗口执行 `screencapture -l<主窗口 id>` 时，它们会一并截进去。`open-pages-suggestions.png`、`bookmark-editor.png` 都是这样直接截主窗口得到的，不用另外合成。
 
-设置窗口上的 sheet（「清除浏览数据」「管理网站和数据」）不会这样，截设置窗口时带不上它们，要按 sheet 自己的窗口 id 单独截。
+设置窗口上的 sheet（「清除浏览数据」「管理网站和数据」）也一样：截设置窗口就会带上它们，连同后面变暗的面板。`clear-browsing-data.png`、`manage-websites.png` 都是这样截的。
 
 ### 托盘菜单
 
@@ -138,7 +138,6 @@ git grep -n "旧的界面文案" -- docs/guide/ README.md
 ### 清除浏览数据
 
 - 对话框只打开、不点「清除」。它默认勾着「历史记录」，误点会删掉数据。
-- 它比「隐私与安全性」设置窗口高，下半截会伸出设置窗口外。这是界面的真实样子，不是截坏了。
 
 ### 地址栏
 
