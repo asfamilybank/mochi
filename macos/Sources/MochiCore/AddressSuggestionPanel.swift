@@ -196,6 +196,13 @@ private final class SuggestionRowView: NSView {
         onClick?()
     }
 
+    /// #142: the row is one button whose label says it all — its icons are decoration (an
+    /// unlabeled symbol reads as「地球仪键」) and its text field only repeats the label. Marking the
+    /// subviews as non-elements does not hide an `NSImageView`, so the row lists none.
+    override func accessibilityChildren() -> [Any]? { [] }
+
+    override func accessibilityHitTest(_ point: NSPoint) -> Any? { self }
+
     override func accessibilityPerformPress() -> Bool {
         onClick?()
         return true
