@@ -7,6 +7,9 @@ import SwiftUI
 struct PrivacySettingsTab: View {
     @ObservedObject var viewModel: SettingsViewModel
     @State private var isManagingWebsites = false
+    /// The open sheet's height (#140): both sheets are taller than this pane, so while one is up
+    /// the pane grows to hold it and the settings window grows with it, shrinking back after.
+    @State private var sheetHeight: CGFloat = 0
 
     var body: some View {
         Form {
@@ -37,10 +40,12 @@ struct PrivacySettingsTab: View {
                 Button("清除浏览数据…") { viewModel.isClearingBrowsingData = true }
                     .sheet(isPresented: $viewModel.isClearingBrowsingData) {
                         ClearBrowsingDataSheet { kinds, range in viewModel.clearBrowsingData(kinds, from: range) }
+                            .onGeometryChange(for: CGFloat.self, of: \.size.height) { sheetHeight = $0 }
                     }
             }
             .sheet(isPresented: $isManagingWebsites) {
                 ManageWebsitesSheet(settings: viewModel)
+                    .onGeometryChange(for: CGFloat.self, of: \.size.height) { sheetHeight = $0 }
             }
 
             Section("安全性") {
@@ -54,5 +59,10 @@ struct PrivacySettingsTab: View {
             }
         }
         .formStyle(.columns)
+        // The content area (this plus the padding around it) holds the sheet with a padding's
+        // margin below, rather than ending flush with the window's bottom edge.
+        .frame(minHeight: isShowingSheet && sheetHeight > 0 ? sheetHeight - SettingsPane.padding : nil, alignment: .top)
     }
+
+    private var isShowingSheet: Bool { viewModel.isClearingBrowsingData || isManagingWebsites }
 }

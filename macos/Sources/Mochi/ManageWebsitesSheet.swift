@@ -78,7 +78,8 @@ struct ManageWebsitesSheet: View {
             buttons
         }
         .padding(20)
-        .frame(width: 560, height: 460)
+        // #140: inside the settings window it hangs from, a padding's margin to spare.
+        .frame(width: SettingsPane.width - SettingsPane.padding, height: 460)
         .onAppear { model.reload() }
         .alert("确定要删除所有网站的数据吗？", isPresented: $isConfirmingRemoveAll) {
             Button("全部删除", role: .destructive) { model.removeAll() }

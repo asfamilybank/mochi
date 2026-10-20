@@ -84,7 +84,15 @@ private final class SettingsTabViewController: NSTabViewController {
         fitWindowToSelectedPane(animated: view.window?.isVisible == true)
     }
 
-    func fitWindowToSelectedPane(animated: Bool) {
+    /// The shown pane changed its natural height without a tab switch — 隐私与安全性 making room
+    /// for a sheet (#140) — so the window follows, with the pane staying on screen.
+    override func preferredContentSizeDidChange(for viewController: NSViewController) {
+        super.preferredContentSizeDidChange(for: viewController)
+        guard viewController === tabViewItems[selectedTabViewItemIndex].viewController else { return }
+        fitWindowToSelectedPane(animated: view.window?.isVisible == true, hidingPane: false)
+    }
+
+    func fitWindowToSelectedPane(animated: Bool, hidingPane: Bool = true) {
         guard let window = view.window,
             let pane = tabViewItems[selectedTabViewItemIndex].viewController
         else { return }
@@ -100,7 +108,7 @@ private final class SettingsTabViewController: NSTabViewController {
             window.setFrame(target, display: true)
             return
         }
-        pane.view.isHidden = true
+        pane.view.isHidden = hidingPane
         NSAnimationContext.runAnimationGroup { context in
             context.duration = window.animationResizeTime(target)
             window.animator().setFrame(target, display: true)

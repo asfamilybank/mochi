@@ -22,6 +22,8 @@ enum SettingsPane: CaseIterable {
     /// Fixed for every pane, like Safari's: only the height follows the content, so switching
     /// panes never makes the window jump sideways.
     static let width: CGFloat = 540
+    /// Around every pane's content, so the content area is the pane plus this on each side.
+    static let padding: CGFloat = 20
 
     var title: String {
         switch self {
@@ -63,7 +65,7 @@ enum SettingsPane: CaseIterable {
             case .advanced: AdvancedSettingsTab(viewModel: viewModel)
             }
         }
-        .padding(20)
+        .padding(Self.padding)
         .frame(width: Self.width)
     }
 }
