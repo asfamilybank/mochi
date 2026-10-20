@@ -1,5 +1,7 @@
 # Ghost Mode 收敛为纯隐身状态：需要交互的东西一律不属于它
 
+> 2026-10-20 更新：本 ADR 中「Hidden 仅在 Ghost Mode 生效」「置顶只在隐身场景下才有意义」「Snap 是 Normal Mode 专属」三处已被 [ADR-0035](0035-float-mode-as-a-third-bundled-state.md) 修改：新增的 Float Mode（悬浮模式）可交互、默认置顶，与 Ghost Mode 共用 Hidden，并且启用 Snap。Ghost Mode 本身「永不获得焦点、需要交互的东西不属于它」的判据不变。
+
 > 2026-10-09 更新：本 ADR 中 Hidden「页面继续、视频不能停」的语义（以及可见性分工表里 Hidden 那一行的「页面：继续」）已被 [ADR-0021](0021-hidden-pauses-media-and-never-resumes.md) 部分取代——进入 Hidden 时暂停页面上的全部媒体，取消隐藏不恢复；页面其余部分照旧运行，`alphaValue = 0` 的实现约束不变。
 >
 > 2026-10-08 更新：本 ADR 中「鼠标移入避让」一节（以及可见性分工表里对应的那一行）已被 [ADR-0019](0019-remove-mouse-entered-avoidance.md) 取代——该偏好整个砍掉。其余结论不变。保留下文作为历史记录。

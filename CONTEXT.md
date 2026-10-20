@@ -25,14 +25,18 @@ Widget 的隐身状态，由全局热键整体切换开关。它是一个**不�
 - 原生窗口装饰和工具栏一起隐藏，只留纯网页内容；
 - 透明度降到设定的目标值；
 - 开启鼠标穿透；
-- **始终置顶**（置顶不再是独立开关，只在隐身场景下才有意义）；
+- **始终置顶**（置顶不是独立开关；Float Mode 默认也置顶，但那里是可关闭的偏好，见 [ADR-0035](docs/adr/0035-float-mode-as-a-third-bundled-state.md)）；
 - **永不获得焦点**——进入/停留在 Ghost Mode 期间窗口不成为 key window；进入 Ghost Mode 或 Hidden 时，如果焦点在 Widget 上，就交还给之前的 app（菜单栏随之切走）；设置等其他 Mochi 窗口是普通窗口，焦点不受影响。只有退出 Ghost Mode 时才激活应用。
 
 退出方式是再次按热键，或点击系统托盘图标（托盘图标在应用运行期间常驻显示，不区分模式）。应用重启后一律先回到 Normal Mode，不自动恢复 Ghost Mode 状态。Ghost Mode 下没有刷新、没有缩放、没有工具栏——要操作就先退出隐身。网页在 Ghost Mode 期间发起的任何需要用户交互的请求，一律按不打扰的方式直接了结，既不退出隐身、也不挂起等待：Widget 页面的网页权限请求直接拒绝（Popup Window 是普通窗口，照常询问）、弹框按取消/确定了结、下载存到默认位置、Popup Window 不打开。
 _Avoid_: 召唤工具栏（ADR-0006 的旧设计，已被 ADR-0012 砍掉；用户要操作工具栏应先退出 Ghost Mode）；鼠标移入避让 / 鼠标移入即隐藏（ADR-0012 的可关闭偏好、ADR-0006 的恒开行为，已被 [ADR-0019](docs/adr/0019-remove-mouse-entered-avoidance.md) 整个砍掉；Ghost Mode 下鼠标不影响可见性，要看不见就用 Hidden）
 
+**Float Mode（悬浮模式）**:
+Widget 的第三种状态，由全局热键整体切换开关：窗口悬在其他应用之上，但用起来和普通窗口一样。它和 Ghost Mode 一样是绑定的复合状态——原生窗口装饰和工具栏隐藏、只留网页内容，透明度降到它自己的设定值（与 Ghost Mode 分开设置），默认置顶（可在设置中关闭，是偏好而不是开关）；分界在焦点：Float Mode 不做鼠标穿透、可以获得焦点，焦点和键盘鼠标的行为与 Normal Mode 无异。移动、缩放靠原生标题栏：平时看不见，鼠标移到窗口顶部边缘时从网页上方向外长出，网页本身不动；进入 Float Mode 时网页也留在屏幕上原来的位置，只是去掉了工具栏。依赖工具栏的命令（打开位置、添加书签）不可用；视频控制和热键传递不生效，它们只属于 Ghost Mode；网页的交互请求按普通窗口处理。三种模式两两之间可以直接切换，Float Mode 和 Ghost Mode 的热键都是"进入这个模式；已经在其中就回到 Normal Mode"。应用重启或 Widget 重新打开一律回到 Normal Mode（见 [ADR-0035](docs/adr/0035-float-mode-as-a-third-bundled-state.md)）。
+_Avoid_: 浮窗模式（浮窗是 Widget 的口语说法，不是一种模式）、迷你模式、画中画
+
 **Hidden（隐藏 / 老板键）**:
-Ghost Mode 内部的一个独立可见性维度，由一个仅在 Ghost Mode 生效的全局热键切换：窗口**完全看不见，但仍然存在、网页继续运行**。进入 Hidden 时会暂停页面上所有正在播放的视频和音频（包括跨域 iframe 里的）；取消隐藏、或在隐藏状态下退出 Ghost Mode 时都**不**自动恢复，想继续看就用视频控制按一下播放（见 [ADR-0021](docs/adr/0021-hidden-pauses-media-and-never-resumes.md)）。这是它跟"关闭 Widget"的分界线——关闭是销毁并停止，Hidden 只是看不见、暂停。热键一直保持隐藏，直到再按一次热键取消，或退出 Ghost Mode。实现上必须用 `alphaValue = 0` 而非 `orderOut`，否则 WebKit 会因窗口被判定遮挡而节流渲染，破坏"页面继续跑"这条语义（见 [ADR-0012](docs/adr/0012-ghost-mode-as-pure-invisibility.md)）。
+Ghost Mode 和 Float Mode 共有的一个可见性维度，由一个只在这两个模式下生效的全局热键切换（Normal Mode 下什么也不做）：窗口**完全看不见，但仍然存在、网页继续运行**。进入 Hidden 时焦点交还给之前的 app，取消隐藏只恢复可见、从不激活。进入 Hidden 时会暂停页面上所有正在播放的视频和音频（包括跨域 iframe 里的）；取消隐藏、或在隐藏状态下回到 Normal Mode 时都**不**自动恢复，想继续看就用视频控制按一下播放（见 [ADR-0021](docs/adr/0021-hidden-pauses-media-and-never-resumes.md)）。这是它跟"关闭 Widget"的分界线——关闭是销毁并停止，Hidden 只是看不见、暂停。热键一直保持隐藏，直到再按一次热键取消，或回到 Normal Mode；在 Float Mode 和 Ghost Mode 之间切换不影响隐藏。Hidden 期间网页发起的交互请求，不论处于哪个模式，都按 Ghost Mode 的不打扰方式了结。可以在设置里选择隐藏时连 Dock 和 ⌘Tab 一起隐藏，两处只能一起（见 [ADR-0035](docs/adr/0035-float-mode-as-a-third-bundled-state.md)）。实现上必须用 `alphaValue = 0` 而非 `orderOut`，否则 WebKit 会因窗口被判定遮挡而节流渲染，破坏"页面继续跑"这条语义（见 [ADR-0012](docs/adr/0012-ghost-mode-as-pure-invisibility.md)）。
 _Avoid_: 快速隐藏（旧名，当时是 Normal Mode 专用能力，已随 Normal Mode 回归普通窗口而移除）；收起（一个被否决的中间概念，⌘W 是真关闭，不是收起）
 
 **Mouse Passthrough（鼠标穿透）**:
@@ -40,8 +44,8 @@ Ghost Mode 内置的能力，不能独立于 Ghost Mode 单独开启：开启后
 _Avoid_: 无
 
 **Snap（吸附）**:
-Normal Mode 专属的拖拽磁性吸附，可在设置中关闭：窗口边缘进入阈值距离会自动贴齐屏幕边缘/角落，继续朝反方向拖动超过阈值即可脱离，不是强制锁死。吸附阈值不暴露为配置项。它和 macOS 自带的边缘阻挡是两回事，两者叠加：系统只在窗口已经到达屏幕边缘、继续往外推时把它挡住一段距离（所有窗口都有，阈值不可调、无 API）；Snap 负责在靠近时主动把窗口拉过去贴齐。系统的平铺（拖到边缘变半屏）也是另一回事，Mochi 不需要做任何事就有。它不跟着置顶一起内化进 Ghost Mode——Snap 只在用户手动拖拽时起作用，而 Ghost Mode 下窗口穿透且经常不可见、根本拖不动（见 [ADR-0012](docs/adr/0012-ghost-mode-as-pure-invisibility.md)）。保存的窗口位置所在显示器被移除时，自动收回主显示器内的安全默认位置。
-_Avoid_: 磁吸（口语化说法，正式术语用 Snap/吸附）；Pin（置顶）（不再是独立术语——置顶已内化为 Ghost Mode 的固有属性，见 ADR-0012）
+Normal Mode 和 Float Mode 下的拖拽磁性吸附，可在设置中关闭：窗口边缘进入阈值距离会自动贴齐屏幕边缘/角落，继续朝反方向拖动超过阈值即可脱离，不是强制锁死。吸附阈值不暴露为配置项。它和 macOS 自带的边缘阻挡是两回事，两者叠加：系统只在窗口已经到达屏幕边缘、继续往外推时把它挡住一段距离（所有窗口都有，阈值不可调、无 API）；Snap 负责在靠近时主动把窗口拉过去贴齐。系统的平铺（拖到边缘变半屏）也是另一回事，Mochi 不需要做任何事就有。它不跟着置顶一起内化进 Ghost Mode——Snap 只在用户手动拖拽时起作用，而 Ghost Mode 下窗口穿透且经常不可见、根本拖不动（见 [ADR-0012](docs/adr/0012-ghost-mode-as-pure-invisibility.md)）。Float Mode 下吸附的是网页那部分，顶边停在可见区域上沿往下一个标题栏高度处，给悬停时长出的标题栏留位置（见 [ADR-0035](docs/adr/0035-float-mode-as-a-third-bundled-state.md)）。保存的窗口位置所在显示器被移除时，自动收回主显示器内的安全默认位置。
+_Avoid_: 磁吸（口语化说法，正式术语用 Snap/吸附）；Pin（置顶）（不再是独立术语——置顶是 Ghost Mode 的固有属性、Float Mode 的偏好，见 ADR-0012、ADR-0035）
 
 **Script Injection（脚本注入）**:
 向 Widget 的网页上下文注入内容的统一底层机制，来源分三类：内置的、随应用更新的官方网站适配脚本，用户自定义脚本，以及用户自定义样式表（CSS）。三者都在下次加载页面时生效，技术权限相同，仅在 UI 上区分来源标注。
