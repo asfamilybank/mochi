@@ -71,7 +71,7 @@ final class HistoryMenuController: NSObject, NSMenuDelegate {
         targets.append(target)
         let menuItem = NSMenuItem(title: item.title, action: #selector(MenuItemActionTarget.invoke), keyEquivalent: "")
         menuItem.target = target
-        menuItem.toolTip = url.absoluteString
+        menuItem.toolTip = URLDisplay.text(of: url)
         menuItem.image = icon(for: item)
         return menuItem
     }

@@ -144,6 +144,6 @@ public final class BookmarkBrowser {
 
     private static func name(_ name: String, orAddress url: URL) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? url.absoluteString : trimmed
+        return trimmed.isEmpty ? URLDisplay.text(of: url) : trimmed
     }
 }

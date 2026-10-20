@@ -260,7 +260,7 @@ public final class HistoryBrowser {
     /// - Parameter day: the day's title, for a row with no day header above it (search results).
     private static func row(for visit: HistoryVisit, time: DateFormatter, day: String? = nil) -> Row {
         let title = HistoryText.title(of: visit)
-        let address = visit.url.absoluteString
+        let address = URLDisplay.text(of: visit.url)
         let clock = time.string(from: visit.visitedAt)
         return Row(
             id: visit.id, url: visit.url, title: title ?? address, subtitle: title == nil ? nil : address,

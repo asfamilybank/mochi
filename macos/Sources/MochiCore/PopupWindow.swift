@@ -122,7 +122,7 @@ final class PopupWindowController: NSObject, NSWindowDelegate, WKNavigationDeleg
     }
 
     private func updateAddress() {
-        addressLabel.stringValue = webView.url?.absoluteString ?? ""
+        addressLabel.stringValue = webView.url.map(URLDisplay.text(of:)) ?? ""
         addressLabel.toolTip = addressLabel.stringValue
         updateTitle()
     }

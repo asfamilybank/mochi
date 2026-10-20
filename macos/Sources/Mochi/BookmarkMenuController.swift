@@ -54,7 +54,7 @@ final class BookmarkMenuController: NSObject, NSMenuDelegate {
         targets.append(target)
         let menuItem = NSMenuItem(title: item.title, action: #selector(MenuItemActionTarget.invoke), keyEquivalent: "")
         menuItem.target = target
-        menuItem.toolTip = url.absoluteString
+        menuItem.toolTip = URLDisplay.text(of: url)
         // The bookmark's own icon, or the globe history shows for a page without one.
         menuItem.image = icons.image(for: item.faviconID)
             ?? NSImage(systemSymbolName: "globe", accessibilityDescription: nil)

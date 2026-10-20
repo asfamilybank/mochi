@@ -227,13 +227,13 @@ private struct BookmarkRow: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Text(row.url.absoluteString)
+            Text(URLDisplay.text(of: row.url))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .help(row.url.absoluteString)
+        .help(URLDisplay.text(of: row.url))
     }
 }
 

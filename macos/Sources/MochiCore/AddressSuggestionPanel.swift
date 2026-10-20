@@ -228,9 +228,9 @@ private final class SuggestionRowView: NSView {
         return text
     }
 
-    /// The address as it reads best: no `https://`, no trailing `/` on a bare host.
+    /// The address as it reads best: decoded (#141), no `https://`, no trailing `/` on a bare host.
     private static func display(_ url: URL) -> String {
-        var text = url.absoluteString
+        var text = URLDisplay.text(of: url)
         for scheme in ["https://", "http://"] where text.hasPrefix(scheme) {
             text.removeFirst(scheme.count)
         }

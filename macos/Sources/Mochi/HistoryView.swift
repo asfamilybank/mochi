@@ -321,6 +321,6 @@ private struct HistoryRow: View {
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
         }
-        .help(row.url.absoluteString)
+        .help(URLDisplay.text(of: row.url))
     }
 }

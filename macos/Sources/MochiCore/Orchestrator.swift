@@ -745,7 +745,7 @@ public final class Orchestrator {
             let origin = Self.historyOrigin(of: page)
             let icon = historySiteIcon.flatMap { $0.origin == origin ? $0.png : nil }
             guard case .success(let added) = bookmarkStore.add(
-                name: title.isEmpty ? page.absoluteString : title, url: page, favicon: icon)
+                name: title.isEmpty ? URLDisplay.text(of: page) : title, url: page, favicon: icon)
             else { return }
             bookmark = added
             wasBookmarked = false

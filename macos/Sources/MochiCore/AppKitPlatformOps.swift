@@ -1640,7 +1640,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     func showErrorPage(message: String) {
         let failedURL = currentURL
         errorPageHostingView.rootView = ErrorPageView(
-            failedURL: failedURL?.absoluteString ?? "", message: message,
+            failedURL: failedURL.map(URLDisplay.text(of:)) ?? "", message: message,
             onRetry: { [weak self] in
                 guard let failedURL else { return }
                 self?.loadURL(failedURL)

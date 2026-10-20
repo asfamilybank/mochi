@@ -213,6 +213,21 @@ import Testing
         #expect(row?.subtitle == nil)
     }
 
+    /// #141: a row reads its address as the characters it names — under a title or standing in
+    /// for one — while copying it still gives the address itself.
+    @Test func aRowShowsItsAddressDecodedButCopiesItAsIs() throws {
+        let store = makeStore()
+        let titled = visit(store, "https://zh.wikipedia.org/wiki/%E5%92%96%E5%95%A1", at: "2026-10-12 09:00", title: "咖啡")
+        visit(store, "https://zh.wikipedia.org/wiki/%E8%8C%B6", at: "2026-10-12 09:30")
+        let browser = openedBrowser(store)
+
+        let rows = try #require(browser.days.first?.rows)
+
+        #expect(rows.map(\.title) == ["https://zh.wikipedia.org/wiki/茶", "咖啡"])
+        #expect(rows.map(\.subtitle) == [nil, "https://zh.wikipedia.org/wiki/咖啡"])
+        #expect(browser.copiedText(for: [titled]) == "https://zh.wikipedia.org/wiki/%E5%92%96%E5%95%A1")
+    }
+
     /// #117: a row shows its own visit's icon, read from the store.
     @Test func aRowCarriesItsVisitsIcon() throws {
         let store = makeStore()

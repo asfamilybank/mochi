@@ -68,7 +68,7 @@ public struct HistoryMenu: Equatable {
     /// The page's title on one line, or its address when it has none; cut to
     /// `maximumTitleLength` with a trailing ellipsis.
     private static func item(for visit: HistoryVisit) -> Item {
-        let shown = HistoryText.title(of: visit) ?? visit.url.absoluteString
+        let shown = HistoryText.title(of: visit) ?? URLDisplay.text(of: visit.url)
         let cut = shown.count > maximumTitleLength ? shown.prefix(maximumTitleLength - 1) + "…" : shown
         return Item(title: String(cut), url: visit.url, faviconID: visit.faviconID)
     }
