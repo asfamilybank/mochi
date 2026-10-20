@@ -93,7 +93,7 @@ import Testing
 
         let request = MediaCaptureRequest(device: row.device, host: row.host, source: row.source)
         let decision = MediaCaptureDecision.deciding(
-            request, config: config, isGhostModeActive: row.ghost, grantedThisTime: grants)
+            request, config: config, doNotDisturb: row.ghost, grantedThisTime: grants)
         #expect(decision == row.expected)
     }
 

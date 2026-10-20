@@ -12,7 +12,7 @@ final class MediaCapturePermissionController {
     private let window: WidgetWindowHandle
     private let currentConfig: () -> WidgetConfig
     private let persist: (@escaping (WidgetConfig) -> WidgetConfig) -> Void
-    private let isGhostModeActive: () -> Bool
+    private let doNotDisturb: () -> Bool
     private let now: () -> Date
     /// 「仅这次允许」, per web view — the in-memory half of the answer, never written to the config.
     private var grantsThisTime: [WebViewSource: Set<MediaCaptureGrant>] = [:]
@@ -21,14 +21,14 @@ final class MediaCapturePermissionController {
         platformOps: PlatformOps, window: WidgetWindowHandle,
         currentConfig: @escaping () -> WidgetConfig,
         persist: @escaping (@escaping (WidgetConfig) -> WidgetConfig) -> Void,
-        isGhostModeActive: @escaping () -> Bool,
+        doNotDisturb: @escaping () -> Bool,
         now: @escaping () -> Date
     ) {
         self.platformOps = platformOps
         self.window = window
         self.currentConfig = currentConfig
         self.persist = persist
-        self.isGhostModeActive = isGhostModeActive
+        self.doNotDisturb = doNotDisturb
         self.now = now
         platformOps.onMediaCaptureRequested(window) { [weak self] request in
             self?.decide(request) ?? .deny
@@ -51,15 +51,15 @@ final class MediaCapturePermissionController {
         platformOps.forgetMediaCaptureGrants(in: window, of: source, onlyIfIdle: false)
     }
 
-    /// #96: Ghost Mode denies the widget's page, so a grant WebKit kept from Normal Mode must go
-    /// (a capture already running carries on).
-    func ghostModeEntered() {
+    /// #96: 不打扰 (Ghost Mode) denies the widget's page, so a grant WebKit kept from Normal Mode
+    /// must go (a capture already running carries on).
+    func doNotDisturbBegan() {
         platformOps.forgetMediaCaptureGrants(in: window, of: .widget, onlyIfIdle: true)
     }
 
     private func decide(_ request: MediaCaptureRequest) -> MediaCaptureDecision {
         .deciding(
-            request, config: currentConfig(), isGhostModeActive: isGhostModeActive(),
+            request, config: currentConfig(), doNotDisturb: doNotDisturb(),
             grantedThisTime: grantsThisTime[request.source] ?? [])
     }
 

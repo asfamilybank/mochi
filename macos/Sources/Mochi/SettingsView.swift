@@ -4,8 +4,9 @@ import SwiftUI
 /// The settings window's panes (#65), in toolbar order — the Safari-style preferences window
 /// that `SettingsWindowController` builds, one toolbar button per case. Grouped by the user's
 /// mental model rather than by implementation (#46): a new setting joins the pane it belongs to
-/// rather than inventing a pane of its own. 幽灵模式 holds the hotkeys too (#88) — nearly every
-/// one only works in Ghost Mode — while Snap lives in 通用. 网站 and 隐私与安全性 (#100) follow
+/// rather than inventing a pane of its own. 窗口模式 (named 幽灵模式 until #146 made room for
+/// Float Mode, ADR-0035) holds each mode's look and the hotkeys too (#88) — nearly every one only
+/// works outside Normal Mode — while Snap lives in 通用. 网站 and 隐私与安全性 (#100) follow
 /// Safari's 网站 and 隐私: per-website settings in one, what is kept about websites in the other.
 ///
 /// Every pane is backed by `SettingsViewModel` so each edit flows through `SettingsController`'s
@@ -17,7 +18,7 @@ import SwiftUI
 /// already-executed JavaScript can't be undone — so that pane says "next page load" and offers the
 /// load as a button.
 enum SettingsPane: CaseIterable {
-    case general, ghostMode, websites, privacy, scripts, advanced
+    case general, windowModes, websites, privacy, scripts, advanced
 
     /// Fixed for every pane, like Safari's: only the height follows the content, so switching
     /// panes never makes the window jump sideways.
@@ -28,7 +29,7 @@ enum SettingsPane: CaseIterable {
     var title: String {
         switch self {
         case .general: "通用"
-        case .ghostMode: "幽灵模式"
+        case .windowModes: "窗口模式"
         case .websites: "网站"
         case .privacy: "隐私与安全性"
         case .scripts: "脚本"
@@ -40,8 +41,8 @@ enum SettingsPane: CaseIterable {
         switch self {
         case .general: "gearshape"
         // An SF Symbol rather than the hand-drawn ghost (ADR-0013); `eye.slash` would read as
-        // Hidden, which is one thing inside Ghost Mode, not the mode itself.
-        case .ghostMode: "rectangle.dashed"
+        // Hidden, which is one thing inside a mode, not the modes themselves.
+        case .windowModes: "rectangle.dashed"
         case .websites: "globe"
         case .privacy: "hand.raised"
         case .scripts: "curlybraces"
@@ -50,14 +51,14 @@ enum SettingsPane: CaseIterable {
     }
 
     /// The pane's content at its natural height and the shared fixed width. The list-driven
-    /// panes (幽灵模式's mapping table, 网站's sidebar, scripts' editor) have no natural height of
+    /// panes (窗口模式's mapping table, 网站's sidebar, scripts' editor) have no natural height of
     /// their own — a `List`/`TextEditor` takes whatever it is offered — so they get an explicit one.
     @ViewBuilder
     func content(viewModel: SettingsViewModel) -> some View {
         Group {
             switch self {
             case .general: GeneralSettingsTab(viewModel: viewModel)
-            case .ghostMode: GhostModeSettingsTab(viewModel: viewModel).frame(height: 830)
+            case .windowModes: WindowModesSettingsTab(viewModel: viewModel).frame(height: 830)
             // #109: tall enough for the 系统权限 hint, ~6 exception rows and the bottom row.
             case .websites: WebsitesSettingsTab(viewModel: viewModel).frame(height: 380)
             case .privacy: PrivacySettingsTab(viewModel: viewModel)
@@ -232,22 +233,23 @@ struct GeneralSettingsTab: View {
     }
 }
 
-/// Everything about Ghost Mode in one pane (#88): its look, then the keys — #45 + #14 + #79,
+/// 窗口模式 (#146; 幽灵模式 before it): each mode's own group — Ghost Mode's look, with Float Mode and
+/// Hidden joining as groups of their own (ADR-0035) — then the keys — #45 + #14 + #79,
 /// laid out per #84 as three sections (全局热键, 视频控制, 热键传递), each saying whether its keys
 /// are taken from other apps, and every row its own one-line description. 恢复默认热键 sits in a
 /// footer below all of them and leaves the opacity alone.
-struct GhostModeSettingsTab: View {
+struct WindowModesSettingsTab: View {
     @ObservedObject var viewModel: SettingsViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if let prompt = viewModel.systemPermissionPrompts.first(where: { $0.placement == .ghostModePanelTop }) {
+            if let prompt = viewModel.systemPermissionPrompts.first(where: { $0.placement == .windowModesPanelTop }) {
                 AccessibilityPromptBanner(action: prompt.action) { viewModel.perform(prompt) }
 
                 Divider()
             }
 
-            GhostAppearanceSection(viewModel: viewModel)
+            GhostModeSection(viewModel: viewModel)
 
             Divider()
 
@@ -296,9 +298,10 @@ struct GhostModeSettingsTab: View {
     }
 }
 
-/// 外观 (#88): Ghost Mode's target opacity, moved here from the old 窗口 pane and laid out like
-/// the hotkey rows below it. Written only when the drag ends — mid-drag values stay in `@State`.
-private struct GhostAppearanceSection: View {
+/// 幽灵模式 (#88, headed 外观 until #146): Ghost Mode's target opacity, moved here from the old 窗口
+/// pane and laid out like the hotkey rows below it. Written only when the drag ends — mid-drag
+/// values stay in `@State`.
+private struct GhostModeSection: View {
     @ObservedObject var viewModel: SettingsViewModel
     @State private var opacity: Double
 
@@ -309,7 +312,7 @@ private struct GhostAppearanceSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("外观").font(.headline)
+            Text("幽灵模式").font(.headline)
             HotkeyRow(title: "目标透明度") {
                 HStack {
                     Slider(
@@ -421,7 +424,7 @@ private struct VideoControlSection: View {
     }
 }
 
-/// The top of the 幽灵模式 pane while Accessibility is missing and a 视频控制 key needs it
+/// The top of the 窗口模式 pane while Accessibility is missing and a 视频控制 key needs it
 /// (#111, ADR-0029); nothing at all once it is granted. Its button is the camera's: 请求权限
 /// while the system has never asked, 打开系统设置 once it has refused. Ad-hoc signing means an
 /// update leaves System Settings' switch on but no longer honoured, and Mochi cannot tell that

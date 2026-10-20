@@ -37,7 +37,7 @@ import Testing
         let fileSystem = Self.fakeFileSystem(chosenFolderIsWritable: row.folder == .writable)
 
         let decision = DownloadDestination.decide(
-            suggestedFilename: "report.pdf", location: location, isGhostModeActive: row.ghost, fileSystem: fileSystem)
+            suggestedFilename: "report.pdf", location: location, doNotDisturb: row.ghost, fileSystem: fileSystem)
 
         let expected: DownloadDestinationDecision =
             switch row.expected {
@@ -65,7 +65,7 @@ import Testing
             downloadsFolder: Self.downloads, fileExists: { existing.contains($0.path) }, isWritableDirectory: { _ in true })
 
         let decision = DownloadDestination.decide(
-            suggestedFilename: row.name, location: .downloadsFolder, isGhostModeActive: false, fileSystem: fileSystem)
+            suggestedFilename: row.name, location: .downloadsFolder, doNotDisturb: false, fileSystem: fileSystem)
 
         #expect(decision == .saveTo(Self.downloads.appendingPathComponent(row.expected)))
     }
@@ -75,7 +75,7 @@ import Testing
         let fileSystem = DownloadFileSystem(
             downloadsFolder: Self.downloads, fileExists: { _ in true }, isWritableDirectory: { _ in true })
         let decision = DownloadDestination.decide(
-            suggestedFilename: "a.zip", location: .askEachTime, isGhostModeActive: false, fileSystem: fileSystem)
+            suggestedFilename: "a.zip", location: .askEachTime, doNotDisturb: false, fileSystem: fileSystem)
         #expect(decision == .askWithSavePanel(directory: Self.downloads, suggestedFilename: "a.zip"))
     }
 
@@ -88,7 +88,7 @@ import Testing
     ])
     func unsafeSuggestedNamesAreSanitized(_ row: (suggested: String, expected: String)) {
         let decision = DownloadDestination.decide(
-            suggestedFilename: row.suggested, location: .downloadsFolder, isGhostModeActive: false,
+            suggestedFilename: row.suggested, location: .downloadsFolder, doNotDisturb: false,
             fileSystem: Self.fakeFileSystem(chosenFolderIsWritable: true))
         #expect(decision == .saveTo(Self.downloads.appendingPathComponent(row.expected)))
     }
@@ -113,7 +113,7 @@ import Testing
         var delivered: [DownloadDestinationDecision] = []
 
         DownloadDestination.decide(
-            suggestedFilename: "report.pdf", location: .folder(Self.chosen), isGhostModeActive: false,
+            suggestedFilename: "report.pdf", location: .folder(Self.chosen), doNotDisturb: false,
             fileSystem: fileSystem
         ) { delivered.append($0) }
 
@@ -141,7 +141,7 @@ import Testing
         let deliveredOnMain = await withCheckedContinuation { continuation in
             DispatchQueue.main.async {
                 DownloadDestination.decide(
-                    suggestedFilename: "a.zip", location: .downloadsFolder, isGhostModeActive: false,
+                    suggestedFilename: "a.zip", location: .downloadsFolder, doNotDisturb: false,
                     fileSystem: fileSystem
                 ) { _ in continuation.resume(returning: Thread.isMainThread) }
             }

@@ -255,7 +255,7 @@ public enum MediaCaptureDecision: Equatable, Sendable {
 
     /// The decision for `request` (ADR-0027):
     ///
-    /// - Ghost Mode denies a request from the widget's page without asking ("不打扰"); a Popup
+    /// - 不打扰 (Ghost Mode) denies a request from the widget's page without asking; a Popup
     ///   Window is an ordinary window the user may be working in, so its requests go through the
     ///   rules as usual.
     /// - Each permission the request needs is the host's exception, or the default when the host
@@ -263,10 +263,10 @@ public enum MediaCaptureDecision: Equatable, Sendable {
     ///   page load turns 询问 into 允许 — never a 拒绝 the user has set since.
     /// - A camera+microphone request takes the stricter of the two (拒绝 > 询问 > 允许).
     public static func deciding(
-        _ request: MediaCaptureRequest, config: WidgetConfig, isGhostModeActive: Bool,
+        _ request: MediaCaptureRequest, config: WidgetConfig, doNotDisturb: Bool,
         grantedThisTime: Set<MediaCaptureGrant>
     ) -> MediaCaptureDecision {
-        if isGhostModeActive, request.source == .widget { return .deny }
+        if doNotDisturb, request.source == .widget { return .deny }
         let settings = request.device.pagePermissions.map { permission -> WidgetConfig.MediaCapturePermission in
             let setting = config.pagePermissionSetting(permission, forHost: request.host)
             if setting == .ask, let host = request.host,

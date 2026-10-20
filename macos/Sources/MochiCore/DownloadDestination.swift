@@ -58,7 +58,7 @@ public struct DownloadFileSystem {
 }
 
 /// Decides where a download lands (#68) — the location kind, the fallback for a folder that has
-/// gone bad, the " (n)" rename on collision, and Ghost Mode's degradation of 每次询问 (CONTEXT.md
+/// gone bad, the " (n)" rename on collision, and 不打扰's degradation of 每次询问 (CONTEXT.md
 /// 「Ghost Mode」: a request needing the user is settled without UI — the file goes to the default
 /// location instead of a Save panel appearing).
 public enum DownloadDestination {
@@ -67,7 +67,7 @@ public enum DownloadDestination {
     static let maxCollisionSuffix = 9_999
 
     public static func decide(
-        suggestedFilename: String, location: DownloadLocation, isGhostModeActive: Bool, fileSystem: DownloadFileSystem
+        suggestedFilename: String, location: DownloadLocation, doNotDisturb: Bool, fileSystem: DownloadFileSystem
     ) -> DownloadDestinationDecision {
         let filename = sanitizedFilename(suggestedFilename)
         let directory: URL
@@ -75,7 +75,7 @@ public enum DownloadDestination {
         case .downloadsFolder:
             directory = fileSystem.downloadsFolder
         case .askEachTime:
-            guard isGhostModeActive else {
+            guard doNotDisturb else {
                 // The Save panel handles its own collisions (it asks before replacing), so the
                 // name is only a suggestion here.
                 return .askWithSavePanel(directory: fileSystem.downloadsFolder, suggestedFilename: filename)
@@ -91,13 +91,13 @@ public enum DownloadDestination {
     /// the answer handed to `completion` — what WebKit's destination callback is given, so the
     /// main thread never waits on the Downloads folder prompt.
     public static func decide(
-        suggestedFilename: String, location: DownloadLocation, isGhostModeActive: Bool, fileSystem: DownloadFileSystem,
+        suggestedFilename: String, location: DownloadLocation, doNotDisturb: Bool, fileSystem: DownloadFileSystem,
         completion: @escaping (DownloadDestinationDecision) -> Void
     ) {
         fileSystem.offMainThread(
             {
                 decide(
-                    suggestedFilename: suggestedFilename, location: location, isGhostModeActive: isGhostModeActive,
+                    suggestedFilename: suggestedFilename, location: location, doNotDisturb: doNotDisturb,
                     fileSystem: fileSystem)
             }, completion)
     }

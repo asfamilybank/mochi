@@ -46,7 +46,7 @@ public final class Orchestrator {
     /// #121: `nil` keeps no bookmarks at all (most tests).
     private let bookmarkStore: BookmarkStore?
     private var window: WidgetWindowHandle?
-    private var ghostModeController: GhostModeController?
+    private var widgetModeController: WidgetModeController?
     private var addressBarController: AddressBarController?
     private var hotkeyForwarder: HotkeyForwarder?
     private var videoControl: VideoControl?
@@ -90,13 +90,13 @@ public final class Orchestrator {
     public func start() {
         hotkeyForwarder = HotkeyForwarder(
             platformOps: platformOps,
-            isGhostModeActive: { [weak self] in self?.isGhostModeActive ?? false },
+            isGhostModeActive: { [weak self] in self?.ghostOnlyFeaturesActive ?? false },
             currentWindow: { [weak self] in self?.window }
         )
         videoControl = VideoControl(
             platformOps: platformOps,
             currentConfig: currentConfig,
-            isGhostModeActive: { [weak self] in self?.isGhostModeActive ?? false },
+            isGhostModeActive: { [weak self] in self?.ghostOnlyFeaturesActive ?? false },
             currentWindow: { [weak self] in self?.window },
             forward: { [weak self] in self?.hotkeyForwarder?.forward($0) }
         )
@@ -130,7 +130,7 @@ public final class Orchestrator {
             TrayMenuItem(
                 title: "幽灵模式", icon: .ghost,
                 hotkeyHint: { [weak self] in self?.currentConfig().hotkey(for: .toggleGhostMode) },
-                isChecked: { [weak self] in self?.ghostModeController?.mode == .ghost },
+                isChecked: { [weak self] in self?.widgetModeController?.mode == .ghost },
                 isEnabled: { [weak self] in self?.window != nil }
             ) { [weak self] in
                 self?.perform(HotkeyAction.toggleGhostMode)
@@ -140,8 +140,8 @@ public final class Orchestrator {
             TrayMenuItem(
                 title: "隐藏窗口", icon: .symbol(DesignTokens.Symbol.hideWidget),
                 hotkeyHint: { [weak self] in self?.currentConfig().hotkey(for: .hideWidget) },
-                isChecked: { [weak self] in self?.ghostModeController?.isHidden ?? false },
-                isEnabled: { [weak self] in self?.ghostModeController?.mode == .ghost }
+                isChecked: { [weak self] in self?.widgetModeController?.isHidden ?? false },
+                isEnabled: { [weak self] in self?.widgetModeController?.canHide ?? false }
             ) { [weak self] in
                 self?.perform(HotkeyAction.hideWidget)
             },
@@ -185,7 +185,7 @@ public final class Orchestrator {
     /// Opens the widget window (#42) — at launch and again after a `⌘W`/red-button close. A
     /// reopen is defined as a fresh launch: startup content is re-resolved from the *current*
     /// config (so a fixed startup URL wins over whatever was being viewed at close), the page is
-    /// loaded from scratch, and a brand-new `GhostModeController` means the widget is back in
+    /// loaded from scratch, and a brand-new `WidgetModeController` means the widget is back in
     /// Normal Mode; only window geometry and zoom carry over, via the persisted `windowState`.
     ///
     /// Idempotent while a widget already exists: the tray's 打开窗口 entry then just brings it
@@ -201,8 +201,8 @@ public final class Orchestrator {
     /// flash it and record a visit nobody made. Everything else about the reopen is the same.
     private func openWidget(startingAt url: URL?) {
         if let window {
-            if let ghostModeController, ghostModeController.mode == .ghost {
-                ghostModeController.exitGhostMode()
+            if let widgetModeController, widgetModeController.mode != .normal {
+                widgetModeController.returnToNormalMode()
             } else {
                 platformOps.showWindow(window)
             }
@@ -259,16 +259,16 @@ public final class Orchestrator {
         registerHistoryRecording(for: window, addressBarController: addressBarController)
         platformOps.setAddressSuggestionSource(addressSuggestionSource(), in: window)
 
-        let ghostModeController = GhostModeController(platformOps: platformOps, window: window, currentConfig: currentConfig)
-        self.ghostModeController = ghostModeController
-        ghostModeController.onModeChanged = { [weak self] in
+        let widgetModeController = WidgetModeController(platformOps: platformOps, window: window, currentConfig: currentConfig)
+        self.widgetModeController = widgetModeController
+        widgetModeController.onModeChanged = { [weak self] in
             self?.videoControl?.refreshObservation()
-            if self?.isGhostModeActive == true { self?.mediaCapturePermissions?.ghostModeEntered() }
+            if self?.doNotDisturb == true { self?.mediaCapturePermissions?.doNotDisturbBegan() }
         }
         // The toolbar button (#44) calls the exact same entry point as the hotkey and tray paths —
         // no shortcut path of its own; giving up focus happens inside it, on every path.
-        platformOps.onGhostModeToggleRequested(window) { [weak ghostModeController] in
-            ghostModeController?.toggle()
+        platformOps.onGhostModeToggleRequested(window) { [weak widgetModeController] in
+            widgetModeController?.toggleGhostMode()
         }
     }
 
@@ -290,14 +290,14 @@ public final class Orchestrator {
 
     /// The single teardown point for both close entries. Persists geometry while the window still
     /// exists, then forgets every per-window object — from here on the two global hotkeys and the
-    /// widget-bound menu items find no `ghostModeController`/`window` and silently do nothing, and
+    /// widget-bound menu items find no `widgetModeController`/`window` and silently do nothing, and
     /// the next `openWidget()` starts clean.
     private func handleWindowWillClose() {
         persistCurrentWindowState()
         // #67: no Popup Window outlives its widget.
         if let window { platformOps.closePopupWindows(of: window) }
         window = nil
-        ghostModeController = nil
+        widgetModeController = nil
         addressBarController = nil
         mediaCapturePermissions = nil  // #101: 「仅这次允许」 ends with the widget
         videoControl?.refreshObservation()
@@ -387,14 +387,14 @@ public final class Orchestrator {
 
     private func perform(_ action: HotkeyAction) {
         switch action {
-        case .toggleGhostMode: ghostModeController?.toggle()
-        case .hideWidget: ghostModeController?.toggleHidden()
+        case .toggleGhostMode: widgetModeController?.toggleGhostMode()
+        case .hideWidget: widgetModeController?.toggleHidden()
         }
     }
 
     /// Re-applies the settings that don't take effect by being re-read (#46): Snap has to be
     /// pushed to the live window, an opacity edit made *while in Ghost Mode* has to be pushed
-    /// down right now (see `GhostModeController.reapplyConfiguration`), and 视频控制 has to start
+    /// down right now (see `WidgetModeController.reapplyConfiguration`), and 视频控制 has to start
     /// or stop listening when an edit binds its first key or clears its last one (#78), and the Empty
     /// Page's quick reference has to be redrawn with the hotkeys now in effect (#83).
     /// Everything else in the config is read at its point of use and needs no call here. `SettingsController`
@@ -407,7 +407,7 @@ public final class Orchestrator {
         platformOps.setHTTPWarningEnabled(currentConfig().isHTTPWarningEnabled, in: window)
         platformOps.setPopupWindowsAllowed(currentConfig().popupWindowPolicy == .allow, in: window)
         platformOps.setHotkeyQuickReference(HotkeyQuickReference.entries(for: currentConfig()), in: window)
-        ghostModeController?.reapplyConfiguration()
+        widgetModeController?.reapplyConfiguration()
         videoControl?.refreshObservation()
     }
 
@@ -428,7 +428,7 @@ public final class Orchestrator {
     /// "reopen, then focus the address bar" — Safari's ⌘L with no window open. Ghost Mode still
     /// rules it out like everything else.
     public func canPerform(_ command: WidgetCommand) -> Bool {
-        if ghostModeController?.mode == .ghost { return false }
+        if ghostOnlyFeaturesActive { return false }
         switch command {
         case .openLocation:
             return true
@@ -808,25 +808,25 @@ public final class Orchestrator {
 
     // MARK: 网页交互请求 (#66)
 
-    /// Wires every page-initiated interaction request to its decision. Ghost Mode is read at
-    /// request time — CONTEXT.md's "不打扰" rule: while in Ghost Mode nothing is shown, Ghost Mode
-    /// is not left, and the request is settled at once so the page never hangs waiting. Follow-up
+    /// Wires every page-initiated interaction request to its decision. `doNotDisturb` is read at
+    /// request time — CONTEXT.md's "不打扰" rule: while it holds nothing is shown, the mode is not
+    /// left, and the request is settled at once so the page never hangs waiting. Follow-up
     /// request kinds (#67/#68/#69) register their own hook here, one line each.
     private func registerWebInteractionRequestHandlers(for window: WidgetWindowHandle) {
         platformOps.onJavaScriptDialogRequested(window) { [weak self] _ in
-            (self?.isGhostModeActive ?? false) ? .settleWithoutUI : .presentSheet
+            (self?.doNotDisturb ?? false) ? .settleWithoutUI : .presentSheet
         }
         platformOps.onFileUploadRequested(window) { [weak self] _ in
-            (self?.isGhostModeActive ?? false) ? .cancel : .presentOpenPanel
+            (self?.doNotDisturb ?? false) ? .cancel : .presentOpenPanel
         }
-        // #68: setting and Ghost Mode are read now, at the moment of the download; the disk is
+        // #68: setting and 不打扰 are read now, at the moment of the download; the disk is
         // read off the main thread (#99), since the first touch of ~/Downloads waits on a prompt.
         platformOps.onDownloadRequested(window) { [weak self] request, completion in
             let config = self?.currentConfig()
             DownloadDestination.decide(
                 suggestedFilename: request.suggestedFilename,
                 location: config?.downloadLocation ?? .downloadsFolder,
-                isGhostModeActive: self?.isGhostModeActive ?? false,
+                doNotDisturb: self?.doNotDisturb ?? false,
                 fileSystem: self?.downloadFileSystem ?? .live,
                 completion: completion)
         }
@@ -842,7 +842,7 @@ public final class Orchestrator {
         // controller per window, so a reopened widget has no 「仅这次允许」 left over.
         mediaCapturePermissions = MediaCapturePermissionController(
             platformOps: platformOps, window: window, currentConfig: currentConfig, persist: persist,
-            isGhostModeActive: { [weak self] in self?.isGhostModeActive ?? false },
+            doNotDisturb: { [weak self] in self?.doNotDisturb ?? false },
             now: { [weak self] in self?.currentDate() ?? Date() })
 
         platformOps.onNewWindowRequested(window) { [weak self] request in
@@ -860,7 +860,7 @@ public final class Orchestrator {
     /// still load in place, which opens nothing new.
     private func decideNewWindow(_ request: NewWindowRequest) -> NewWindowDecision {
         if case .linkClick(commandPressed: true) = request.trigger {
-            if !isGhostModeActive, let url = request.url {
+            if !doNotDisturb, let url = request.url {
                 platformOps.openInDefaultBrowser(url)
             }
             return .cancel
@@ -869,7 +869,7 @@ public final class Orchestrator {
         case .popupWindow:
             return .loadInOpener
         case .widget:
-            if isGhostModeActive { return .cancel }
+            if doNotDisturb { return .cancel }
             if case .script = request.trigger { return .openPopupWindow }
             return .loadInOpener
         }
@@ -898,16 +898,16 @@ public final class Orchestrator {
             return .none
         case .deniedPermission:
             platformOps.setSystemPermissionMarker(.downloadsFolderWriteDenied, true)
-            return isGhostModeActive ? .none : .offerAnotherLocation
+            return doNotDisturb ? .none : .offerAnotherLocation
         case .failed:
             return .none
         }
     }
 
-    /// #105: the answer to 「无法存到下载文件夹」, with Ghost Mode read again — nothing may show by
+    /// #105: the answer to 「无法存到下载文件夹」, with 不打扰 read again — nothing may show by
     /// then if the user has gone invisible in the meantime.
     private func followUpDownloadsFolderDenied(_ answer: DownloadsFolderDeniedAnswer) -> DownloadsFolderDeniedFollowUp {
-        guard !isGhostModeActive else { return .none }
+        guard !doNotDisturb else { return .none }
         switch answer {
         case .openSystemSettings:
             platformOps.openSystemSettings(for: .downloadsFolder)
@@ -919,7 +919,15 @@ public final class Orchestrator {
         }
     }
 
-    private var isGhostModeActive: Bool { ghostModeController?.mode == .ghost }
+    /// CONTEXT.md's 不打扰: a page's interaction request (a dialog, an upload, a download, a camera,
+    /// a new window) is settled at once without showing anything. Ghost Mode for now; #148 widens
+    /// it to Hidden in any mode (ADR-0035) — nothing may pop up on a window nobody can see.
+    private var doNotDisturb: Bool { widgetModeController?.mode == .ghost }
+
+    /// What exists only in Ghost Mode, however the other modes look (ADR-0035): 视频控制, 热键传递,
+    /// and the main menu offering nothing at all (`canPerform`). Float Mode is an ordinary,
+    /// focusable window for these, so it stays out even once it shares Hidden.
+    private var ghostOnlyFeaturesActive: Bool { widgetModeController?.mode == .ghost }
 
     private func handleNavigationFailed(_ message: String) {
         guard let window else { return }

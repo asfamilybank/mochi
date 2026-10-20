@@ -5,10 +5,14 @@ public enum WidgetMode: Equatable {
     case ghost
 }
 
-/// The Ghost Mode state machine (#8): a single hotkey flips between `.normal` and `.ghost`,
-/// where Ghost Mode bundles native-chrome visibility, toolbar visibility, content opacity,
-/// mouse passthrough, and always-on-top into one atomic transition (ADR-0006/ADR-0012) — there
-/// is no way to reach a state with, say, passthrough on but the toolbar still showing.
+/// The widget's mode state machine (#8, generalized by #146): which mode the widget is in, plus
+/// Hidden as a separate dimension that only means anything in some modes (`canHide`). Today the
+/// modes are Normal and Ghost; Float Mode joins them as a third bundled state (ADR-0035).
+///
+/// A single hotkey flips between `.normal` and `.ghost`, where Ghost Mode bundles native-chrome
+/// visibility, toolbar visibility, content opacity, mouse passthrough, and always-on-top into one
+/// atomic transition (ADR-0006/ADR-0012) — there is no way to reach a state with, say,
+/// passthrough on but the toolbar still showing.
 ///
 /// Always-on-top is internal to this transition, not a standalone feature: floating above other
 /// windows only means anything while invisibly overlaying them, which is what Ghost Mode is
@@ -30,7 +34,7 @@ public enum WidgetMode: Equatable {
 /// entry simply sees the new value).
 /// `reapplyConfiguration()` covers the one case where nothing else would trigger a re-read: an
 /// edit made while already sitting in Ghost Mode.
-public final class GhostModeController {
+public final class WidgetModeController {
     private let platformOps: PlatformOps
     private let window: WidgetWindowHandle
     private let currentConfig: () -> WidgetConfig
@@ -58,20 +62,32 @@ public final class GhostModeController {
         applyEffectiveOpacity()
     }
 
-    public func toggle() {
+    public func toggleGhostMode() {
         switch mode {
         case .normal: enterGhostMode()
         case .ghost: leaveGhostMode()
         }
     }
 
-    /// Forces the widget back to Normal Mode regardless of current state — `Orchestrator.openWidget()`
+    /// Forces the widget back to Normal Mode from whatever mode it is in — `Orchestrator.openWidget()`
     /// (the tray's 打开窗口, the Dock) must work even while the window is fully hidden/click-through,
-    /// and must be a no-op when already in Normal Mode rather than toggling back into Ghost Mode.
+    /// and must be a no-op when already in Normal Mode rather than toggling into another mode.
     /// (The tray's own 退出幽灵模式 entry from #9 was folded into its 幽灵模式 toggle by #63.)
-    public func exitGhostMode() {
-        guard mode == .ghost else { return }
-        leaveGhostMode()
+    public func returnToNormalMode() {
+        switch mode {
+        case .normal: return
+        case .ghost: leaveGhostMode()
+        }
+    }
+
+    /// Whether Hidden means anything in the current mode — only Ghost Mode for now; Float Mode
+    /// shares it from #148 (ADR-0035). Normal Mode is a plain window, so never there. The tray's
+    /// 隐藏窗口 greys out on exactly this.
+    public var canHide: Bool {
+        switch mode {
+        case .normal: false
+        case .ghost: true
+        }
     }
 
     /// The boss key (ADR-0012): makes the window completely invisible while leaving it in place
@@ -81,7 +97,7 @@ public final class GhostModeController {
     /// Normal Mode, which is a plain macOS window with no visibility concept of its own beyond
     /// what the system already provides (`⌘M`).
     public func toggleHidden() {
-        guard mode == .ghost else { return }
+        guard canHide else { return }
         isHidden.toggle()
         applyEffectiveOpacity()
         if isHidden {
@@ -93,8 +109,11 @@ public final class GhostModeController {
     /// Hidden → fully invisible; Ghost → its configured target; Normal → opaque. The single
     /// source of the window's visibility, so no two features can disagree about it.
     private var effectiveOpacity: Double {
-        guard mode == .ghost else { return 1.0 }
-        return isHidden ? 0 : currentConfig().ghostOpacity
+        if isHidden { return 0 }
+        switch mode {
+        case .normal: return 1.0
+        case .ghost: return currentConfig().ghostOpacity
+        }
     }
 
     private func applyEffectiveOpacity() {

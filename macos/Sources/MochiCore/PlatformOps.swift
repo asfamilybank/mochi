@@ -160,7 +160,7 @@ public protocol PlatformOps: AnyObject {
     /// address bar (as opposed to a programmatic `loadURL` call).
     func onURLSubmitted(_ window: WidgetWindowHandle, perform handler: @escaping (URL) -> Void)
 
-    /// Applies an always-on-top window level. Driven exclusively by `GhostModeController`
+    /// Applies an always-on-top window level. Driven exclusively by `WidgetModeController`
     /// (ADR-0012): Ghost Mode always floats, Normal Mode is a plain window at the normal level.
     /// There is no user-facing Pin control to reflect back, so nothing else calls this and there
     /// is nothing to persist.
@@ -168,13 +168,13 @@ public protocol PlatformOps: AnyObject {
 
     /// Registers a handler invoked when the toolbar's Ghost Mode entry button (#44) is clicked.
     /// A one-way "enter" affordance, not a toggle the button tracks state for itself — the
-    /// handler routes back to the same `GhostModeController` entry point the default hotkey and
+    /// handler routes back to the same `WidgetModeController` entry point the default hotkey and
     /// tray icon already call, since this view has no self-held notion of "is Ghost Mode
     /// currently active" to reflect.
     func onGhostModeToggleRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void)
 
     /// Hands focus back to whatever app was active before Mochi, taking the menu bar with it — a
-    /// no-op when Mochi isn't active. `GhostModeController` calls it on entering Ghost Mode or
+    /// no-op when Mochi isn't active. `WidgetModeController` calls it on entering Ghost Mode or
     /// Hidden from any path (hotkey, tray, toolbar button), unless `isAnotherWindowKey` says
     /// focus is on a window other than the widget.
     func deactivateApp()

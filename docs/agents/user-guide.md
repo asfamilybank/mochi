@@ -20,7 +20,7 @@ git grep -n "旧的界面文案" -- docs/guide/ README.md
 | 视频控制的默认按键或步长 | 以 grep 旧按键（如 `右 ⌥`）的结果为准。`reference/shortcuts.md` 是总表，`how-to/video-control.md` 和 `tutorials/first-steps.md` 按步骤写着默认按键，`reference/settings.md` 写着默认值 | `settings-ghost-mode.png`、`settings-video-control.png`、`first-steps-empty-page.png` |
 | 设置项增删、改名、改可选项或默认值 | `reference/settings.md` 的对应条目，以及条目「相关页面」里链到的操作指南 | 该面板的 `settings-*.png` |
 | 设置项的生效时机 | `reference/settings.md` 的对应条目，**以及页面开头列举的例外**（现在是「启动时」、自动播放、脚本、HTTP 警告） | 无 |
-| 设置面板的布局（分组、顺序、控件） | `reference/settings.md` 的分节顺序 | 该面板的 `settings-*.png`；幽灵模式面板还要重裁 `settings-video-control.png`、`settings-hotkey-forwarding.png` |
+| 设置面板的布局（分组、顺序、控件） | `reference/settings.md` 的分节顺序 | 该面板的 `settings-*.png`；窗口模式面板还要重裁 `settings-video-control.png`、`settings-hotkey-forwarding.png` |
 | 幽灵模式下对网页请求的处理（对话框、摄像头、下载、登录小窗） | `reference/modes.md`、`how-to/ghost-mode.md`、`explanation/ghost-mode-design.md`，以及对应的操作指南 | 无 |
 | 数据存放路径、系统权限的申请时机 | `reference/data-and-permissions.md`、`how-to/uninstall.md`、`how-to/troubleshooting.md` | 无 |
 | 新功能 | 按下面的写作约定新写一页或补进现有页面，在手册首页加链接；引入新术语时补进 `reference/glossary.md` | 按需 |
@@ -38,7 +38,7 @@ git grep -n "旧的界面文案" -- docs/guide/ README.md
 - 手册按 Diátaxis 分四类：`tutorials/`、`how-to/`、`reference/`、`explanation/`。文件名用英文短横线，页面标题用中文。
 - 安装和放行步骤只写在 README 的「安装」一节，手册里需要时链接过去。
 - 第二人称「你」。按键写符号，每页第一次出现时补全称，例如「⌥（Option）」「右 ⌥（右侧的 Option 键）」。
-- 界面元素用「」括起来，写全路径，例如「设置 › 幽灵模式 › 视频控制」，路径分隔符用 `›`。
+- 界面元素用「」括起来，写全路径，例如「设置 › 窗口模式 › 视频控制」，路径分隔符用 `›`。
 - 有两个「辅助功能」，要写清是哪一个：「设置 › 高级 › 辅助功能」管字体大小，「系统设置 › 隐私与安全性 › 辅助功能」是系统权限。
 - 只有手册首页标版本，各页正文不标。
 - 「见…」引出链接，不用「参见…」。
@@ -79,7 +79,7 @@ git grep -n "旧的界面文案" -- docs/guide/ README.md
 | `tray-menu.png` | 展开的托盘菜单 | AX 打开菜单后按窗口 ID 截，见下文 | `tutorials/first-steps.md`、`reference/menus.md` |
 | `open-pages-suggestions.png` | 地址栏输入 `wiki`，行内补全成 `wikipedia.org`，下拉列表里有书签和历史记录 | 窗口 ID | `how-to/open-pages.md` |
 | `settings-general.png` | 「设置 › 通用」 | 窗口 ID | `reference/settings.md`、`how-to/open-pages.md` |
-| `settings-ghost-mode.png` | 「设置 › 幽灵模式」整页，热键传递里有一条示例映射 | 窗口 ID | `reference/settings.md`、`how-to/ghost-mode.md` |
+| `settings-ghost-mode.png` | 「设置 › 窗口模式」整页，热键传递里有一条示例映射 | 窗口 ID | `reference/settings.md`、`how-to/ghost-mode.md` |
 | `settings-video-control.png` | 「视频控制」分组 | 从 `settings-ghost-mode.png` 用 `sips -c` 裁出 | `how-to/video-control.md` |
 | `settings-hotkey-forwarding.png` | 「热键传递」分组，一条示例映射：轻按右 ⌃ 发送 D | 从 `settings-ghost-mode.png` 用 `sips -c` 裁出 | `how-to/hotkey-forwarding.md` |
 | `settings-websites.png` | 「设置 › 网站 › 通用」 | 窗口 ID | `reference/settings.md` |

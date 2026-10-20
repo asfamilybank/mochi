@@ -14,7 +14,7 @@ import Foundation
 /// *current* config and hands the mapped page keystroke here. That single dispatch path is what
 /// lets an edited mapping take effect without a restart.
 ///
-/// A pure orchestration class exactly like `GhostModeController`: it only talks to `PlatformOps`,
+/// A pure orchestration class exactly like `WidgetModeController`: it only talks to `PlatformOps`,
 /// never AppKit directly, so it can be exercised against `FakePlatformOps` in tests.
 public final class HotkeyForwarder {
     private let platformOps: PlatformOps

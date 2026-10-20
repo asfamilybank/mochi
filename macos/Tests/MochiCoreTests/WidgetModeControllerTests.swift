@@ -13,12 +13,12 @@ private final class ConfigStore {
     }
 }
 
-@Suite struct GhostModeControllerTests {
-    private func makeSUT(ghostOpacity: Double = 0.2) -> (FakePlatformOps, ConfigStore, GhostModeController) {
+@Suite struct WidgetModeControllerTests {
+    private func makeSUT(ghostOpacity: Double = 0.2) -> (FakePlatformOps, ConfigStore, WidgetModeController) {
         let fake = FakePlatformOps()
         let store = ConfigStore(ghostOpacity: ghostOpacity)
         let window = fake.createWidgetWindow(initialFrame: WindowFrame(x: 0, y: 0, width: 100, height: 100))
-        let controller = GhostModeController(platformOps: fake, window: window, currentConfig: { store.config })
+        let controller = WidgetModeController(platformOps: fake, window: window, currentConfig: { store.config })
         return (fake, store, controller)
     }
 
@@ -38,7 +38,7 @@ private final class ConfigStore {
         let (fake, _, controller) = makeSUT(ghostOpacity: 0.2)
 
         if testCase.ghost {
-            controller.toggle()
+            controller.toggleGhostMode()
         }
         if testCase.hidden {
             controller.toggleHidden()
@@ -55,14 +55,14 @@ private final class ConfigStore {
         let (fake, store, controller) = makeSUT(ghostOpacity: 0.2)
         store.config.ghostOpacity = 0.5
 
-        controller.toggle()
+        controller.toggleGhostMode()
 
         #expect(fake.contentOpacityChanges.map(\.opacity) == [0.5])
     }
 
     @Test func reapplyConfigurationPushesANewOpacityDownWhileInGhostMode() {
         let (fake, store, controller) = makeSUT(ghostOpacity: 0.2)
-        controller.toggle()
+        controller.toggleGhostMode()
         store.config.ghostOpacity = 0.7
 
         controller.reapplyConfiguration()
@@ -83,7 +83,7 @@ private final class ConfigStore {
 
     @Test func reapplyConfigurationWhileHiddenKeepsTheWindowHidden() {
         let (fake, store, controller) = makeSUT(ghostOpacity: 0.2)
-        controller.toggle()
+        controller.toggleGhostMode()
         controller.toggleHidden()
         store.config.ghostOpacity = 0.7
 
@@ -104,7 +104,7 @@ private final class ConfigStore {
 
     @Test func pressingHiddenTwiceInGhostModeRestoresTheTargetOpacity() {
         let (fake, _, controller) = makeSUT(ghostOpacity: 0.2)
-        controller.toggle()
+        controller.toggleGhostMode()
 
         controller.toggleHidden()
         controller.toggleHidden()
@@ -116,11 +116,11 @@ private final class ConfigStore {
         // Otherwise "come back to normal" would leave an invisible Normal Mode window behind,
         // and re-entering Ghost Mode would start out already hidden.
         let (fake, _, controller) = makeSUT(ghostOpacity: 0.2)
-        controller.toggle()
+        controller.toggleGhostMode()
         controller.toggleHidden()
 
-        controller.toggle()
-        controller.toggle()
+        controller.toggleGhostMode()
+        controller.toggleGhostMode()
 
         #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 0.0, 1.0, 0.2])
     }
@@ -129,9 +129,9 @@ private final class ConfigStore {
         // The one moment the user explicitly asked to interact with the widget — and the only
         // moment it is allowed to take focus (ADR-0012).
         let (fake, _, controller) = makeSUT()
-        controller.toggle()
+        controller.toggleGhostMode()
 
-        controller.toggle()
+        controller.toggleGhostMode()
 
         #expect(fake.shownWindowIDs == [1])
     }
@@ -139,7 +139,7 @@ private final class ConfigStore {
     @Test func enteringGhostModeNeverFrontsTheWindow() {
         let (fake, _, controller) = makeSUT()
 
-        controller.toggle()
+        controller.toggleGhostMode()
 
         #expect(fake.shownWindowIDs.isEmpty)
     }
@@ -152,7 +152,7 @@ private final class ConfigStore {
     @Test func togglingFromNormalEntersGhostModeThroughAllBundledBehaviors() {
         let (fake, _, controller) = makeSUT(ghostOpacity: 0.2)
 
-        controller.toggle()
+        controller.toggleGhostMode()
 
         #expect(controller.mode == .ghost)
         #expect(fake.nativeChromeVisibilityChanges.map(\.visible) == [false])
@@ -165,8 +165,8 @@ private final class ConfigStore {
     @Test func togglingAgainExitsGhostModeAndRestoresEverything() {
         let (fake, _, controller) = makeSUT(ghostOpacity: 0.2)
 
-        controller.toggle()
-        controller.toggle()
+        controller.toggleGhostMode()
+        controller.toggleGhostMode()
 
         #expect(controller.mode == .normal)
         #expect(fake.nativeChromeVisibilityChanges.map(\.visible) == [false, true])
@@ -180,18 +180,18 @@ private final class ConfigStore {
         // anything while invisibly overlaying them, so the state machine is its only driver.
         let (fake, _, controller) = makeSUT()
 
-        controller.toggle()
-        controller.toggle()
+        controller.toggleGhostMode()
+        controller.toggleGhostMode()
 
         #expect(fake.pinnedChanges.map(\.pinned) == [true, false])
         #expect(fake.pinnedChanges.map(\.windowID) == [1, 1])
     }
 
-    @Test func exitGhostModeDropsBackToTheNormalWindowLevelLikeToggling() {
+    @Test func returnToNormalModeDropsBackToTheNormalWindowLevelLikeToggling() {
         let (fake, _, controller) = makeSUT()
-        controller.toggle()
+        controller.toggleGhostMode()
 
-        controller.exitGhostMode()
+        controller.returnToNormalMode()
 
         #expect(fake.pinnedChanges.map(\.pinned) == [true, false])
     }
@@ -199,7 +199,7 @@ private final class ConfigStore {
     @Test func stayingInNormalModeNeverFloatsTheWindow() {
         let (fake, _, controller) = makeSUT()
 
-        controller.exitGhostMode()
+        controller.returnToNormalMode()
 
         #expect(fake.pinnedChanges.isEmpty)
     }
@@ -211,12 +211,12 @@ private final class ConfigStore {
         #expect(controller.mode == .normal)
     }
 
-    @Test func exitGhostModeWhenAlreadyNormalDoesNothing() {
+    @Test func returnToNormalModeWhenAlreadyNormalDoesNothing() {
         // The tray icon's "Exit Ghost Mode" entry (#9) must be safe to invoke unconditionally,
         // without accidentally toggling back into Ghost Mode.
         let (fake, _, controller) = makeSUT()
 
-        controller.exitGhostMode()
+        controller.returnToNormalMode()
 
         #expect(controller.mode == .normal)
         #expect(fake.nativeChromeVisibilityChanges.isEmpty)
@@ -224,11 +224,11 @@ private final class ConfigStore {
         #expect(fake.mousePassthroughChanges.isEmpty)
     }
 
-    @Test func exitGhostModeWhenInGhostModeRestoresEverythingLikeToggling() {
+    @Test func returnToNormalModeWhenInGhostModeRestoresEverythingLikeToggling() {
         let (fake, _, controller) = makeSUT(ghostOpacity: 0.2)
-        controller.toggle()
+        controller.toggleGhostMode()
 
-        controller.exitGhostMode()
+        controller.returnToNormalMode()
 
         #expect(controller.mode == .normal)
         #expect(fake.nativeChromeVisibilityChanges.map(\.visible) == [false, true])
@@ -237,14 +237,14 @@ private final class ConfigStore {
         #expect(fake.mousePassthroughChanges.map(\.enabled) == [true, false])
     }
 
-    @Test func exitGhostModeRestoresVisibilityEvenWhileHidden() {
+    @Test func returnToNormalModeRestoresVisibilityEvenWhileHidden() {
         // The defining scenario for #9: the window is fully invisible + click-through, and the
         // tray is the only remaining way back — it must still bring the window back.
         let (fake, _, controller) = makeSUT(ghostOpacity: 0.2)
-        controller.toggle()
+        controller.toggleGhostMode()
         controller.toggleHidden()
 
-        controller.exitGhostMode()
+        controller.returnToNormalMode()
 
         #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 0.0, 1.0])
     }
@@ -252,7 +252,7 @@ private final class ConfigStore {
 
     @Test func goingHiddenPausesEveryPlayingMediaElementOnThePage() {
         let (fake, _, controller) = makeSUT()
-        controller.toggle()
+        controller.toggleGhostMode()
 
         controller.toggleHidden()
 
@@ -261,7 +261,7 @@ private final class ConfigStore {
 
     @Test func comingBackFromHiddenResumesNothing() {
         let (fake, _, controller) = makeSUT()
-        controller.toggle()
+        controller.toggleGhostMode()
         controller.toggleHidden()
 
         controller.toggleHidden()
@@ -272,10 +272,10 @@ private final class ConfigStore {
 
     @Test func leavingGhostModeWhileHiddenResumesNothingEither() {
         let (fake, _, controller) = makeSUT()
-        controller.toggle()
+        controller.toggleGhostMode()
         controller.toggleHidden()
 
-        controller.toggle()
+        controller.toggleGhostMode()
 
         #expect(fake.mediaPausedWindowIDs == [1])
         #expect(fake.videoCommands.isEmpty)

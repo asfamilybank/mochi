@@ -5,7 +5,7 @@ import Foundation
 /// windowTitle`) so the window is never left with a blank title. Owns exactly this one
 /// decision — the Smart Address Field's own text (which also factors in hover/edit/loading
 /// state) is a separate, AppKit-local concern per ADR-0009. Constructed once per widget window,
-/// mirroring `GhostModeController`'s ownership pattern.
+/// mirroring `WidgetModeController`'s ownership pattern.
 public final class AddressBarController {
     private let platformOps: PlatformOps
     private let window: WidgetWindowHandle

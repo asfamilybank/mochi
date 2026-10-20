@@ -1295,7 +1295,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     }
 
     /// Ghost Mode's always-on-top level (ADR-0012). There is no toolbar control or persisted
-    /// state behind this any more — `GhostModeController` is the only caller.
+    /// state behind this any more — `WidgetModeController` is the only caller.
     func setPinned(_ pinned: Bool) {
         window.level = pinned ? .floating : .normal
     }

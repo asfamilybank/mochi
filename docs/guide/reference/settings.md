@@ -58,11 +58,11 @@
 
 相关页面：[摆放和关闭窗口](../how-to/window-placement.md#吸附屏幕边缘)。
 
-## 幽灵模式
+## 窗口模式
 
-![「设置 › 幽灵模式」面板](../images/settings-ghost-mode.png)
+![「设置 › 窗口模式」面板](../images/settings-ghost-mode.png)
 
-### 外观
+### 幽灵模式
 
 **目标透明度**
 
