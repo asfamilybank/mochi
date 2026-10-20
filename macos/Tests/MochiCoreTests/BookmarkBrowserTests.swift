@@ -50,6 +50,22 @@ import Testing
         #expect(names(browser) == row.found)
     }
 
+    /// An address is searched as it reads (#143), and by its escapes too.
+    @Test(arguments: [
+        (query: "咖啡", found: ["维基"]),
+        (query: "wiki/咖", found: ["维基"]),
+        (query: "%E5%92%96", found: ["维基"]),
+        (query: "茶", found: []),
+    ])
+    func searchingMatchesTheAddressAsItReads(_ row: (query: String, found: [String])) throws {
+        let (browser, store) = try makeBrowser([])
+        try store.add(name: "维基", url: url("https://zh.wikipedia.org/wiki/%E5%92%96%E5%95%A1")).get()
+
+        browser.search(row.query)
+
+        #expect(names(browser) == row.found)
+    }
+
     @Test func aSearchIsKeptAcrossAReload() throws {
         let (browser, store) = try makeBrowser()
         browser.search("mo")

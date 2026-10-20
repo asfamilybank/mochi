@@ -93,6 +93,20 @@ import Testing
         #expect(addresses(store.suggestionCandidates(matching: row.words, since: nil)) == row.found)
     }
 
+    /// A word is looked for in the address as it reads too (#143), so the session gets to judge it.
+    @Test(arguments: [
+        (words: ["咖啡"], found: ["https://zh.wikipedia.org/wiki/%E5%92%96%E5%95%A1"]),
+        (words: ["wiki/咖", "zh"], found: ["https://zh.wikipedia.org/wiki/%E5%92%96%E5%95%A1"]),
+        (words: ["%e5%92%96"], found: ["https://zh.wikipedia.org/wiki/%E5%92%96%E5%95%A1"]),
+        (words: ["咖啡", "茶"], found: []),
+    ] as [(words: [String], found: [String])])
+    func aWordIsLookedForInTheAddressAsItReads(_ row: (words: [String], found: [String])) {
+        let store = makeStore()
+        visit(store, "https://zh.wikipedia.org/wiki/%E5%92%96%E5%95%A1", title: "Coffee", at: "2026-10-12 09:00")
+
+        #expect(addresses(store.suggestionCandidates(matching: row.words, since: nil)) == row.found)
+    }
+
     @Test func visitsBeforeTheRetentionLimitDoNotCount() {
         let store = makeStore()
         visit(store, "https://old.example.com/", at: "2025-01-01 09:00")

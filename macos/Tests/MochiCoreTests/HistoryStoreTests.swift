@@ -134,6 +134,30 @@ func historyTestDate(_ string: String) -> Date {
         #expect(store.search(row.query).map(\.url.absoluteString) == row.expected)
     }
 
+    /// An address is searched as it reads (#143) — what `URLDisplay` decodes, by what it shows;
+    /// what it leaves escaped, like a zero-width space, only by its escapes — and the escapes
+    /// still match, in either case.
+    @Test(arguments: [
+        (query: "咖啡", expected: ["https://zh.wikipedia.org/wiki/%E5%92%96%E5%95%A1"]),
+        (query: "wiki/咖", expected: ["https://zh.wikipedia.org/wiki/%E5%92%96%E5%95%A1"]),
+        (query: "%e5%92%96", expected: ["https://zh.wikipedia.org/wiki/%E5%92%96%E5%95%A1"]),
+        (query: "a\u{200B}b", expected: []),
+        (query: "%E2%80%8B", expected: ["https://example.com/a%E2%80%8Bb"]),
+        (query: "茶", expected: []),
+    ])
+    func searchMatchesTheAddressAsItReads(_ row: (query: String, expected: [String])) {
+        let store = makeStore()
+        let coffee = "https://zh.wikipedia.org/wiki/%E5%92%96%E5%95%A1"
+        store.updateTitle("Coffee", ofVisit: store.recordVisit(to: url(coffee))!)
+        clock.now = clock.now.addingTimeInterval(60)
+        store.updateTitle("Hidden", ofVisit: store.recordVisit(to: url("https://example.com/a%E2%80%8Bb"))!)
+
+        #expect(store.search(row.query).map(\.url.absoluteString) == row.expected)
+        // With `site:` too, where the host takes the first parameter.
+        let onWikipedia = store.search(row.query, host: "zh.wikipedia.org").map(\.url.absoluteString)
+        #expect(onWikipedia == row.expected.filter { $0 == coffee })
+    }
+
     /// Each visit is matched on its own title, so a page renamed since still turns up under the name
     /// it had then.
     @Test func searchMatchesEachVisitByTheTitleItHad() {

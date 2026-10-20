@@ -19,7 +19,9 @@ struct HistoryPerformanceTests {
         let icon = Data("an icon".utf8)
         for index in 0..<visits {
             clock.now = start.addingTimeInterval(Double(index) * step)
-            let id = store.recordVisit(to: URL(string: "https://site\(index % 500).example.com/page/\(index)")!)!
+            // One in a thousand addresses has a Chinese path, stored encoded — 咖啡 (#143).
+            let path = index % 1000 == 7 ? "%E5%92%96%E5%95%A1" : "page"
+            let id = store.recordVisit(to: URL(string: "https://site\(index % 500).example.com/\(path)/\(index)")!)!
             store.updateTitle("Page \(index) of site \(index % 500)", ofVisit: id)
             if index % 3 == 0 { store.updateFavicon(icon, ofVisit: id) }
         }
@@ -53,12 +55,19 @@ struct HistoryPerformanceTests {
         let keywords = Self.time { browser.search("site42.example.com/page/1") }
         let keywordMatches = browser.matchCount
         let site = Self.time { browser.search("site:site42.example.com Page 3") }
+        let siteMatches = browser.matchCount
+        // Text the address shows decoded is looked for as its escapes too (#143).
+        let decoded = Self.time { browser.search("咖啡") }
 
-        print("history bench: search \(keywords) (\(keywordMatches)), site: \(site) (\(browser.matchCount))")
+        print(
+            "history bench: search \(keywords) (\(keywordMatches)), site: \(site) (\(siteMatches)), "
+                + "decoded \(decoded) (\(browser.matchCount))")
         #expect(keywordMatches > 0)
+        #expect(siteMatches > 0)
         #expect(browser.matchCount > 0)
         #expect(keywords < Self.budget)
         #expect(site < Self.budget)
+        #expect(decoded < Self.budget)
     }
 
     /// The address bar asks on every keystroke (#122): a first letter that is in nearly every
@@ -69,9 +78,13 @@ struct HistoryPerformanceTests {
         let since = store.now().addingTimeInterval(-HistoryStore.suggestionWindow)
         let broad = Self.time { _ = store.suggestionCandidates(matching: ["s"], since: since) }
         let narrow = Self.time { _ = store.suggestionCandidates(matching: ["site42"], since: since) }
+        var decodedCandidates: [AddressSuggestionCandidate] = []
+        let decoded = Self.time { decodedCandidates = store.suggestionCandidates(matching: ["咖啡"], since: since) }
 
-        print("history bench: address bar broad \(broad), narrow \(narrow)")
+        print("history bench: address bar broad \(broad), narrow \(narrow), decoded \(decoded)")
+        #expect(!decodedCandidates.isEmpty)
         #expect(broad < Self.budget)
         #expect(narrow < Self.budget)
+        #expect(decoded < Self.budget)
     }
 }

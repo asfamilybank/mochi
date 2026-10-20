@@ -124,6 +124,25 @@ import Testing
         #expect(pages(session) == (row.matches ? ["https://example.com/"] : []))
     }
 
+    /// An address is matched as it reads (#143): what `URLDisplay` shows decoded is matched by
+    /// what it shows, and its escapes still match too.
+    @Test(arguments: [
+        (typed: "咖啡", matches: true),
+        (typed: "啡", matches: true),
+        (typed: "wiki/咖啡", matches: true),
+        (typed: "zh.wikipedia.org/wiki/咖", matches: true),
+        (typed: "%E5%92%96", matches: true),
+        (typed: "茶", matches: false),
+    ])
+    func anAddressIsMatchedAsItReads(_ row: (typed: String, matches: Bool)) {
+        let address = "https://zh.wikipedia.org/wiki/%E5%92%96%E5%95%A1"
+        let session = session([candidate(address, title: "Coffee")])
+
+        session.textChanged(to: row.typed, byDeleting: false)
+
+        #expect(suggested(session) == (row.matches ? [address] : []))
+    }
+
     // MARK: Ranking
 
     @Test func moreFrecentPagesComeFirst() {
@@ -358,6 +377,28 @@ import Testing
         session.textChanged(to: row.typed, byDeleting: false)
 
         #expect(session.fieldText == row.field)
+    }
+
+    /// The completion follows on from the address as it reads (#143); Return still opens the
+    /// address itself.
+    @Test func anAddressIsCompletedAsItReads() {
+        let address = URL(string: "https://zh.wikipedia.org/wiki/%E5%92%96%E5%95%A1")!
+        let session = session([candidate(address.absoluteString)])
+
+        session.textChanged(to: "zh.wikipedia.org/wiki/咖", byDeleting: false)
+
+        #expect(session.fieldText == "zh.wikipedia.org/wiki/咖啡")
+        #expect(completion(session) == "啡")
+        #expect(session.rows.first == .open(address))
+        #expect(session.enter() == .navigate(address))
+    }
+
+    @Test func typedEscapesAreCompletedAsEscapes() {
+        let session = session([candidate("https://zh.wikipedia.org/wiki/%E5%92%96%E5%95%A1")])
+
+        session.textChanged(to: "zh.wikipedia.org/wiki/%E5", byDeleting: false)
+
+        #expect(completion(session) == "%92%96%E5%95%A1")
     }
 
     @Test func nothingIsCompletedWithoutAnAddressStartingWithTheText() {

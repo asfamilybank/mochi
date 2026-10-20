@@ -140,10 +140,25 @@ public final class HistoryStore {
     /// empty query matches everything. `host` narrows them to the visits to exactly that host,
     /// case aside (`site:`, #118) — not to a longer host it is the start or end of.
     public func search(_ query: String, host: String? = nil) -> [HistoryVisit] {
-        let escaped = Self.escapedForLike(query)
-        let matches = "(title LIKE ?1 ESCAPE '\\' OR url LIKE ?1 ESCAPE '\\')"
-        guard let host else { return visits(where: matches, .text("%\(escaped)%")) }
-        return visits(where: "host = ?2 AND \(matches)", .text("%\(escaped)%"), .text(host.lowercased()))
+        guard let host else {
+            let (matches, values) = Self.contains(query, firstParameter: 1)
+            return visits(where: matches, values)
+        }
+        let (matches, values) = Self.contains(query, firstParameter: 2)
+        return visits(where: "host = ?1 AND \(matches)", [.text(host.lowercased())] + values)
+    }
+
+    /// The condition that a visit's title or address contains `text`, case aside, and the values
+    /// for its parameters, numbered from `firstParameter`. The address counts as it reads (#143):
+    /// it is stored encoded — `URL.absoluteString` is ASCII however the `URL` was made — so the
+    /// text is looked for in it as `URLDisplay.escaped` writes it. Still one `LIKE` per column,
+    /// never a decoding of every row.
+    private static func contains(_ text: String, firstParameter: Int) -> (String, [SQLiteDatabase.Value]) {
+        let (title, address) = ("?\(firstParameter)", "?\(firstParameter + 1)")
+        return (
+            "(title LIKE \(title) ESCAPE '\\' OR url LIKE \(address) ESCAPE '\\')",
+            [.text("%" + escapedForLike(text) + "%"), .text("%" + escapedForLike(URLDisplay.escaped(text)) + "%")]
+        )
     }
 
     /// `text` matched literally inside a `LIKE … ESCAPE '\\'` pattern.
@@ -212,17 +227,18 @@ public final class HistoryStore {
     /// frecent first, at most `limit`. Computed from the visits every time (ADR-0030/0034), so
     /// deleting visits takes their suggestions along with no further step.
     ///
-    /// A coarse filter: each word has to appear somewhere in a visit's address or title, case
-    /// aside; where in it is `AddressEditingSession`'s to judge. `limit` is generous because that
-    /// judgement comes after it. Only visits at or after `since` count — the retention limit, for
-    /// visits not yet removed.
+    /// A coarse filter: each word has to appear somewhere in a visit's address (as it reads or as
+    /// it is encoded, #143) or title, case aside; where in it is `AddressEditingSession`'s to
+    /// judge. `limit` is generous because that judgement comes after it. Only visits at or after
+    /// `since` count — the retention limit, for visits not yet removed.
     public func suggestionCandidates(matching words: [String], since: Date?, limit: Int = 500)
         -> [AddressSuggestionCandidate]
     {
         var values: [SQLiteDatabase.Value] = []
         let conditions = words.map { word in
-            values.append(.text("%" + Self.escapedForLike(word) + "%"))
-            return "(url LIKE ?\(values.count + 1) ESCAPE '\\' OR title LIKE ?\(values.count + 1) ESCAPE '\\')"
+            let (condition, wordValues) = Self.contains(word, firstParameter: values.count + 2)
+            values += wordValues
+            return condition
         }
         return suggestionCandidates(where: conditions, values, since: since, limit: limit)
     }
@@ -342,6 +358,10 @@ public final class HistoryStore {
     }
 
     private func visits(where condition: String, _ values: SQLiteDatabase.Value...) -> [HistoryVisit] {
+        visits(where: condition, values)
+    }
+
+    private func visits(where condition: String, _ values: [SQLiteDatabase.Value]) -> [HistoryVisit] {
         let sql = """
             SELECT id, url, title, visited_at, favicon_hash FROM visits
             WHERE \(condition) ORDER BY visited_at DESC, id DESC

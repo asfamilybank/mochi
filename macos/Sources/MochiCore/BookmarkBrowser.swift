@@ -13,9 +13,10 @@ public enum BookmarkEditError: Error, Equatable, Sendable {
 /// The 书签 window's state and what it does (#123, ADR-0033), kept out of the view so it can be
 /// tested against a real store. The SwiftUI view only draws it.
 ///
-/// Every bookmark in the user's order, or — while searching — those whose name or address
-/// contains the query anywhere: the window is for finding a bookmark, so the address bar's
-/// word-start rule (ADR-0034) doesn't apply here. Only the whole list can be reordered.
+/// Every bookmark in the user's order, or — while searching — those whose name or address (as it
+/// reads, #143, or as it is encoded) contains the query anywhere: the window is for finding a
+/// bookmark, so the address bar's word-start rule (ADR-0034) doesn't apply here. Only the whole
+/// list can be reordered.
 ///
 /// Addresses typed into it are read the way the address bar reads them, and only web pages are
 /// kept. A new bookmark goes to the end of the list, with no icon until it is first visited.
@@ -57,7 +58,11 @@ public final class BookmarkBrowser {
         let query = trimmedQuery.lowercased()
         rows = query.isEmpty
             ? all
-            : all.filter { $0.name.lowercased().contains(query) || $0.url.absoluteString.lowercased().contains(query) }
+            : all.filter { row in
+                [row.name, URLDisplay.text(of: row.url), row.url.absoluteString].contains {
+                    $0.lowercased().contains(query)
+                }
+            }
     }
 
     public func search(_ query: String) {

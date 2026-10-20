@@ -250,9 +250,10 @@ public final class AddressEditingSession {
 
     // MARK: - Completion
 
-    /// The best-ranked candidate whose address — shown without `https://`, `www.` or a bare
-    /// host's trailing `/` — starts with `text` (itself without `https://`/`www.`), and what of
-    /// that address follows `text`. Nothing for text with whitespace in it: that is a search.
+    /// The best-ranked candidate whose address — as it reads (#143), or as it is encoded, without
+    /// `https://`, `www.` or a bare host's trailing `/` — starts with `text` (itself without
+    /// `https://`/`www.`), and what of that address follows `text`. Nothing for text with
+    /// whitespace in it: that is a search.
     private static func completion(of text: String, from ranked: [AddressSuggestionCandidate])
         -> (AddressSuggestionCandidate, String)?
     {
@@ -260,15 +261,17 @@ public final class AddressEditingSession {
         let typed = stripCommonPrefixes(text.lowercased())
         guard !typed.isEmpty else { return nil }
         for candidate in ranked {
-            let shown = completionText(of: candidate.url)
-            guard shown.lowercased().hasPrefix(typed), shown.count > typed.count else { continue }
-            return (candidate, String(shown.dropFirst(typed.count)))
+            for address in [URLDisplay.text(of: candidate.url), candidate.url.absoluteString] {
+                let shown = completionText(of: address, url: candidate.url)
+                guard shown.lowercased().hasPrefix(typed), shown.count > typed.count else { continue }
+                return (candidate, String(shown.dropFirst(typed.count)))
+            }
         }
         return nil
     }
 
-    private static func completionText(of url: URL) -> String {
-        var text = stripCommonPrefixes(url.absoluteString)
+    private static func completionText(of address: String, url: URL) -> String {
+        var text = stripCommonPrefixes(address)
         if (url.path == "/" || url.path.isEmpty), url.query == nil, url.fragment == nil, text.hasSuffix("/") {
             text.removeLast()
         }
@@ -293,10 +296,11 @@ public final class AddressEditingSession {
         return String(text)
     }
 
-    /// Every word typed starts a word of the address (without its scheme and `www.`), the title
-    /// or the bookmark's name.
+    /// Every word typed starts a word of the address (without its scheme and `www.`) — as it reads
+    /// (#143) or as it is encoded — the title or the bookmark's name.
     private static func matches(_ candidate: AddressSuggestionCandidate, words: [String]) -> Bool {
         let texts = [
+            stripCommonPrefixes(URLDisplay.text(of: candidate.url).lowercased()),
             stripCommonPrefixes(candidate.url.absoluteString.lowercased()), candidate.title?.lowercased() ?? "",
             candidate.bookmarkName?.lowercased() ?? "",
         ]

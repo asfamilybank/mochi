@@ -30,6 +30,22 @@ public enum URLDisplay {
         return String(decoding: shown, as: UTF8.self)
     }
 
+    /// `text` the way an address carries it (#143): each character `text(of:)` would show decoded,
+    /// as the percent escapes it stands for — so what is typed can be looked for in an address
+    /// that is stored encoded. What `text(of:)` leaves escaped stays as typed: an address showing
+    /// it escaped is matched by its escapes.
+    static func escaped(_ text: String) -> String {
+        var escaped = ""
+        for scalar in text.unicodeScalars {
+            if scalar.isASCII || !isVisible(scalar) {
+                escaped.unicodeScalars.append(scalar)
+            } else {
+                for byte in String(scalar).utf8 { escaped += String(format: "%%%02X", byte) }
+            }
+        }
+        return escaped
+    }
+
     /// `run`, the bytes behind a row of escapes, one character at a time: a byte that does not
     /// start a whole UTF-8 character keeps its escape, and so does a character `isVisible` turns away.
     private static func decoded(_ run: [UInt8], escapes: ArraySlice<UInt8>) -> [UInt8] {
