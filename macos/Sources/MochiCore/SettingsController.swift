@@ -90,6 +90,10 @@ public final class SettingsController {
         persistAndNotify { $0.updatingFloatOpacity(opacity) }
     }
 
+    public func updateFloatAlwaysOnTop(_ isOn: Bool) {
+        persistAndNotify { $0.updatingFloatAlwaysOnTop(isOn) }
+    }
+
     public func updateSnapEnabled(_ enabled: Bool) {
         persistAndNotify { $0.updatingSnapEnabled(enabled) }
     }

@@ -163,10 +163,16 @@ public protocol PlatformOps: AnyObject {
     func onURLSubmitted(_ window: WidgetWindowHandle, perform handler: @escaping (URL) -> Void)
 
     /// Applies an always-on-top window level. Driven exclusively by `WidgetModeController`
-    /// (ADR-0012): Ghost Mode always floats, Normal Mode is a plain window at the normal level.
-    /// There is no user-facing Pin control to reflect back, so nothing else calls this and there
-    /// is nothing to persist.
+    /// (ADR-0012): Ghost Mode always floats, Float Mode as its preference says (#150), Normal Mode
+    /// is a plain window at the normal level. There is no user-facing Pin control to reflect back,
+    /// so nothing else calls this.
     func setPinned(_ pinned: Bool, in window: WidgetWindowHandle)
+
+    /// Raises the widget's Popup Windows — those open now and any opened later — to its
+    /// always-on-top level, or lowers them back to the normal one (#150). A sign-in popup opened
+    /// from a pinned floating widget would otherwise land underneath it. Driven, like `setPinned`,
+    /// by `WidgetModeController` alone.
+    func setPopupWindowsPinned(_ pinned: Bool, in window: WidgetWindowHandle)
 
     /// Registers a handler invoked when the toolbar's Ghost Mode entry button (#44) is clicked.
     /// A one-way "enter" affordance, not a toggle the button tracks state for itself — the

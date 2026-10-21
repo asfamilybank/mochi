@@ -215,6 +215,27 @@ import Testing
         #expect(reparsed == original)
     }
 
+    // #150: Float Mode's always-on-top is a preference, on unless turned off (ADR-0035).
+
+    @Test func floatAlwaysOnTopDefaultsToOnWhenAbsent() throws {
+        let config = try WidgetConfig.parse("ghost_opacity = 0.3")
+        #expect(config.isFloatAlwaysOnTop)
+    }
+
+    @Test func parsesFloatAlwaysOnTopWhenPresent() throws {
+        let config = try WidgetConfig.parse("float_always_on_top = false")
+        #expect(!config.isFloatAlwaysOnTop)
+    }
+
+    @Test func serializingThenReparsingRoundTripsFloatAlwaysOnTop() throws {
+        let original = WidgetConfig(url: URL(string: "https://example.com")!).updatingFloatAlwaysOnTop(false)
+
+        let reparsed = try WidgetConfig.parse(original.serialized())
+
+        #expect(!reparsed.isFloatAlwaysOnTop)
+        #expect(reparsed == original)
+    }
+
     @Test func aLeftoverMouseAvoidanceKeyIsIgnoredAndDroppedOnSave() throws {
         // Mouse-entered avoidance was removed (ADR-0019); config files written before that still
         // carry its key and must keep loading.

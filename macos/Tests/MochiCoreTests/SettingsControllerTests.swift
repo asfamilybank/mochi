@@ -66,6 +66,15 @@ import Testing
         #expect(store.config.ghostOpacity == WidgetConfig.defaultGhostOpacity)
     }
 
+    @Test func updatingFloatAlwaysOnTopPersistsThroughTheInjectedStore() {
+        let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
+        let controller = makeController(store: store)
+
+        controller.updateFloatAlwaysOnTop(false)
+
+        #expect(!store.config.isFloatAlwaysOnTop)
+    }
+
     /// AC: "有测试验证设置改动确实经过既有的配置持久化路径，而不是绕开它单独写文件." Unlike the
     /// other tests here (which use `PersistedStore`, an in-memory stand-in), this drives
     /// `SettingsController` through a `persist` function shaped exactly like `AppDelegate`'s own

@@ -1308,6 +1308,14 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         window.level = pinned ? .floating : .normal
     }
 
+    /// Read by every Popup Window as it opens and whenever settings are pushed to them (#150).
+    private(set) var arePopupWindowsPinned = false
+
+    func setPopupWindowsPinned(_ pinned: Bool) {
+        arePopupWindowsPinned = pinned
+        applySettingsToPopupWindows()
+    }
+
     /// The Loading Progress Bar's fill color, system accent — baked into a `CALayer` (see the
     /// class-level comment), so re-applied on every accent/appearance change.
     private func updateProgressBarColor() {
@@ -2508,6 +2516,11 @@ public final class AppKitPlatformOps: PlatformOps {
     public func onURLSubmitted(_ window: WidgetWindowHandle, perform handler: @escaping (URL) -> Void) {
         guard let handle = handle(for: window) else { return }
         handle.setURLSubmittedHandler(handler)
+    }
+
+    public func setPopupWindowsPinned(_ pinned: Bool, in window: WidgetWindowHandle) {
+        guard let handle = handle(for: window) else { return }
+        handle.setPopupWindowsPinned(pinned)
     }
 
     public func setPinned(_ pinned: Bool, in window: WidgetWindowHandle) {

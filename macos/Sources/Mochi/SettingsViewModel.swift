@@ -76,6 +76,11 @@ final class SettingsViewModel: ObservableObject {
         config = controller.config
     }
 
+    func updateFloatAlwaysOnTop(_ isOn: Bool) {
+        controller.updateFloatAlwaysOnTop(isOn)
+        config = controller.config
+    }
+
     func updateSnapEnabled(_ enabled: Bool) {
         controller.updateSnapEnabled(enabled)
         config = controller.config

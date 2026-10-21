@@ -245,9 +245,20 @@ struct WindowModesSettingsTab: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             ModeOpacitySection(
-                title: "悬浮模式", opacity: viewModel.config.floatOpacity, range: WidgetConfig.floatOpacityRange
+                title: "悬浮模式", opacity: viewModel.config.floatOpacity, range: WidgetConfig.floatOpacityRange,
+                commit: { viewModel.updateFloatOpacity($0) }
             ) {
-                viewModel.updateFloatOpacity($0)
+                // #150: the only place Float Mode's always-on-top is changed (ADR-0035).
+                HotkeyRow(title: "始终置顶", description: "浮在其他应用的窗口上面。关掉后，悬浮窗口会被其他窗口盖住。") {
+                    Toggle(
+                        "始终置顶",
+                        isOn: Binding(
+                            get: { viewModel.config.isFloatAlwaysOnTop },
+                            set: { viewModel.updateFloatAlwaysOnTop($0) }
+                        )
+                    )
+                    .labelsHidden()
+                }
             }
 
             Divider()
@@ -324,16 +335,22 @@ struct HotkeysSettingsTab: View {
 /// A mode's group in 窗口模式 headed by the mode's name, with its target opacity laid out like the
 /// hotkey rows — Ghost Mode's since #88 (headed 外观 until #146), Float Mode's since #147. Written
 /// only when the drag ends — mid-drag values stay in `@State`.
-private struct ModeOpacitySection: View {
+private struct ModeOpacitySection<Extra: View>: View {
     var title: String
     var range: ClosedRange<Double>
     var commit: (Double) -> Void
+    /// Rows a mode has besides its opacity, below it.
+    var extra: Extra
     @State private var opacity: Double
 
-    init(title: String, opacity: Double, range: ClosedRange<Double> = 0...1, commit: @escaping (Double) -> Void) {
+    init(
+        title: String, opacity: Double, range: ClosedRange<Double> = 0...1, commit: @escaping (Double) -> Void,
+        @ViewBuilder extra: () -> Extra
+    ) {
         self.title = title
         self.range = range
         self.commit = commit
+        self.extra = extra()
         _opacity = State(initialValue: opacity)
     }
 
@@ -357,7 +374,14 @@ private struct ModeOpacitySection: View {
                         .frame(width: 44, alignment: .trailing)
                 }
             }
+            extra
         }
+    }
+}
+
+extension ModeOpacitySection where Extra == EmptyView {
+    init(title: String, opacity: Double, range: ClosedRange<Double> = 0...1, commit: @escaping (Double) -> Void) {
+        self.init(title: title, opacity: opacity, range: range, commit: commit) { EmptyView() }
     }
 }
 
@@ -410,7 +434,7 @@ private struct HotkeyRow<Control: View>: View {
 private extension HotkeyAction {
     var settingsDescription: String {
         switch self {
-        case .toggleFloatMode: "隐藏窗口装饰并置顶，窗口仍可点击和输入；再按一次退出。"
+        case .toggleFloatMode: "隐藏窗口装饰并默认置顶，窗口仍可点击和输入；再按一次退出。"
         case .toggleGhostMode: "隐藏窗口装饰、置顶并让鼠标穿透；再按一次退出。"
         case .hideWidget: "悬浮或幽灵模式下让窗口完全看不见，页面继续运行，视频会暂停。"
         }

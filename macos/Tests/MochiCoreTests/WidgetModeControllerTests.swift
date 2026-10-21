@@ -397,6 +397,53 @@ private final class ConfigStore {
         #expect(fake.contentOpacityChanges.map(\.opacity) == [0.8, 0.5])
     }
 
+    // MARK: - Float Mode's always-on-top is a preference (#150, ADR-0035)
+
+    @Test(arguments: [true, false])
+    func enteringFloatModePinsAsConfigured(alwaysOnTop: Bool) {
+        let (fake, store, controller) = makeSUT()
+        store.config.isFloatAlwaysOnTop = alwaysOnTop
+
+        controller.toggleFloatMode()
+
+        #expect(fake.pinnedChanges.map(\.pinned) == [alwaysOnTop])
+        // Popup Windows rise with a pinned floating widget, or they'd end up underneath it.
+        #expect(fake.popupWindowsPinnedChanges.map(\.pinned) == [alwaysOnTop])
+    }
+
+    @Test func turningAlwaysOnTopOffWhileFloatingAppliesAtOnce() {
+        let (fake, store, controller) = makeSUT()
+        controller.toggleFloatMode()
+        store.config.isFloatAlwaysOnTop = false
+
+        controller.reapplyConfiguration()
+
+        #expect(fake.pinnedChanges.map(\.pinned) == [true, false])
+        #expect(fake.popupWindowsPinnedChanges.map(\.pinned) == [true, false])
+    }
+
+    @Test func ghostModeIsAlwaysOnTopWhateverTheFloatPreference() {
+        let (fake, store, controller) = makeSUT()
+        store.config.isFloatAlwaysOnTop = false
+
+        controller.toggleGhostMode()
+        controller.reapplyConfiguration()
+
+        #expect(fake.pinnedChanges.map(\.pinned).allSatisfy { $0 })
+        // Popup Windows stay ordinary windows beside a click-through widget.
+        #expect(fake.popupWindowsPinnedChanges.map(\.pinned).allSatisfy { !$0 })
+    }
+
+    @Test(arguments: [false, true])
+    func leavingAPinnedFloatModeLowersThePopupWindowsAgain(forGhostMode: Bool) {
+        let (fake, _, controller) = makeSUT()
+        controller.toggleFloatMode()
+
+        if forGhostMode { controller.toggleGhostMode() } else { controller.toggleFloatMode() }
+
+        #expect(fake.popupWindowsPinnedChanges.last?.pinned == false)
+    }
+
     // MARK: - Hidden shared by Float and Ghost (#148, ADR-0035)
 
     @Test func goingHiddenInFloatModeMakesTheWindowInvisiblePausesTheMediaAndGivesUpFocus() {

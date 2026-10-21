@@ -18,8 +18,9 @@ public enum WidgetMode: Equatable, Sendable {
 /// key: it enters that mode, or returns to Normal Mode from it, and Float and Ghost switch
 /// straight into each other.
 ///
-/// Always-on-top belongs to these bundles, not to a standalone feature, so this controller is the
-/// only caller of `setPinned` in the whole app.
+/// Always-on-top belongs to these bundles, not to a standalone feature — Float Mode's as a
+/// preference read on entry (#150) — so this controller is the only caller of `setPinned` (and
+/// `setPopupWindowsPinned`) in the whole app.
 ///
 /// It is also the single decider of how visible the window is. "Hidden" and "translucent" would
 /// otherwise both write `NSWindow.alphaValue` and fight over it, so this type folds every input
@@ -65,6 +66,8 @@ public final class WidgetModeController {
     public func reapplyConfiguration() {
         guard mode != .normal else { return }
         applyEffectiveOpacity()
+        // Float Mode's always-on-top is a preference too (#150).
+        if mode == .float { applyPinning() }
     }
 
     public func toggleGhostMode() {
@@ -136,6 +139,20 @@ public final class WidgetModeController {
         platformOps.setContentOpacity(effectiveOpacity, in: window)
     }
 
+    /// Ghost Mode always floats; Float Mode as its preference says (#150, ADR-0035); Normal Mode
+    /// never. Popup Windows rise only beside a pinned floating widget — beside a click-through one
+    /// they stay ordinary windows, as they are in Normal Mode.
+    private func applyPinning() {
+        let pinned: Bool
+        switch mode {
+        case .normal: pinned = false
+        case .float: pinned = currentConfig().isFloatAlwaysOnTop
+        case .ghost: pinned = true
+        }
+        platformOps.setPinned(pinned, in: window)
+        platformOps.setPopupWindowsPinned(mode == .float && pinned, in: window)
+    }
+
     /// Ghost Mode is click-through by definition; a hidden Float Mode window is too, so a window
     /// nobody can see never catches a click meant for the app underneath (#148).
     private func applyMousePassthrough() {
@@ -149,7 +166,7 @@ public final class WidgetModeController {
         platformOps.setWindowChrome(.ghost, in: window)
         applyEffectiveOpacity()
         applyMousePassthrough()
-        platformOps.setPinned(true, in: window)
+        applyPinning()
         if !anotherWindowIsKey { platformOps.deactivateApp() }
         onStateChanged?()
     }
@@ -163,7 +180,7 @@ public final class WidgetModeController {
         platformOps.setWindowChrome(.float, in: window)
         applyEffectiveOpacity()
         applyMousePassthrough()
-        platformOps.setPinned(true, in: window)
+        applyPinning()
         if !isHidden { platformOps.showWindow(window) }
         onStateChanged?()
     }
@@ -181,7 +198,7 @@ public final class WidgetModeController {
         platformOps.setWindowChrome(.normal, in: window)
         applyEffectiveOpacity()
         applyMousePassthrough()
-        platformOps.setPinned(false, in: window)
+        applyPinning()
         // The user just asked to interact with the widget: the one moment leaving Ghost Mode may
         // take focus (ADR-0012). Entering or staying in Ghost Mode never fronts the window, so it
         // can't steal focus from whatever app the user is actually working in.

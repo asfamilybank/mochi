@@ -148,6 +148,13 @@ final class FakePlatformOps: PlatformOps {
         pinnedChanges.append((pinned, handle.id))
     }
 
+    private(set) var popupWindowsPinnedChanges: [(pinned: Bool, windowID: Int)] = []
+
+    func setPopupWindowsPinned(_ pinned: Bool, in window: WidgetWindowHandle) {
+        let handle = window as! FakeWidgetWindowHandle
+        popupWindowsPinnedChanges.append((pinned, handle.id))
+    }
+
     func onGhostModeToggleRequested(_ window: WidgetWindowHandle, perform handler: @escaping () -> Void) {
         let handle = window as! FakeWidgetWindowHandle
         ghostModeToggleRequestedHandlers[handle.id] = handler

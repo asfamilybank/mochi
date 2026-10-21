@@ -109,6 +109,8 @@ final class PopupWindowController: NSObject, NSWindowDelegate, WKNavigationDeleg
         webView.configuration.preferences.javaScriptCanOpenWindowsAutomatically =
             ownerPreferences.javaScriptCanOpenWindowsAutomatically
         webView.isInspectable = owner.webView.isInspectable
+        // Settings, History and 书签 windows stay at the normal level; only these follow (#150).
+        window.level = owner.arePopupWindowsPinned ? .floating : .normal
     }
 
     /// Closes the window; `windowWillClose` does the teardown.
