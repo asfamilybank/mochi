@@ -61,8 +61,8 @@ public enum SystemPermissionMarker: String, CaseIterable, Hashable, Sendable {
 public struct SystemPermissionPrompt: Equatable, Sendable {
     /// Where in the settings panel it goes.
     public enum Placement: Equatable, Sendable {
-        /// The top of the 窗口模式 panel, above everything that needs the permission (#103, #111).
-        case windowModesPanelTop
+        /// The top of the 热键 panel, above everything that needs the permission (#103, #111).
+        case hotkeysPanelTop
         /// An entry in the tray menu, the one place that reaches the user in Ghost Mode (#103).
         case trayMenu
         /// Top of 网站 → 摄像头 / 麦克风 (#104): the page of the prompt's own `permission`.
@@ -110,7 +110,7 @@ public enum SystemPermissionPrompts {
     /// them behind Mochi's back.
     ///
     /// Accessibility (#111, ADR-0029): whenever it is not granted and a 视频控制 key needs it
-    /// (`VideoControl.needsAccessibility(for:)`), at the top of the 窗口模式 panel and in the
+    /// (`VideoControl.needsAccessibility(for:)`), at the top of the 热键 panel and in the
     /// tray — its button the camera's: 请求权限 while Mochi has never asked, 打开系统设置 once it
     /// has. `status` reads Accessibility as trusted or not; `accessibilityRequested` is Mochi's
     /// record of having asked (`SystemPermissionMarker.accessibilityRequested`).
@@ -127,7 +127,7 @@ public enum SystemPermissionPrompts {
         let accessibility = SystemPermissionStatus.accessibility(
             isTrusted: status(.accessibility) == .authorized, requested: accessibilityRequested)
         if VideoControl.needsAccessibility(for: config), isMissing(accessibility) {
-            prompts += [SystemPermissionPrompt.Placement.windowModesPanelTop, .trayMenu].map {
+            prompts += [SystemPermissionPrompt.Placement.hotkeysPanelTop, .trayMenu].map {
                 SystemPermissionPrompt(permission: .accessibility, placement: $0, action: button(for: accessibility))
             }
         }

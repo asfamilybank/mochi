@@ -71,7 +71,7 @@ import Testing
     }
 
     /// While something needs Accessibility and it is not granted: one prompt at the top of the
-    /// 窗口模式 panel and one in the tray, its button like the camera's — 请求权限 while Mochi has
+    /// 热键 panel and one in the tray, its button like the camera's — 请求权限 while Mochi has
     /// never asked, 打开系统设置 once it has (#111). Granted, or not needed, nothing. The platform
     /// reads Accessibility as `.authorized` or `.denied` only: trusted or not.
     @Test(arguments: [
@@ -94,7 +94,7 @@ import Testing
             accessibilityRequested: row.requested)
 
         let expected = row.shown
-            ? [SystemPermissionPrompt.Placement.windowModesPanelTop, .trayMenu].map {
+            ? [SystemPermissionPrompt.Placement.hotkeysPanelTop, .trayMenu].map {
                 SystemPermissionPrompt(permission: .accessibility, placement: $0, action: row.action)
             }
             : []

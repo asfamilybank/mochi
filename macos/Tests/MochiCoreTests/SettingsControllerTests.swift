@@ -1663,8 +1663,8 @@ import Testing
         #expect(controller.systemPermissionPrompts.isEmpty)
         fake.stubbedSystemPermissionStatuses[.accessibility] = .denied
 
-        #expect(controller.systemPermissionPrompts.filter { $0.placement == .windowModesPanelTop }
-            == [SystemPermissionPrompt(permission: .accessibility, placement: .windowModesPanelTop, action: .request)])
+        #expect(controller.systemPermissionPrompts.filter { $0.placement == .hotkeysPanelTop }
+            == [SystemPermissionPrompt(permission: .accessibility, placement: .hotkeysPanelTop, action: .request)])
     }
 
     /// The system can't tell 未询问 from 已拒绝 for Accessibility (ADR-0029): asking from the panel
@@ -1676,7 +1676,7 @@ import Testing
         let config = WidgetConfig().updatingVideoControlTrigger(
             .keystroke(Hotkey(keyCode: 0x23, modifierFlags: 0x0800)), for: .seekForward)  // ⌥P
         let controller = makeController(store: PersistedStore(config), platformOps: fake)
-        let prompt = try #require(controller.systemPermissionPrompts.first { $0.placement == .windowModesPanelTop })
+        let prompt = try #require(controller.systemPermissionPrompts.first { $0.placement == .hotkeysPanelTop })
 
         controller.perform(prompt)
 
@@ -1710,7 +1710,7 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: PersistedStore(WidgetConfig()), platformOps: fake)
 
-        controller.perform(SystemPermissionPrompt(permission: .camera, placement: .windowModesPanelTop, action: row.action))
+        controller.perform(SystemPermissionPrompt(permission: .camera, placement: .hotkeysPanelTop, action: row.action))
 
         #expect(fake.systemPermissionRequests == row.requested)
         #expect(fake.openedSystemSettings == row.opened)
@@ -1721,7 +1721,7 @@ import Testing
         let fake = FakePlatformOps()
         let controller = makeController(store: PersistedStore(WidgetConfig()), platformOps: fake)
 
-        controller.perform(SystemPermissionPrompt(permission: .camera, placement: .windowModesPanelTop, action: nil))
+        controller.perform(SystemPermissionPrompt(permission: .camera, placement: .hotkeysPanelTop, action: nil))
 
         #expect(fake.systemPermissionRequests.isEmpty)
         #expect(fake.openedSystemSettings.isEmpty)

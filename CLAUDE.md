@@ -219,7 +219,7 @@ Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs
 - `python3 -m http.server --bind 127.0.0.1` 时启动 URL 也写 `http://127.0.0.1:端口`，写 `localhost` 可能解析到 `::1` 连不上；配置里加 `http_warning_enabled = false` 免得被 HTTP 警告页拦住。
 - `Orchestrator` 注册给平台层的闭包都是 `[weak self]`：测试里写 `_ = Orchestrator(...)` 或者不再持有它，后续的 `simulate…` 会静默失效、没有任何调用。要用 `withExtendedLifetime(orchestrator) { ... }` 把它留住。
 - 测轻按识别本身的测试用 `WidgetConfig.tapsOnlyVideoKeys`（只有轻按、不会延迟），别用默认配置：自 ADR-0024 起右 ⌥ 默认两用，轻按要等 `runScheduledWork()`。需要定时的逻辑走 `PlatformOps.schedule(after:)`，测试里用 `FakePlatformOps.runScheduledWork()` 代替时间流逝。
-- 设置窗口里「窗口模式」「脚本」两个面板的高度是写死的（见 `SettingsView` 的 `content(viewModel:)` 里的 `.frame(height:)`）：往里加分组却不调高度，会出现顶部标题被裁掉、`List` 被挤到 0 高的情况，编译和测试都发现不了，只能截图看。
+- 设置窗口里「热键」「网站」「脚本」三个面板的高度是写死的（见 `SettingsView` 的 `content(viewModel:)` 里的 `.frame(height:)`）：往里加分组却不调高度，会出现顶部标题被裁掉、`List` 被挤到 0 高的情况，编译和测试都发现不了，只能截图看。
 - 打开设置、切面板、点按钮一律用 AX 动作（`AXUIElementPerformAction` + `kAXPressAction`，菜单项走 `kAXMenuBarAttribute` 找「设置…」），不发合成按键：AX 不需要 Mochi 在前台，也不会误打进用户正在用的应用。确需按键时，每一下之前都查一次 frontmost，不是 Mochi 就跳过，不能只在开头 `set frontmost` 一次——用户在用电脑时它会静默失败。
 - AX 只看得见**当前桌面（Space）**上的窗口：Mochi 窗口在别的桌面时，`kAXWindowsAttribute` 返回 0 个，`CGWindowListCopyWindowInfo` 和 `screencapture -l` 却照常能用，别误判成辅助功能权限失效。想用 AX 操作时，退出 Mochi 再用 `open -a /Applications/Mochi.app` 启动，新窗口会出现在当前桌面。
 - 屏幕锁定时（`ioreg -n Root -d1 | grep '"CGSSessionScreenIsLocked"=Yes'`），`screencapture -l` 报 `could not create image from window`，AX 读到的窗口标题全变成 `Mochi`、按标题找窗口落空，1Password 签名和 SSH 也一起失败（`failed to fill whole buffer`、`agent returned an error`、`communication with agent failed`）。这些都不是代码或权限的问题。真机验证开始前先跑 `caffeinate -d -t 900`，防止中途自动锁屏；已经锁了就先还原测试用的 config 和库，等用户回来。
