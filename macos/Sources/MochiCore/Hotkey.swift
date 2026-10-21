@@ -45,16 +45,21 @@ extension Hotkey {
 }
 
 public enum DefaultHotkeys {
-    /// Carbon's `optionKey` alone, shared by both default action combos below. Hardcoded rather
+    /// Carbon's `optionKey` alone, shared by every default action combo below. Hardcoded rather
     /// than importing Carbon here so this file stays platform-import-free like the rest of the
     /// pure MochiCore layer.
     ///
     /// Option-only rather than `⌥⌘` since #58: a Carbon hotkey is claimed system-wide for as long
     /// as Mochi runs, and `⌥⌘H` is every Mac app's 隐藏其他 — Mochi was stealing it from all of
     /// them. Accepted cost: while Mochi runs, ⌥G/⌥H no longer type `©`/`˙`, and terminals using
-    /// Option-as-Meta lose `M-g`/`M-h`. Users who rebound either action keep their combo — the
-    /// config stores only overrides.
+    /// Option-as-Meta lose `M-g`/`M-h`. ⌥F (#147) costs the same again, and more: no `ƒ`, and
+    /// `M-f` is forward-word in bash, zsh and Emacs. Users who rebound an action keep their combo
+    /// — the config stores only overrides.
     private static let option: UInt32 = 0x0800
+
+    /// ⌥F — the default Float Mode toggle (#147, ADR-0035): into Float Mode from either other
+    /// mode, back to Normal Mode from Float Mode. `0x03` is `kVK_ANSI_F`.
+    public static let toggleFloatMode = Hotkey(keyCode: 0x03, modifierFlags: option)
 
     /// ⌥G — the default Normal/Ghost Mode toggle (#8, ⌥⌘G before #58). `0x05` is `kVK_ANSI_G`.
     public static let toggleGhostMode = Hotkey(keyCode: 0x05, modifierFlags: option)
@@ -116,14 +121,15 @@ public enum DefaultHotkeys {
     ]
 }
 
-/// The two actions Mochi binds a *global* (Carbon-registered) hotkey to — and, since #45, the only
-/// two: reload/zoom/settings are fixed local menu shortcuts (#37) and deliberately not
-/// customizable, matching Chrome.
+/// The actions Mochi binds a *global* (Carbon-registered) hotkey to — since #45 the only ones
+/// (Float Mode's toggle joined in #147): reload/zoom/settings are fixed local menu shortcuts (#37)
+/// and deliberately not customizable, matching Chrome.
 ///
 /// Each case's `rawValue` is the stable string identifier the config file stores an override
 /// under (`[hotkeys]` table) — an explicit constant per case, never the case's declaration order
 /// or an integer index, so reordering or adding cases can't silently rebind a user's saved combo.
 public enum HotkeyAction: String, CaseIterable, Hashable, Sendable {
+    case toggleFloatMode = "toggle_float_mode"
     case toggleGhostMode = "toggle_ghost_mode"
     case hideWidget = "hide_widget"
 
@@ -131,13 +137,27 @@ public enum HotkeyAction: String, CaseIterable, Hashable, Sendable {
     /// (`WidgetConfig.hotkey(for:)`).
     public var defaultHotkey: Hotkey {
         switch self {
+        case .toggleFloatMode: DefaultHotkeys.toggleFloatMode
         case .toggleGhostMode: DefaultHotkeys.toggleGhostMode
         case .hideWidget: DefaultHotkeys.hideWidget
         }
     }
 
+    /// Whether the default steps aside for a user who already bound its combo elsewhere
+    /// (`WidgetConfig.parse`). Only for a default that arrived after users could have done so — ⌥F
+    /// came with Float Mode (#147), and whoever had given it to Ghost Mode, Hidden or a mapping
+    /// keeps it, the toggle left unbound. The original two keep theirs: a mapping on ⌥G or ⌥H is
+    /// skipped and reported instead.
+    var defaultYieldsToTheUser: Bool {
+        switch self {
+        case .toggleFloatMode: true
+        case .toggleGhostMode, .hideWidget: false
+        }
+    }
+
     public var displayName: String {
         switch self {
+        case .toggleFloatMode: "切换悬浮模式"
         case .toggleGhostMode: "切换幽灵模式"
         case .hideWidget: "隐藏窗口"
         }

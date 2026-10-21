@@ -85,6 +85,11 @@ public final class SettingsController {
         persistAndNotify { $0.updatingGhostOpacity(opacity) }
     }
 
+    /// #147: re-applied at once while in Float Mode, like Ghost Mode's (#46).
+    public func updateFloatOpacity(_ opacity: Double) {
+        persistAndNotify { $0.updatingFloatOpacity(opacity) }
+    }
+
     public func updateSnapEnabled(_ enabled: Bool) {
         persistAndNotify { $0.updatingSnapEnabled(enabled) }
     }

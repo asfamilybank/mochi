@@ -123,6 +123,15 @@ public final class Orchestrator {
             TrayMenuItem(title: "打开窗口", icon: .symbol(DesignTokens.Symbol.openWidget)) { [weak self] in
                 self?.openWidget()
             },
+            // Float Mode (#147) the same way as Ghost Mode below: the hotkey's own `perform`.
+            TrayMenuItem(
+                title: "悬浮模式", icon: .symbol(DesignTokens.Symbol.floatMode),
+                hotkeyHint: { [weak self] in self?.currentConfig().hotkey(for: .toggleFloatMode) },
+                isChecked: { [weak self] in self?.widgetModeController?.mode == .float },
+                isEnabled: { [weak self] in self?.window != nil }
+            ) { [weak self] in
+                self?.perform(HotkeyAction.toggleFloatMode)
+            },
             // The same `perform` the global hotkey dispatches to, so entering Ghost Mode from the
             // tray is indistinguishable from the hotkey (#44). From Ghost Mode — fully Hidden and
             // click-through included — a toggle is a plain exit: the tray is the one control that
@@ -387,6 +396,7 @@ public final class Orchestrator {
 
     private func perform(_ action: HotkeyAction) {
         switch action {
+        case .toggleFloatMode: widgetModeController?.toggleFloatMode()
         case .toggleGhostMode: widgetModeController?.toggleGhostMode()
         case .hideWidget: widgetModeController?.toggleHidden()
         }
@@ -426,12 +436,13 @@ public final class Orchestrator {
     ///
     /// The one exception is `openLocation` (#61): with no widget it is still offered, and means
     /// "reopen, then focus the address bar" — Safari's ⌘L with no window open. Ghost Mode still
-    /// rules it out like everything else.
+    /// rules it out like everything else. Float Mode (#147) offers everything Normal Mode does but
+    /// what needs the toolbar (`isToolbarAbsent`).
     public func canPerform(_ command: WidgetCommand) -> Bool {
         if ghostOnlyFeaturesActive { return false }
         switch command {
         case .openLocation:
-            return true
+            return !isToolbarAbsent
         case .goBack:
             guard let window else { return false }
             return platformOps.navigationState(of: window).canGoBack
@@ -443,7 +454,7 @@ public final class Orchestrator {
         case .stop:
             return window.map { platformOps.navigationState(of: $0).isLoading } ?? false
         case .addBookmark:
-            return bookmarkStore != nil && bookmarkablePage != nil
+            return !isToolbarAbsent && bookmarkStore != nil && bookmarkablePage != nil
         }
     }
 
@@ -928,6 +939,10 @@ public final class Orchestrator {
     /// and the main menu offering nothing at all (`canPerform`). Float Mode is an ordinary,
     /// focusable window for these, so it stays out even once it shares Hidden.
     private var ghostOnlyFeaturesActive: Bool { widgetModeController?.mode == .ghost }
+
+    /// Float Mode keeps no toolbar (ADR-0035), so what needs the address bar is off there: 打开位置
+    /// has nothing to focus and 添加书签's editor nothing to hang from.
+    private var isToolbarAbsent: Bool { widgetModeController?.mode == .float }
 
     private func handleNavigationFailed(_ message: String) {
         guard let window else { return }

@@ -68,6 +68,21 @@ import Testing
         #expect(fake.videoCommands.map(\.command) == (scenario.togglesPlayback ? [.togglePlayback] : []), "\(scenario.name)")
     }
 
+    /// 视频控制 belongs to Ghost Mode alone; Float Mode is an ordinary window (#147, ADR-0035).
+    @Test func floatModeNeitherListensNorTogglesPlayback() {
+        let fake = FakePlatformOps()
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { .tapsOnlyVideoKeys })
+
+        withExtendedLifetime(orchestrator) {
+            orchestrator.start()
+            fake.simulateHotkeyPressed(DefaultHotkeys.toggleFloatMode)
+            fake.simulateModifierTap(.rightOption)
+        }
+
+        #expect(fake.startObservingInputCallCount == 0)
+        #expect(fake.videoCommands.isEmpty)
+    }
+
     @Test func eachSuccessiveTapTogglesAgain() {
         let fake = FakePlatformOps()
         let orchestrator = startedInGhostMode(fake)

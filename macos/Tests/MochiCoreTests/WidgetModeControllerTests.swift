@@ -8,15 +8,17 @@ import Testing
 /// controller was constructed.
 private final class ConfigStore {
     var config: WidgetConfig
-    init(ghostOpacity: Double) {
-        config = WidgetConfig(ghostOpacity: ghostOpacity)
+    init(ghostOpacity: Double, floatOpacity: Double = WidgetConfig.defaultFloatOpacity) {
+        config = WidgetConfig(ghostOpacity: ghostOpacity).updatingFloatOpacity(floatOpacity)
     }
 }
 
 @Suite struct WidgetModeControllerTests {
-    private func makeSUT(ghostOpacity: Double = 0.2) -> (FakePlatformOps, ConfigStore, WidgetModeController) {
+    private func makeSUT(
+        ghostOpacity: Double = 0.2, floatOpacity: Double = 0.8
+    ) -> (FakePlatformOps, ConfigStore, WidgetModeController) {
         let fake = FakePlatformOps()
-        let store = ConfigStore(ghostOpacity: ghostOpacity)
+        let store = ConfigStore(ghostOpacity: ghostOpacity, floatOpacity: floatOpacity)
         let window = fake.createWidgetWindow(initialFrame: WindowFrame(x: 0, y: 0, width: 100, height: 100))
         let controller = WidgetModeController(platformOps: fake, window: window, currentConfig: { store.config })
         return (fake, store, controller)
@@ -155,8 +157,7 @@ private final class ConfigStore {
         controller.toggleGhostMode()
 
         #expect(controller.mode == .ghost)
-        #expect(fake.nativeChromeVisibilityChanges.map(\.visible) == [false])
-        #expect(fake.toolbarVisibilityChanges.map(\.visible) == [false])
+        #expect(fake.windowChromeChanges.map(\.mode) == [.ghost])
         #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2])
         #expect(fake.mousePassthroughChanges.map(\.enabled) == [true])
         #expect(fake.pinnedChanges.map(\.pinned) == [true])
@@ -169,8 +170,7 @@ private final class ConfigStore {
         controller.toggleGhostMode()
 
         #expect(controller.mode == .normal)
-        #expect(fake.nativeChromeVisibilityChanges.map(\.visible) == [false, true])
-        #expect(fake.toolbarVisibilityChanges.map(\.visible) == [false, true])
+        #expect(fake.windowChromeChanges.map(\.mode) == [.ghost, .normal])
         #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 1.0])
         #expect(fake.mousePassthroughChanges.map(\.enabled) == [true, false])
     }
@@ -219,7 +219,7 @@ private final class ConfigStore {
         controller.returnToNormalMode()
 
         #expect(controller.mode == .normal)
-        #expect(fake.nativeChromeVisibilityChanges.isEmpty)
+        #expect(fake.windowChromeChanges.isEmpty)
         #expect(fake.contentOpacityChanges.isEmpty)
         #expect(fake.mousePassthroughChanges.isEmpty)
     }
@@ -231,8 +231,7 @@ private final class ConfigStore {
         controller.returnToNormalMode()
 
         #expect(controller.mode == .normal)
-        #expect(fake.nativeChromeVisibilityChanges.map(\.visible) == [false, true])
-        #expect(fake.toolbarVisibilityChanges.map(\.visible) == [false, true])
+        #expect(fake.windowChromeChanges.map(\.mode) == [.ghost, .normal])
         #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 1.0])
         #expect(fake.mousePassthroughChanges.map(\.enabled) == [true, false])
     }
@@ -287,5 +286,126 @@ private final class ConfigStore {
         controller.toggleHidden()
 
         #expect(fake.mediaPausedWindowIDs.isEmpty)
+    }
+
+    // MARK: - Float Mode (#147, ADR-0035)
+
+    enum Key { case float, ghost }
+
+    /// ADR-0035's switching table: each mode's key enters that mode, or returns to Normal Mode
+    /// from it; Float and Ghost switch straight into each other.
+    @Test(arguments: [
+        (keys: [Key.float], expected: WidgetMode.float),
+        (keys: [.float, .float], expected: .normal),
+        (keys: [.float, .ghost], expected: .ghost),
+        (keys: [.ghost, .float], expected: .float),
+        (keys: [.ghost, .ghost], expected: .normal),
+        (keys: [.float, .ghost, .ghost], expected: .normal),
+        (keys: [.ghost, .float, .float], expected: .normal),
+    ])
+    func switchingTable(_ testCase: (keys: [Key], expected: WidgetMode)) {
+        let (_, _, controller) = makeSUT()
+
+        for key in testCase.keys {
+            switch key {
+            case .float: controller.toggleFloatMode()
+            case .ghost: controller.toggleGhostMode()
+            }
+        }
+
+        #expect(controller.mode == testCase.expected)
+    }
+
+    @Test func enteringFloatModeFromNormalAppliesItsWholeBundleAndTakesFocus() {
+        let (fake, _, controller) = makeSUT(floatOpacity: 0.8)
+
+        controller.toggleFloatMode()
+
+        #expect(fake.windowChromeChanges.map(\.mode) == [.float])
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.8])
+        #expect(fake.mousePassthroughChanges.map(\.enabled) == [false])
+        #expect(fake.pinnedChanges.map(\.pinned) == [true])
+        // An interactive mode: the window comes forward and becomes key, unlike Ghost Mode.
+        #expect(fake.shownWindowIDs == [1])
+        #expect(fake.deactivateAppCallCount == 0)
+    }
+
+    @Test func leavingFloatModeForNormalRestoresThePlainWindow() {
+        let (fake, _, controller) = makeSUT(floatOpacity: 0.8)
+
+        controller.toggleFloatMode()
+        controller.toggleFloatMode()
+
+        #expect(fake.windowChromeChanges.map(\.mode) == [.float, .normal])
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.8, 1.0])
+        #expect(fake.pinnedChanges.map(\.pinned) == [true, false])
+        #expect(fake.mousePassthroughChanges.map(\.enabled) == [false, false])
+    }
+
+    @Test func floatToGhostTurnsOnPassthroughAndGivesUpFocus() {
+        let (fake, _, controller) = makeSUT(ghostOpacity: 0.2, floatOpacity: 0.8)
+        controller.toggleFloatMode()
+
+        controller.toggleGhostMode()
+
+        #expect(fake.windowChromeChanges.map(\.mode) == [.float, .ghost])
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.8, 0.2])
+        #expect(fake.mousePassthroughChanges.map(\.enabled) == [false, true])
+        #expect(fake.pinnedChanges.last?.pinned == true)
+        #expect(fake.deactivateAppCallCount == 1)
+    }
+
+    @Test func ghostToFloatTurnsOffPassthroughAndTakesFocus() {
+        let (fake, _, controller) = makeSUT(ghostOpacity: 0.2, floatOpacity: 0.8)
+        controller.toggleGhostMode()
+
+        controller.toggleFloatMode()
+
+        #expect(fake.windowChromeChanges.map(\.mode) == [.ghost, .float])
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 0.8])
+        #expect(fake.mousePassthroughChanges.map(\.enabled) == [true, false])
+        #expect(fake.pinnedChanges.last?.pinned == true)
+        #expect(fake.shownWindowIDs == [1])
+    }
+
+    @Test func returnToNormalModeLeavesFloatModeToo() {
+        let (fake, _, controller) = makeSUT()
+        controller.toggleFloatMode()
+
+        controller.returnToNormalMode()
+
+        #expect(controller.mode == .normal)
+        #expect(fake.windowChromeChanges.map(\.mode) == [.float, .normal])
+    }
+
+    @Test func entersFloatModeAtTheOpacityConfiguredAtThatMoment() {
+        let (fake, store, controller) = makeSUT(floatOpacity: 0.8)
+        store.config.floatOpacity = 0.6
+
+        controller.toggleFloatMode()
+
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.6])
+    }
+
+    @Test func reapplyConfigurationPushesANewOpacityDownWhileInFloatMode() {
+        let (fake, store, controller) = makeSUT(floatOpacity: 0.8)
+        controller.toggleFloatMode()
+        store.config.floatOpacity = 0.5
+
+        controller.reapplyConfiguration()
+
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.8, 0.5])
+    }
+
+    @Test func hiddenIsNotYetAvailableInFloatMode() {
+        // Float Mode shares Hidden only from #148; until then the boss key is a no-op there.
+        let (fake, _, controller) = makeSUT()
+        controller.toggleFloatMode()
+
+        controller.toggleHidden()
+
+        #expect(!controller.canHide)
+        #expect(!controller.isHidden)
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.8])
     }
 }

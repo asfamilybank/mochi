@@ -56,6 +56,16 @@ import Testing
         #expect(store.config.ghostOpacity == 0.6)
     }
 
+    @Test func updatingFloatOpacityPersistsThroughTheInjectedStore() {
+        let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
+        let controller = makeController(store: store)
+
+        controller.updateFloatOpacity(0.65)
+
+        #expect(store.config.floatOpacity == 0.65)
+        #expect(store.config.ghostOpacity == WidgetConfig.defaultGhostOpacity)
+    }
+
     /// AC: "有测试验证设置改动确实经过既有的配置持久化路径，而不是绕开它单独写文件." Unlike the
     /// other tests here (which use `PersistedStore`, an in-memory stand-in), this drives
     /// `SettingsController` through a `persist` function shaped exactly like `AppDelegate`'s own
@@ -528,6 +538,44 @@ import Testing
 
         #expect(rejection == .conflictsWithAction(.hideWidget))
         #expect(fake.hotkeyCallOrder.isEmpty)
+    }
+
+    // #147: Float Mode's toggle goes through exactly the same rebinding path.
+
+    @Test func rebindingTheFloatModeToggleReleasesOptionFAndRegistersTheNewCombo() {
+        let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
+        let fake = FakePlatformOps()
+        let controller = makeController(store: store, platformOps: fake)
+
+        let rejection = controller.updateActionHotkey(.toggleFloatMode, to: customToggle)
+
+        #expect(rejection == nil)
+        #expect(fake.hotkeyCallOrder == [.unregister(DefaultHotkeys.toggleFloatMode), .register(customToggle)])
+        #expect(store.config.hotkey(for: .toggleFloatMode) == customToggle)
+    }
+
+    @Test func rebindingAnotherActionToTheFloatModeTogglesComboIsRejected() {
+        let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
+        let fake = FakePlatformOps()
+        let controller = makeController(store: store, platformOps: fake)
+
+        let rejection = controller.updateActionHotkey(.toggleGhostMode, to: DefaultHotkeys.toggleFloatMode)
+
+        #expect(rejection == .conflictsWithAction(.toggleFloatMode))
+        #expect(fake.hotkeyCallOrder.isEmpty)
+    }
+
+    @Test func clearingTheFloatModeToggleReleasesOptionF() {
+        let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
+        let fake = FakePlatformOps()
+        let controller = makeController(store: store, platformOps: fake)
+
+        let rejection = controller.updateActionHotkey(.toggleFloatMode, to: nil)
+
+        #expect(rejection == nil)
+        #expect(fake.hotkeyCallOrder == [.unregister(DefaultHotkeys.toggleFloatMode)])
+        #expect(store.config.hotkey(for: .toggleFloatMode) == nil)
+        #expect(HotkeyQuickReference.entries(for: store.config).map(\.label).first == "切换幽灵模式")
     }
 
     @Test func rebindingAnActionToAMappingsTriggerIsRejected() {

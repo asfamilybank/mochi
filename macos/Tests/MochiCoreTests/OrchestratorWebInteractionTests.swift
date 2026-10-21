@@ -7,7 +7,7 @@ import Testing
 /// MochiCore decide? Ghost Mode's "不打扰" rule (CONTEXT.md) is pinned here — no UI, no leaving
 /// Ghost Mode, and the page is never left waiting.
 @Suite struct OrchestratorWebInteractionTests {
-    enum Mode: Sendable { case normal, ghost }
+    enum Mode: Sendable { case normal, float, ghost }
 
     private static let dialogKinds: [JavaScriptDialogKind] = [.alert, .confirm, .prompt(defaultText: "默认")]
 
@@ -15,6 +15,10 @@ import Testing
         (mode: Mode.normal, kindIndex: 0, expected: JavaScriptDialogDecision.presentSheet),
         (mode: .normal, kindIndex: 1, expected: .presentSheet),
         (mode: .normal, kindIndex: 2, expected: .presentSheet),
+        // Float Mode is an ordinary window for the page (#147, ADR-0035): it asks as usual.
+        (mode: .float, kindIndex: 0, expected: .presentSheet),
+        (mode: .float, kindIndex: 1, expected: .presentSheet),
+        (mode: .float, kindIndex: 2, expected: .presentSheet),
         (mode: .ghost, kindIndex: 0, expected: .settleWithoutUI),
         (mode: .ghost, kindIndex: 1, expected: .settleWithoutUI),
         (mode: .ghost, kindIndex: 2, expected: .settleWithoutUI),
@@ -30,6 +34,7 @@ import Testing
     @Test(arguments: [
         (mode: Mode.normal, multiple: false, directories: false, expected: FileUploadDecision.presentOpenPanel),
         (mode: .normal, multiple: true, directories: true, expected: .presentOpenPanel),
+        (mode: .float, multiple: false, directories: false, expected: .presentOpenPanel),
         (mode: .ghost, multiple: false, directories: false, expected: .cancel),
         (mode: .ghost, multiple: true, directories: true, expected: .cancel),
     ])
@@ -77,7 +82,11 @@ import Testing
         let fake = FakePlatformOps()
         let orchestrator = Orchestrator(platformOps: fake, currentConfig: { WidgetConfig(url: URL(string: "https://example.com")!) })
         orchestrator.start()
-        if mode == .ghost { fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode) }
+        switch mode {
+        case .normal: break
+        case .float: fake.simulateHotkeyPressed(DefaultHotkeys.toggleFloatMode)
+        case .ghost: fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+        }
         return (fake, orchestrator)
     }
 }

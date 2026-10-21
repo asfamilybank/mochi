@@ -1,39 +1,41 @@
 import Foundation
 
-public enum WidgetMode: Equatable {
+public enum WidgetMode: Equatable, Sendable {
     case normal
+    /// The page alone, translucent and above other windows, yet an ordinary focusable window
+    /// (#147, ADR-0035).
+    case float
     case ghost
 }
 
 /// The widget's mode state machine (#8, generalized by #146): which mode the widget is in, plus
-/// Hidden as a separate dimension that only means anything in some modes (`canHide`). Today the
-/// modes are Normal and Ghost; Float Mode joins them as a third bundled state (ADR-0035).
+/// Hidden as a separate dimension that only means anything in some modes (`canHide`).
 ///
-/// A single hotkey flips between `.normal` and `.ghost`, where Ghost Mode bundles native-chrome
-/// visibility, toolbar visibility, content opacity, mouse passthrough, and always-on-top into one
-/// atomic transition (ADR-0006/ADR-0012) — there is no way to reach a state with, say,
-/// passthrough on but the toolbar still showing.
+/// Each mode outside Normal is a bundled state (ADR-0006, ADR-0035): entering it applies its
+/// chrome, content opacity, mouse passthrough and always-on-top together, so there is no way to
+/// reach, say, passthrough on with the toolbar still showing. Ghost Mode is the click-through,
+/// never-focused one (ADR-0012); Float Mode keeps the page usable and takes focus. Each has its own
+/// key: it enters that mode, or returns to Normal Mode from it, and Float and Ghost switch
+/// straight into each other.
 ///
-/// Always-on-top is internal to this transition, not a standalone feature: floating above other
-/// windows only means anything while invisibly overlaying them, which is what Ghost Mode is
-/// (ADR-0012). Normal Mode is a plain window at the normal level, so this controller is the only
-/// caller of `setPinned` in the whole app.
+/// Always-on-top belongs to these bundles, not to a standalone feature, so this controller is the
+/// only caller of `setPinned` in the whole app.
 ///
 /// It is also the single decider of how visible the window is. "Hidden" and "translucent" would
 /// otherwise both write `NSWindow.alphaValue` and fight over it, so this type folds every input
 /// into one `effectiveOpacity` and the platform layer just applies it (ADR-0012).
 ///
-/// Always starts in `.normal` and is never told to restore a prior Ghost Mode — the caller
+/// Always starts in `.normal` and is never told to restore a prior mode — the caller
 /// (`Orchestrator`) constructs a fresh instance every time the widget window is opened, which is
 /// what gives both "restart always returns to Normal Mode" (ADR-0006) and "reopening the closed
 /// widget returns to Normal Mode" (#42) for free, with no persisted-state path to bypass.
 ///
-/// Reads the target opacity from `currentConfig` *at the moment it is needed* rather than
-/// capturing it at construction (#46) — that is what makes a settings-panel edit take effect
-/// without a restart, and it needs no notification for the common case (the next Ghost Mode
-/// entry simply sees the new value).
+/// Reads the target opacities from `currentConfig` *at the moment they are needed* rather than
+/// capturing them at construction (#46) — that is what makes a settings-panel edit take effect
+/// without a restart, and it needs no notification for the common case (the next entry simply
+/// sees the new value).
 /// `reapplyConfiguration()` covers the one case where nothing else would trigger a re-read: an
-/// edit made while already sitting in Ghost Mode.
+/// edit made while already sitting in a translucent mode.
 public final class WidgetModeController {
     private let platformOps: PlatformOps
     private let window: WidgetWindowHandle
@@ -41,10 +43,11 @@ public final class WidgetModeController {
     public private(set) var mode: WidgetMode = .normal
     /// The boss key's (ADR-0012) own bookkeeping: deliberate, persists until deliberately undone
     /// (or until Ghost Mode is left), and never decays on its own. Readable so the tray's
-    /// 隐藏窗口 (#63) can show a checkmark; only `toggleHidden()` and leaving Ghost Mode write it.
+    /// 隐藏窗口 (#63) can show a checkmark; only `toggleHidden()` and leaving Ghost Mode (for either
+    /// other mode) write it.
     public private(set) var isHidden = false
-    /// Told after every Normal ↔ Ghost transition, once the transition is complete — how
-    /// 视频控制 (#74) knows to start or stop listening without a second mode of its own.
+    /// Told after every mode change, once the transition is complete — how 视频控制 (#74) knows
+    /// to start or stop listening without a second mode of its own.
     public var onModeChanged: (() -> Void)?
 
     public init(platformOps: PlatformOps, window: WidgetWindowHandle, currentConfig: @escaping () -> WidgetConfig) {
@@ -53,19 +56,27 @@ public final class WidgetModeController {
         self.currentConfig = currentConfig
     }
 
-    /// Pushes the current config's opacity down right now — for an edit made *while in Ghost
-    /// Mode*, where otherwise nothing would happen until the next mode change and the user dragging the opacity slider would see no change (#46). A
-    /// silent no-op in Normal Mode: the window is opaque there regardless of any setting, and the
-    /// platform must not be told to change an opacity it never had.
+    /// Pushes the current config's opacity down right now — for an edit made *while in a
+    /// translucent mode*, where otherwise nothing would happen until the next mode change and the
+    /// user dragging the opacity slider would see no change (#46). A silent no-op in Normal Mode:
+    /// the window is opaque there regardless of any setting, and the platform must not be told to
+    /// change an opacity it never had.
     public func reapplyConfiguration() {
-        guard mode == .ghost else { return }
+        guard mode != .normal else { return }
         applyEffectiveOpacity()
     }
 
     public func toggleGhostMode() {
         switch mode {
-        case .normal: enterGhostMode()
-        case .ghost: leaveGhostMode()
+        case .normal, .float: enterGhostMode()
+        case .ghost: leaveForNormalMode()
+        }
+    }
+
+    public func toggleFloatMode() {
+        switch mode {
+        case .normal, .ghost: enterFloatMode()
+        case .float: leaveForNormalMode()
         }
     }
 
@@ -74,10 +85,8 @@ public final class WidgetModeController {
     /// and must be a no-op when already in Normal Mode rather than toggling into another mode.
     /// (The tray's own 退出幽灵模式 entry from #9 was folded into its 幽灵模式 toggle by #63.)
     public func returnToNormalMode() {
-        switch mode {
-        case .normal: return
-        case .ghost: leaveGhostMode()
-        }
+        guard mode != .normal else { return }
+        leaveForNormalMode()
     }
 
     /// Whether Hidden means anything in the current mode — only Ghost Mode for now; Float Mode
@@ -85,7 +94,7 @@ public final class WidgetModeController {
     /// 隐藏窗口 greys out on exactly this.
     public var canHide: Bool {
         switch mode {
-        case .normal: false
+        case .normal, .float: false
         case .ghost: true
         }
     }
@@ -93,9 +102,9 @@ public final class WidgetModeController {
     /// The boss key (ADR-0012): makes the window completely invisible while leaving it in place
     /// so the page keeps running. Going Hidden pauses every playing video and audio on the page —
     /// hiding means "I can't watch this right now" — and coming back resumes nothing, so the user
-    /// picks up exactly where they left off, when they choose to (ADR-0021). A silent no-op in
-    /// Normal Mode, which is a plain macOS window with no visibility concept of its own beyond
-    /// what the system already provides (`⌘M`).
+    /// picks up exactly where they left off, when they choose to (ADR-0021). A silent no-op where
+    /// `canHide` says so: in Normal Mode, a plain macOS window with no visibility concept of its
+    /// own beyond what the system already provides (`⌘M`), and in Float Mode until #148.
     public func toggleHidden() {
         guard canHide else { return }
         isHidden.toggle()
@@ -106,12 +115,13 @@ public final class WidgetModeController {
         }
     }
 
-    /// Hidden → fully invisible; Ghost → its configured target; Normal → opaque. The single
-    /// source of the window's visibility, so no two features can disagree about it.
+    /// Hidden → fully invisible; Float and Ghost → their configured targets; Normal → opaque. The
+    /// single source of the window's visibility, so no two features can disagree about it.
     private var effectiveOpacity: Double {
         if isHidden { return 0 }
         switch mode {
         case .normal: return 1.0
+        case .float: return currentConfig().floatOpacity
         case .ghost: return currentConfig().ghostOpacity
         }
     }
@@ -124,12 +134,26 @@ public final class WidgetModeController {
         // Asked before the chrome comes off: losing its title bar takes the widget out of key.
         let anotherWindowIsKey = platformOps.isAnotherWindowKey(than: window)
         mode = .ghost
-        platformOps.setNativeChromeVisible(false, in: window)
-        platformOps.setToolbarVisible(false, in: window)
+        platformOps.setWindowChrome(.ghost, in: window)
         applyEffectiveOpacity()
         platformOps.setMousePassthrough(true, in: window)
         platformOps.setPinned(true, in: window)
         if !anotherWindowIsKey { platformOps.deactivateApp() }
+        onModeChanged?()
+    }
+
+    /// Float Mode is for using the page (ADR-0035), so entering it brings the widget forward and
+    /// makes it key — from Ghost Mode too, which is the user asking to interact again.
+    private func enterFloatMode() {
+        mode = .float
+        // Float Mode shares Hidden only from #148; until then coming over from a hidden Ghost Mode
+        // shows the window again, as leaving Ghost Mode for Normal does.
+        isHidden = false
+        platformOps.setWindowChrome(.float, in: window)
+        applyEffectiveOpacity()
+        platformOps.setMousePassthrough(false, in: window)
+        platformOps.setPinned(true, in: window)
+        platformOps.showWindow(window)
         onModeChanged?()
     }
 
@@ -140,16 +164,15 @@ public final class WidgetModeController {
         if !platformOps.isAnotherWindowKey(than: window) { platformOps.deactivateApp() }
     }
 
-    private func leaveGhostMode() {
+    private func leaveForNormalMode() {
         mode = .normal
         isHidden = false
-        platformOps.setNativeChromeVisible(true, in: window)
-        platformOps.setToolbarVisible(true, in: window)
+        platformOps.setWindowChrome(.normal, in: window)
         applyEffectiveOpacity()
         platformOps.setMousePassthrough(false, in: window)
         platformOps.setPinned(false, in: window)
-        // The only moment the widget is allowed to take focus (ADR-0012) — the user just asked
-        // to interact with it. Entering or staying in Ghost Mode never fronts the window, so it
+        // The user just asked to interact with the widget: the one moment leaving Ghost Mode may
+        // take focus (ADR-0012). Entering or staying in Ghost Mode never fronts the window, so it
         // can't steal focus from whatever app the user is actually working in.
         platformOps.showWindow(window)
         onModeChanged?()

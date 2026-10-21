@@ -38,7 +38,7 @@ public enum HotkeyQuickReference {
 
     private static func label(for action: HotkeyAction) -> String {
         switch action {
-        case .toggleGhostMode: action.displayName
+        case .toggleFloatMode, .toggleGhostMode: action.displayName
         case .hideWidget: "\(action.displayName)（幽灵模式下）"
         }
     }

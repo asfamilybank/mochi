@@ -21,6 +21,9 @@ public struct WidgetConfig: Equatable {
     public var windowState: WindowState?
     public var customScript: String?
     public var ghostOpacity: Double
+    /// Float Mode's target opacity (#147), separate from Ghost Mode's: it is read and typed into,
+    /// so it sits far nearer opaque by default (ADR-0035).
+    public var floatOpacity: Double = WidgetConfig.defaultFloatOpacity
     /// Magnetic edge/corner snapping while dragging (#6), on by default. Edited from the
     /// 通用 pane since #88 and re-applied to the live window on every change (#46).
     public var isSnapEnabled: Bool
@@ -174,6 +177,11 @@ public enum WidgetConfigError: Error, Equatable {
 
 extension WidgetConfig {
     public static let defaultGhostOpacity: Double = 0.2
+    public static let defaultFloatOpacity: Double = 0.8
+    /// Float Mode takes clicks and keys (ADR-0035), so a fully transparent one would be an
+    /// invisible window swallowing them — unlike Ghost Mode, which lets them through at any
+    /// opacity. The settings slider starts here, and a hand edit is held to it too.
+    public static let floatOpacityRange: ClosedRange<Double> = 0.1...1
 
     /// The sizes the 字体大小不得小于 popup offers (Safari's list, #70). A hand-edited value outside
     /// it falls back to "no limit" rather than being honoured, so the popup can always show it.
@@ -205,6 +213,8 @@ extension WidgetConfig {
             searchEngine: table["search_engine"]?.string.flatMap(SearchEngine.init(rawValue:)) ?? .google
         )
         config.customStylesheet = table["custom_stylesheet"]?.string
+        let floatOpacity = table["float_opacity"]?.double ?? defaultFloatOpacity
+        config.floatOpacity = min(max(floatOpacity, floatOpacityRange.lowerBound), floatOpacityRange.upperBound)
         // #70 — invalid values fall back to the defaults, like the rest of this hand-editable file.
         config.autoplayPolicy = table["autoplay"]?.string.flatMap(AutoplayPolicy.init(rawValue:)) ?? .allowAll
         config.minimumFontSize = table["minimum_font_size"]?.int.flatMap {
@@ -226,11 +236,27 @@ extension WidgetConfig {
         // #101
         config.cameraExceptions = parsePagePermissionExceptions(from: table["camera_exceptions"]?.array)
         config.microphoneExceptions = parsePagePermissionExceptions(from: table["microphone_exceptions"]?.array)
+        config.yieldNewDefaultsToTheUser()
         if let videoControl = table["video_control"]?.table {
             config.videoControlOverrides = parseVideoControlOverrides(from: videoControl)
             config.videoSeekStep = videoControl["seek_step"]?.int.map(clampedVideoSeekStep) ?? defaultVideoSeekStep
         }
         return config
+    }
+
+    /// A default added after the fact (`HotkeyAction.defaultYieldsToTheUser`) whose combo the user
+    /// already gave to another action or a mapping is recorded as cleared (#147), once, on load:
+    /// the user's binding stays theirs, and the action waits for one of its own. Recorded rather
+    /// than worked out on every read, so freeing the combo later can't quietly bring the default
+    /// back without anything registering it.
+    private mutating func yieldNewDefaultsToTheUser() {
+        for action in HotkeyAction.allCases where action.defaultYieldsToTheUser {
+            guard !hotkeyOverrides.keys.contains(action) else { continue }
+            let fallback = action.defaultHotkey
+            let isTakenByTheUser =
+                hotkeyOverrides.values.contains(fallback) || hotkeyMappings.contains { $0.registeredHotkey == fallback }
+            if isTakenByTheUser { hotkeyOverrides.updateValue(nil, forKey: action) }
+        }
     }
 
     /// `[video_control.<action>]` (#78), one sub-table per action that differs from its default:
@@ -421,6 +447,7 @@ extension WidgetConfig {
             table["url"] = url.absoluteString
         }
         table["ghost_opacity"] = ghostOpacity
+        table["float_opacity"] = floatOpacity
         table["snap_enabled"] = isSnapEnabled
         table["http_warning_enabled"] = isHTTPWarningEnabled
         table["web_inspector_enabled"] = isWebInspectorEnabled
@@ -573,6 +600,12 @@ extension WidgetConfig {
     public func updatingGhostOpacity(_ ghostOpacity: Double) -> WidgetConfig {
         var copy = self
         copy.ghostOpacity = ghostOpacity
+        return copy
+    }
+
+    public func updatingFloatOpacity(_ floatOpacity: Double) -> WidgetConfig {
+        var copy = self
+        copy.floatOpacity = floatOpacity
         return copy
     }
 

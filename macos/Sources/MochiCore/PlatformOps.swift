@@ -154,6 +154,8 @@ public protocol PlatformOps: AnyObject {
     /// (menu-bar) screen — matches `NSScreen.screens`' documented ordering.
     func visibleScreens() -> [CGRect]
 
+    /// Shows a freshly opened widget's toolbar. Moving between the modes' chrome is
+    /// `setWindowChrome`'s alone, which hides and restores the toolbar as part of it.
     func setToolbarVisible(_ visible: Bool, in window: WidgetWindowHandle)
 
     /// Registers a handler invoked when the user manually navigates via the toolbar's
@@ -253,10 +255,14 @@ public protocol PlatformOps: AnyObject {
     /// Callers must always pass a non-empty fallback — see `AddressFieldPresenter.windowTitle`.
     func setWindowTitle(_ title: String, in window: WidgetWindowHandle)
 
-    /// Toggles the native title bar + custom toolbar row's presence via the window's `styleMask`
-    /// (ADR-0004) — Ghost Mode's "no chrome at all" look. Distinct from `setToolbarVisible`,
-    /// which only ever hides the custom row and leaves native decorations alone.
-    func setNativeChromeVisible(_ visible: Bool, in window: WidgetWindowHandle)
+    /// Puts the window into `mode`'s chrome, from whichever it had (#147, ADR-0035): Normal Mode's
+    /// title bar and toolbar; Float Mode's page-only look that still keeps a (hidden) title bar,
+    /// so the window can become key; Ghost Mode's no chrome at all (ADR-0012). One operation
+    /// rather than separate title-bar and toolbar switches, because Float and Ghost both drop
+    /// the toolbar row from the window's height and must switch into each other without putting
+    /// it back in between — that round trip would resize the page. The page itself stays put on
+    /// screen through every switch.
+    func setWindowChrome(_ mode: WidgetMode, in window: WidgetWindowHandle)
 
     /// Sets the window's overall content opacity — the single outlet for how visible the widget
     /// is (ADR-0012), covering both Ghost Mode's configured target and fully invisible (`0`).

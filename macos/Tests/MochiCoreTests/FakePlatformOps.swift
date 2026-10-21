@@ -16,7 +16,7 @@ final class FakePlatformOps: PlatformOps {
     private(set) var toolbarVisibilityChanges: [(visible: Bool, windowID: Int)] = []
     private(set) var pinnedChanges: [(pinned: Bool, windowID: Int)] = []
     private(set) var injectedScripts: [(source: String, windowID: Int)] = []
-    private(set) var nativeChromeVisibilityChanges: [(visible: Bool, windowID: Int)] = []
+    private(set) var windowChromeChanges: [(mode: WidgetMode, windowID: Int)] = []
     private(set) var contentOpacityChanges: [(opacity: Double, windowID: Int)] = []
     private(set) var mousePassthroughChanges: [(enabled: Bool, windowID: Int)] = []
     private(set) var registeredHotkeys: [Hotkey] = []
@@ -200,9 +200,9 @@ final class FakePlatformOps: PlatformOps {
         errorPagesShown.append((message, handle.id))
     }
 
-    func setNativeChromeVisible(_ visible: Bool, in window: WidgetWindowHandle) {
+    func setWindowChrome(_ mode: WidgetMode, in window: WidgetWindowHandle) {
         let handle = window as! FakeWidgetWindowHandle
-        nativeChromeVisibilityChanges.append((visible, handle.id))
+        windowChromeChanges.append((mode, handle.id))
     }
 
     func setContentOpacity(_ opacity: Double, in window: WidgetWindowHandle) {

@@ -203,7 +203,7 @@ enum TrayScenario: Sendable {
         #expect(fake.injectedScripts.count == BuiltInScripts.all.count - 1)
     }
 
-    @Test func registersBothActionHotkeysOnStartInAFixedOrder() {
+    @Test func registersEveryActionHotkeyOnStartInAFixedOrder() {
         let fake = FakePlatformOps()
         let config = WidgetConfig(url: URL(string: "https://example.com")!)
         let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
@@ -212,6 +212,7 @@ enum TrayScenario: Sendable {
 
         #expect(
             fake.registeredHotkeys == [
+                DefaultHotkeys.toggleFloatMode,
                 DefaultHotkeys.toggleGhostMode,
                 DefaultHotkeys.hideWidget,
             ])
@@ -244,7 +245,7 @@ enum TrayScenario: Sendable {
         let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
         orchestrator.start()
 
-        fake.simulateHotkeyPressed()
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
 
         #expect(fake.mousePassthroughChanges.map(\.enabled) == [true])
         #expect(fake.contentOpacityChanges.map(\.opacity) == [0.3])
@@ -272,9 +273,10 @@ enum TrayScenario: Sendable {
         orchestrator.start()
 
         #expect(fake.trayMenuItems.map { $0.isSeparator ? "—" : $0.title }
-            == ["打开窗口", "幽灵模式", "隐藏窗口", "—", "视频控制需要辅助功能权限…", "设置…", "关于 Mochi", "—", "退出"])
+            == ["打开窗口", "悬浮模式", "幽灵模式", "隐藏窗口", "—", "视频控制需要辅助功能权限…", "设置…", "关于 Mochi", "—", "退出"])
         #expect(fake.trayMenuItems.map(\.icon) == [
-            .symbol(DesignTokens.Symbol.openWidget), .ghost, .symbol(DesignTokens.Symbol.hideWidget), nil,
+            .symbol(DesignTokens.Symbol.openWidget), .symbol(DesignTokens.Symbol.floatMode), .ghost,
+            .symbol(DesignTokens.Symbol.hideWidget), nil,
             .symbol(DesignTokens.Symbol.systemPermissionMissing),
             .symbol(DesignTokens.Symbol.settings), .symbol(DesignTokens.Symbol.about), nil, .appQuit,
         ])
@@ -287,7 +289,7 @@ enum TrayScenario: Sendable {
         orchestrator.start()
 
         #expect(fake.trayMenuItems.map { $0.hotkeyHint() } == [
-            nil, DefaultHotkeys.toggleGhostMode, DefaultHotkeys.hideWidget, nil,
+            nil, DefaultHotkeys.toggleFloatMode, DefaultHotkeys.toggleGhostMode, DefaultHotkeys.hideWidget, nil,
             nil, DefaultHotkeys.openSettings, nil, nil, DefaultHotkeys.quit,
         ])
     }
@@ -301,11 +303,11 @@ enum TrayScenario: Sendable {
 
         orchestrator.start()
 
-        #expect(fake.registeredHotkeys == [DefaultHotkeys.toggleGhostMode])
+        #expect(fake.registeredHotkeys == [DefaultHotkeys.toggleFloatMode, DefaultHotkeys.toggleGhostMode])
         #expect(fake.presentedAlerts.isEmpty)
         #expect(fake.trayItem("隐藏窗口").hotkeyHint() == nil)
         #expect(fake.hotkeyQuickReferences.last?.entries.map(\.label) == [
-            "切换幽灵模式", "播放/暂停（幽灵模式下）", "后退 5 秒（幽灵模式下）", "前进 5 秒（幽灵模式下）", "打开设置",
+            "切换悬浮模式", "切换幽灵模式", "播放/暂停（幽灵模式下）", "后退 5 秒（幽灵模式下）", "前进 5 秒（幽灵模式下）", "打开设置",
         ])
     }
 
@@ -321,7 +323,7 @@ enum TrayScenario: Sendable {
         fake.simulateHotkeyPressed(DefaultHotkeys.hideWidget)
 
         #expect(fake.forwardedKeystrokes == [mapping.pageKeystroke])
-        #expect(fake.registeredHotkeys == [DefaultHotkeys.toggleGhostMode, mapping.registeredHotkey!])
+        #expect(fake.registeredHotkeys == [DefaultHotkeys.toggleFloatMode, DefaultHotkeys.toggleGhostMode, mapping.registeredHotkey!])
     }
 
     /// The tray is built once, so a hint has to be read from the config each time the menu opens:
@@ -374,8 +376,10 @@ enum TrayScenario: Sendable {
         #expect(ghost.isEnabled() == row.ghostEnabled)
         #expect(hide.isChecked() == row.hideChecked)
         #expect(hide.isEnabled() == row.hideEnabled)
-        // Everything else is always on offer, and nothing else is ever checked.
-        for item in fake.trayMenuItems where !item.isSeparator && item.title != "幽灵模式" && item.title != "隐藏窗口" {
+        // Everything else is always on offer, and nothing else is ever checked (悬浮模式 has its
+        // own tests).
+        let modeItems: Set = ["悬浮模式", "幽灵模式", "隐藏窗口"]
+        for item in fake.trayMenuItems where !item.isSeparator && !modeItems.contains(item.title) {
             #expect(item.isEnabled())
             #expect(!item.isChecked())
         }
@@ -764,13 +768,13 @@ enum TrayScenario: Sendable {
         orchestrator.start()
         fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
         let shownBefore = fake.shownWindowIDs
-        let chromeChangesBefore = fake.nativeChromeVisibilityChanges.count
+        let chromeChangesBefore = fake.windowChromeChanges.count
 
         orchestrator.openAboutPanel()
 
         #expect(aboutCallCount == 1)
         #expect(fake.shownWindowIDs == shownBefore)
-        #expect(fake.nativeChromeVisibilityChanges.count == chromeChangesBefore)
+        #expect(fake.windowChromeChanges.count == chromeChangesBefore)
     }
 
     @Test func pressingHiddenInGhostModeTogglesTheWidgetInAndOutOfInvisibility() {
@@ -848,7 +852,10 @@ enum TrayScenario: Sendable {
 
         orchestrator.start()
 
-        #expect(fake.registeredHotkeys == [DefaultHotkeys.toggleGhostMode, DefaultHotkeys.hideWidget, mapping.registeredHotkey!])
+        #expect(fake.registeredHotkeys == [
+            DefaultHotkeys.toggleFloatMode, DefaultHotkeys.toggleGhostMode, DefaultHotkeys.hideWidget,
+            mapping.registeredHotkey!,
+        ])
         #expect(fake.presentedAlerts.isEmpty)
     }
 
@@ -919,7 +926,7 @@ enum TrayScenario: Sendable {
 
         orchestrator.start()
 
-        #expect(fake.registeredHotkeys == [custom, DefaultHotkeys.hideWidget])
+        #expect(fake.registeredHotkeys == [DefaultHotkeys.toggleFloatMode, custom, DefaultHotkeys.hideWidget])
     }
 
     @Test func pressingAnOverriddenActionHotkeyPerformsThatAction() {
@@ -1123,7 +1130,7 @@ enum TrayScenario: Sendable {
         #expect(fake.contentOpacityChanges.count == opacityCount)
         #expect(fake.mousePassthroughChanges.count == passthroughCount)
         #expect(fake.pinnedChanges.isEmpty)
-        #expect(fake.nativeChromeVisibilityChanges.isEmpty)
+        #expect(fake.windowChromeChanges.isEmpty)
         #expect(fake.shownWindowIDs == [1])
         #expect(fake.presentedAlerts.isEmpty)
     }
@@ -1277,6 +1284,19 @@ enum TrayScenario: Sendable {
         orchestrator.reapplyConfiguration()
 
         #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 0.7])
+    }
+
+    @Test func reapplyConfigurationPushesANewOpacityDownWhileInFloatMode() {
+        let fake = FakePlatformOps()
+        var config = WidgetConfig(url: URL(string: "https://example.com")!).updatingFloatOpacity(0.8)
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+        orchestrator.start()
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleFloatMode)
+        config.floatOpacity = 0.6
+
+        orchestrator.reapplyConfiguration()
+
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.8, 0.6])
     }
 
     @Test func reapplyConfigurationNeverTouchesOpacityInNormalMode() {
@@ -1551,9 +1571,136 @@ enum TrayScenario: Sendable {
         switch state {
         case .noWidget: orchestrator.closeWidget()
         case .normalMode: break
+        case .floatMode: fake.simulateHotkeyPressed(DefaultHotkeys.toggleFloatMode)
         case .ghostMode: fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
         }
         return (fake, orchestrator)
+    }
+
+    // MARK: - Float Mode (#147, ADR-0035)
+
+    @Test func pressingTheFloatModeHotkeyEntersFloatModeAndAgainLeavesIt() {
+        let (fake, orchestrator) = makeOrchestrator(in: .normalMode)
+        defer { withExtendedLifetime(orchestrator) {} }
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleFloatMode)
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleFloatMode)
+
+        #expect(fake.windowChromeChanges.map(\.mode) == [.float, .normal])
+        #expect(fake.mousePassthroughChanges.map(\.enabled) == [false, false])
+    }
+
+    enum ModeKey: Sendable { case float, ghost }
+
+    /// ADR-0035's switching table at the hotkey seam: every cell's last switch, as the platform
+    /// sees it — chrome, opacity, passthrough, pinning, and whether the widget took focus (shown)
+    /// or gave it up (deactivated).
+    @Test(arguments: [
+        (keys: [ModeKey.float], chrome: WidgetMode.float, opacity: 0.8, passthrough: false, pinned: true, shows: true, deactivates: false),
+        (keys: [.float, .float], chrome: .normal, opacity: 1.0, passthrough: false, pinned: false, shows: true, deactivates: false),
+        (keys: [.float, .ghost], chrome: .ghost, opacity: 0.2, passthrough: true, pinned: true, shows: false, deactivates: true),
+        (keys: [.ghost], chrome: .ghost, opacity: 0.2, passthrough: true, pinned: true, shows: false, deactivates: true),
+        (keys: [.ghost, .ghost], chrome: .normal, opacity: 1.0, passthrough: false, pinned: false, shows: true, deactivates: false),
+        (keys: [.ghost, .float], chrome: .float, opacity: 0.8, passthrough: false, pinned: true, shows: true, deactivates: false),
+    ])
+    func modeHotkeysFollowTheSwitchingTable(
+        _ row: (keys: [ModeKey], chrome: WidgetMode, opacity: Double, passthrough: Bool, pinned: Bool, shows: Bool, deactivates: Bool)
+    ) {
+        let (fake, orchestrator) = makeOrchestrator(in: .normalMode)
+        defer { withExtendedLifetime(orchestrator) {} }
+        func press(_ key: ModeKey) {
+            fake.simulateHotkeyPressed(key == .float ? DefaultHotkeys.toggleFloatMode : DefaultHotkeys.toggleGhostMode)
+        }
+        row.keys.dropLast().forEach(press)
+        let shownBefore = fake.shownWindowIDs.count
+        let deactivatedBefore = fake.deactivateAppCallCount
+
+        press(row.keys.last!)
+
+        #expect(fake.windowChromeChanges.last?.mode == row.chrome)
+        #expect(fake.contentOpacityChanges.last?.opacity == row.opacity)
+        #expect(fake.mousePassthroughChanges.last?.enabled == row.passthrough)
+        #expect(fake.pinnedChanges.last?.pinned == row.pinned)
+        #expect((fake.shownWindowIDs.count > shownBefore) == row.shows)
+        #expect((fake.deactivateAppCallCount > deactivatedBefore) == row.deactivates)
+    }
+
+    @Test func theFloatModeHotkeyDoesNothingWithTheWidgetClosed() {
+        let (fake, orchestrator) = makeOrchestrator(in: .noWidget)
+        defer { withExtendedLifetime(orchestrator) {} }
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleFloatMode)
+
+        #expect(fake.windowChromeChanges.isEmpty)
+    }
+
+    /// Float Mode is an ordinary window for the menu, except where the address bar is needed.
+    @Test(arguments: [
+        (command: WidgetCommand.reload, canPerform: true),
+        (command: .zoomIn, canPerform: true),
+        (command: .zoomOut, canPerform: true),
+        (command: .resetZoom, canPerform: true),
+        (command: .openLocation, canPerform: false),
+    ])
+    func floatModeOffersTheMenuCommandsExceptTheAddressBarOnes(_ row: (command: WidgetCommand, canPerform: Bool)) {
+        let (_, orchestrator) = makeOrchestrator(in: .floatMode)
+
+        #expect(orchestrator.canPerform(row.command) == row.canPerform)
+    }
+
+    @Test func floatModeOffersBackAndForwardLikeNormalMode() {
+        let (fake, orchestrator) = makeOrchestrator(in: .floatMode)
+        fake.stubbedNavigationState.canGoBack = true
+        fake.stubbedNavigationState.canGoForward = true
+
+        #expect(orchestrator.canPerform(.goBack))
+        #expect(orchestrator.canPerform(.goForward))
+    }
+
+    @Test func openWidgetBringsAFloatModeWidgetBackToNormalMode() {
+        let (fake, orchestrator) = makeOrchestrator(in: .floatMode)
+
+        orchestrator.openWidget()
+
+        #expect(fake.windowChromeChanges.map(\.mode) == [.float, .normal])
+    }
+
+    @Test func theTrayOffersFloatModeWithItsHintAndCheckmark() {
+        let (fake, orchestrator) = makeOrchestrator(in: .normalMode)
+        defer { withExtendedLifetime(orchestrator) {} }
+        let float = fake.trayItem("悬浮模式")
+
+        #expect(float.hotkeyHint() == DefaultHotkeys.toggleFloatMode)
+        #expect(float.isEnabled())
+        #expect(!float.isChecked())
+
+        float.action()
+
+        #expect(float.isChecked())
+        #expect(!fake.trayItem("幽灵模式").isChecked())
+        #expect(fake.windowChromeChanges.map(\.mode) == [.float])
+    }
+
+    /// 热键传递 belongs to Ghost Mode alone (ADR-0035).
+    @Test func floatModeForwardsNoMappedKeystrokes() {
+        let fake = FakePlatformOps()
+        let mapping = HotkeyMapping(trigger: Hotkey(keyCode: 0x31, modifierFlags: 0x0800), pageKeystroke: Hotkey(keyCode: 0x31, modifierFlags: 0))
+        let config = WidgetConfig(url: URL(string: "https://example.com")!, hotkeyMappings: [mapping])
+        let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
+        orchestrator.start()
+        defer { withExtendedLifetime(orchestrator) {} }
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleFloatMode)
+
+        fake.simulateHotkeyPressed(mapping.registeredHotkey!)
+
+        #expect(fake.forwardedKeystrokes.isEmpty)
+    }
+
+    @Test func theTraysFloatModeEntryIsGreyedOutWithTheWidgetClosed() {
+        let (fake, orchestrator) = makeOrchestrator(in: .noWidget)
+        defer { withExtendedLifetime(orchestrator) {} }
+
+        #expect(!fake.trayItem("悬浮模式").isEnabled())
     }
 
     // #83: the Empty Page's quick reference shows what is in effect, not the built-in defaults.
@@ -1568,6 +1715,7 @@ enum TrayScenario: Sendable {
 
         #expect(fake.hotkeyQuickReferences.map(\.windowID) == [1])
         #expect(fake.hotkeyQuickReferences.last?.entries == [
+            HotkeyQuickReferenceEntry(label: "切换悬浮模式", keys: ["⌥", "F"]),
             HotkeyQuickReferenceEntry(label: "切换幽灵模式", keys: ["⌘", "J"]),
             HotkeyQuickReferenceEntry(label: "隐藏窗口（幽灵模式下）", keys: ["⌥", "H"]),
             HotkeyQuickReferenceEntry(label: "播放/暂停（幽灵模式下）", keys: ["右 ⌥"]),
@@ -1590,6 +1738,7 @@ enum TrayScenario: Sendable {
 
         #expect(fake.hotkeyQuickReferences.count == 2)
         #expect(fake.hotkeyQuickReferences.last?.entries == [
+            HotkeyQuickReferenceEntry(label: "切换悬浮模式", keys: ["⌥", "F"]),
             HotkeyQuickReferenceEntry(label: "切换幽灵模式", keys: ["⌥", "G"]),
             HotkeyQuickReferenceEntry(label: "隐藏窗口（幽灵模式下）", keys: ["⌥", "H"]),
             HotkeyQuickReferenceEntry(label: "后退 5 秒（幽灵模式下）", keys: ["右 ⌘"], mark: "×2"),
@@ -1600,7 +1749,7 @@ enum TrayScenario: Sendable {
 }
 
 enum WidgetStateUnderTest: Sendable {
-    case noWidget, normalMode, ghostMode
+    case noWidget, normalMode, floatMode, ghostMode
 }
 
 private extension FakePlatformOps {

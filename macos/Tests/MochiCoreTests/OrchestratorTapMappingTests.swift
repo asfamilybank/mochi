@@ -81,7 +81,7 @@ import Testing
 
         withExtendedLifetime(orchestrator) {}
 
-        #expect(Set(fake.registeredHotkeys) == [DefaultHotkeys.toggleGhostMode, DefaultHotkeys.hideWidget])
+        #expect(Set(fake.registeredHotkeys) == [DefaultHotkeys.toggleFloatMode, DefaultHotkeys.toggleGhostMode, DefaultHotkeys.hideWidget])
     }
 
     /// Right ⌥'s tap is 播放/暂停 (the default) and its double tap a mapping: the tap waits out

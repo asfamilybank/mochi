@@ -20,11 +20,12 @@
 
 - [打开网页与设置启动页](how-to/open-pages.md)——输入网址或直接搜索，并决定每次打开 Mochi 时先看到什么。
 - [摆放和关闭窗口](how-to/window-placement.md)——把窗口放到想要的位置，弄清关闭和重新打开会发生什么。
+- [用悬浮模式边看边用网页](how-to/float-mode.md)——让网页浮在最上层、半透明，同时还能直接点、直接打字。
 - [用幽灵模式让网页浮在最上层](how-to/ghost-mode.md)——让网页一直浮在最上层，又不挡住你在别的应用里的操作。
 - [一键隐藏窗口（老板键）](how-to/hide-window.md)——有人走过来时，一下就让窗口消失。
 - [不切换应用就能控制视频](how-to/video-control.md)——在别的应用里打字、开会时，也能暂停、快进、后退视频。
 - [把热键变成网页按键](how-to/hotkey-forwarding.md)——不切换到 Mochi，也能用网站自带的快捷键，比如开关弹幕、全屏、下一集。
-- [修改全局热键](how-to/global-hotkeys.md)——把切换幽灵模式和隐藏窗口的热键换成顺手、不冲突的键。
+- [修改全局热键](how-to/global-hotkeys.md)——把切换悬浮模式、切换幽灵模式和隐藏窗口的热键换成顺手、不冲突的键。
 - [登录网站](how-to/sign-in.md)——在 Mochi 里登录视频网站或其他账号，并知道怎么退出登录。
 - [让网页使用摄像头和麦克风](how-to/camera-and-microphone.md)——在 Mochi 里开视频会议，或者收回某个网站的摄像头授权。
 - [下载文件](how-to/downloads.md)——知道下载的文件去了哪里，并能改下载位置。
@@ -43,7 +44,7 @@
 - [设置项一览](reference/settings.md)——每个设置项是做什么的、有哪些选项、默认是什么、什么时候生效。
 - [快捷键与热键](reference/shortcuts.md)——一页查到所有按键，以及它们各在什么时候有效。
 - [菜单与托盘菜单](reference/menus.md)——每个菜单项是做什么的。
-- [普通模式与幽灵模式对照](reference/modes.md)——一张表看清两种模式下各种行为的差别。
+- [三种模式对照](reference/modes.md)——一张表看清三种模式下各种行为的差别。
 - [Mochi 存放的数据与系统权限](reference/data-and-permissions.md)——Mochi 在电脑上存了什么，以及什么时候需要哪项系统权限。
 - [术语表](reference/glossary.md)——看到不认识的词时查一下。
 

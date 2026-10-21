@@ -186,6 +186,35 @@ import Testing
         #expect(reparsed == original)
     }
 
+    // #147: Float Mode's own opacity, separate from Ghost Mode's (ADR-0035).
+
+    @Test func floatOpacityDefaultsToEightyPercentWhenAbsent() throws {
+        let config = try WidgetConfig.parse("ghost_opacity = 0.3")
+        #expect(config.floatOpacity == 0.8)
+    }
+
+    @Test func parsesFloatOpacityWhenPresent() throws {
+        let config = try WidgetConfig.parse("float_opacity = 0.65")
+        #expect(config.floatOpacity == 0.65)
+    }
+
+    /// Float Mode takes clicks and keys, so a fully transparent one would be an invisible window
+    /// swallowing them: its opacity never goes below the floor, even hand-edited (#147).
+    @Test(arguments: [(written: 0.0, read: 0.1), (written: -1.0, read: 0.1), (written: 0.1, read: 0.1), (written: 1.5, read: 1.0)])
+    func floatOpacityIsKeptWithinItsRange(_ row: (written: Double, read: Double)) throws {
+        let config = try WidgetConfig.parse("float_opacity = \(row.written)")
+        #expect(config.floatOpacity == row.read)
+    }
+
+    @Test func serializingThenReparsingRoundTripsFloatOpacity() throws {
+        let original = WidgetConfig(url: URL(string: "https://example.com")!).updatingFloatOpacity(0.55)
+
+        let reparsed = try WidgetConfig.parse(original.serialized())
+
+        #expect(reparsed.floatOpacity == 0.55)
+        #expect(reparsed == original)
+    }
+
     @Test func aLeftoverMouseAvoidanceKeyIsIgnoredAndDroppedOnSave() throws {
         // Mouse-entered avoidance was removed (ADR-0019); config files written before that still
         // carry its key and must keep loading.
@@ -473,6 +502,87 @@ import Testing
 
         #expect(config.hotkey(for: .toggleGhostMode) == Hotkey(keyCode: 17, modifierFlags: 2304))
         #expect(config.hotkey(for: .hideWidget) == DefaultHotkeys.hideWidget)
+    }
+
+    @Test func toggleFloatModeDefaultsToOptionF() throws {
+        let config = try WidgetConfig.parse("")
+
+        // ⌥F: `kVK_ANSI_F` (0x03) with Carbon's `optionKey` (0x0800) — #147, ADR-0035.
+        #expect(config.hotkey(for: .toggleFloatMode) == Hotkey(keyCode: 0x03, modifierFlags: 0x0800))
+    }
+
+    /// A default added after the fact never takes a combo the user already gave to something
+    /// else: someone who bound ⌥F before #147 shipped keeps it, and Float Mode waits to be bound.
+    @Test func theFloatModeDefaultYieldsToAnotherActionAlreadyBoundToIt() throws {
+        let toml = """
+        [hotkeys.toggle_ghost_mode]
+        key_code = 3
+        modifiers = 2048
+        """
+
+        let config = try WidgetConfig.parse(toml)
+
+        #expect(config.hotkey(for: .toggleFloatMode) == nil)
+        #expect(config.hotkey(for: .toggleGhostMode) == DefaultHotkeys.toggleFloatMode)
+    }
+
+    @Test func theFloatModeDefaultYieldsToAMappingAlreadyTriggeredByIt() throws {
+        let toml = """
+        [[hotkey_mappings]]
+        trigger_key_code = 3
+        trigger_modifiers = 2048
+        page_key_code = 49
+        page_modifiers = 0
+        """
+
+        let config = try WidgetConfig.parse(toml)
+
+        #expect(config.hotkeyMappings.count == 1)
+        #expect(config.hotkey(for: .toggleFloatMode) == nil)
+    }
+
+    /// Recorded as cleared, not worked out on every read: freeing ⌥F later must not quietly bring
+    /// the default back with nothing registering it.
+    @Test func aYieldedDefaultStaysClearedOnceTheComboIsFreedAgain() throws {
+        let toml = """
+        [hotkeys.toggle_ghost_mode]
+        key_code = 3
+        modifiers = 2048
+        """
+        let config = try WidgetConfig.parse(toml)
+
+        let freed = config.updatingHotkeyOverride(.toggleGhostMode, to: Hotkey(keyCode: 0x11, modifierFlags: 0x0800))
+        let reparsed = try WidgetConfig.parse(freed.serialized())
+
+        #expect(freed.hotkey(for: .toggleFloatMode) == nil)
+        #expect(reparsed.hotkey(for: .toggleFloatMode) == nil)
+    }
+
+    @Test func aDefaultIsKeptWhenNothingElseUsesIt() throws {
+        let toml = """
+        [hotkeys.toggle_ghost_mode]
+        key_code = 17
+        modifiers = 2048
+        """
+
+        let config = try WidgetConfig.parse(toml)
+
+        #expect(config.hotkey(for: .toggleFloatMode) == DefaultHotkeys.toggleFloatMode)
+    }
+
+    @Test func roundTripsAToggleFloatModeOverride() throws {
+        let toml = """
+        [hotkeys.toggle_float_mode]
+        key_code = 17
+        modifiers = 2304
+        """
+
+        let config = try WidgetConfig.parse(toml)
+        let reparsed = try WidgetConfig.parse(config.serialized())
+
+        #expect(config.hotkey(for: .toggleFloatMode) == Hotkey(keyCode: 17, modifierFlags: 2304))
+        #expect(reparsed.hotkey(for: .toggleFloatMode) == Hotkey(keyCode: 17, modifierFlags: 2304))
+        #expect(config.hotkey(for: .toggleGhostMode) == DefaultHotkeys.toggleGhostMode)
     }
 
     @Test func skipsAMalformedHotkeyOverrideAndKeepsTheOthers() throws {

@@ -237,14 +237,24 @@ struct GeneralSettingsTab: View {
     }
 }
 
-/// 窗口模式 (#146; 幽灵模式 before it): each mode's own group — Ghost Mode's look for now, with
-/// Float Mode and Hidden joining as groups of their own (ADR-0035). The keys live in 热键 (#153).
+/// 窗口模式 (#146; 幽灵模式 before it): each mode's own group — Float Mode's (#147) and Ghost
+/// Mode's, with Hidden joining as a group of its own (ADR-0035). The keys live in 热键 (#153).
 struct WindowModesSettingsTab: View {
     @ObservedObject var viewModel: SettingsViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            GhostModeSection(viewModel: viewModel)
+            ModeOpacitySection(
+                title: "悬浮模式", opacity: viewModel.config.floatOpacity, range: WidgetConfig.floatOpacityRange
+            ) {
+                viewModel.updateFloatOpacity($0)
+            }
+
+            Divider()
+
+            ModeOpacitySection(title: "幽灵模式", opacity: viewModel.config.ghostOpacity) {
+                viewModel.updateGhostOpacity($0)
+            }
         }
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -311,30 +321,34 @@ struct HotkeysSettingsTab: View {
     }
 }
 
-/// 幽灵模式 (#88, headed 外观 until #146): Ghost Mode's target opacity, moved here from the old 窗口
-/// pane and laid out like the hotkey rows. Written only when the drag ends — mid-drag values stay
-/// in `@State`.
-private struct GhostModeSection: View {
-    @ObservedObject var viewModel: SettingsViewModel
+/// A mode's group in 窗口模式 headed by the mode's name, with its target opacity laid out like the
+/// hotkey rows — Ghost Mode's since #88 (headed 外观 until #146), Float Mode's since #147. Written
+/// only when the drag ends — mid-drag values stay in `@State`.
+private struct ModeOpacitySection: View {
+    var title: String
+    var range: ClosedRange<Double>
+    var commit: (Double) -> Void
     @State private var opacity: Double
 
-    init(viewModel: SettingsViewModel) {
-        self.viewModel = viewModel
-        _opacity = State(initialValue: viewModel.config.ghostOpacity)
+    init(title: String, opacity: Double, range: ClosedRange<Double> = 0...1, commit: @escaping (Double) -> Void) {
+        self.title = title
+        self.range = range
+        self.commit = commit
+        _opacity = State(initialValue: opacity)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("幽灵模式").font(.headline)
+            Text(title).font(.headline)
             HotkeyRow(title: "透明度") {
                 HStack {
                     Slider(
-                        value: $opacity, in: 0...1,
+                        value: $opacity, in: range,
                         onEditingChanged: { editing in
-                            if !editing { viewModel.updateGhostOpacity(opacity) }
+                            if !editing { commit(opacity) }
                         }
                     ) {
-                        Text("透明度")
+                        Text("\(title)透明度")
                     }
                     .labelsHidden()
                     .frame(width: 180)
@@ -396,6 +410,7 @@ private struct HotkeyRow<Control: View>: View {
 private extension HotkeyAction {
     var settingsDescription: String {
         switch self {
+        case .toggleFloatMode: "隐藏窗口装饰并置顶，窗口仍可点击和输入；再按一次退出。"
         case .toggleGhostMode: "隐藏窗口装饰、置顶并让鼠标穿透；再按一次退出。"
         case .hideWidget: "幽灵模式下让窗口完全看不见，页面继续运行，视频会暂停。"
         }

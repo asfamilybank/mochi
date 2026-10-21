@@ -540,8 +540,12 @@ private final class HoverIconButton: NSButton {
 ///   arrow rect of its own.
 ///
 /// Clicks were never affected: the toolbar hit-tests above the web view in both states.
+///
+/// Float Mode (#147) turns the dragging off: there is no toolbar, only a hidden, transparent title
+/// bar lying over the top of the page, and a drag there must reach the page, not move the window.
 private final class WidgetWebView: WKWebView {
-    override var mouseDownCanMoveWindow: Bool { true }
+    var movesWindowFromTitlebar = true
+    override var mouseDownCanMoveWindow: Bool { movesWindowFromTitlebar }
 
     override var obscuredContentInsets: NSEdgeInsets {
         didSet { window?.invalidateCursorRects(for: self) }
@@ -715,27 +719,30 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// The toolbar-row height the web view's obscured inset is currently set to, so a repeated
     /// measurement can be recognised and skipped.
     private var appliedTitlebarHeight: CGFloat
-    /// How much `setNativeChromeVisible(false)` took off the window's height — the toolbar row it
-    /// no longer has — so leaving Ghost Mode can give back exactly that, and a frame captured in
-    /// the meantime can be persisted at its Normal Mode size.
-    private var ghostModeHeightReduction: CGFloat = 0
-    /// Set for the whole of Ghost Mode, transitions included, so `updateTitlebarMetrics` keeps its
-    /// hands off the inset. Removing `.titled` passes through a half-torn-down titlebar, and the
-    /// `contentLayoutRect` observation fires in the middle of it — measured: it read 32pt instead
-    /// of 52, the inset followed, and the page's viewport grew 20pt and shifted up.
-    private var isNativeChromeHidden = false
+    /// How much leaving Normal Mode took off the window's height — the toolbar row it no longer
+    /// has — so coming back can give back exactly that, and a frame captured in the meantime can be
+    /// persisted at its Normal Mode size.
+    private var toolbarRowHeightReduction: CGFloat = 0
+    /// Whose chrome the window wears (`setWindowChrome`).
+    private var chromeMode: WidgetMode = .normal
+    /// True for the whole of Float and Ghost Mode, transitions included, so `updateTitlebarMetrics`
+    /// keeps its hands off the inset. Removing `.titled` passes through a half-torn-down titlebar,
+    /// and the `contentLayoutRect` observation fires in the middle of it — measured: it read 32pt
+    /// instead of 52, the inset followed, and the page's viewport grew 20pt and shifted up. Hiding
+    /// the toolbar for Float Mode changes the titlebar's height the same way.
+    private var isNativeChromeHidden: Bool { chromeMode != .normal }
     /// The content container's top edge pinned to the window's — Normal Mode's sizing.
     private let contentContainerTopConstraint: NSLayoutConstraint
-    /// Stands in for `contentContainerTopConstraint` in Ghost Mode: the container keeps the height
-    /// it had while the window shrinks around it, so its top (the toolbar strip) hangs off the
-    /// window's top edge and is clipped away. The web view, the Empty Page and the error page are
+    /// Stands in for `contentContainerTopConstraint` in Float and Ghost Mode: the container keeps
+    /// the height it had while the window shrinks around it, so its top (the toolbar strip) hangs
+    /// off the window's top edge and is clipped away. The web view, the Empty Page and the error page are
     /// all pinned to the container, so none of them resizes or moves on screen.
-    private let contentContainerGhostModeHeight: NSLayoutConstraint
+    private let contentContainerPinnedHeight: NSLayoutConstraint
     /// Whether the page is scrolled to its very top. Reported by an injected script — `WKWebView`
     /// has no scroll position to observe from here, and AppKit's own toolbar/scroll coupling only
     /// works for an `NSScrollView` it can find in the content view, which a web view is not.
     private var isPageAtTop = true
-    /// Held so Normal Mode can put it back after Ghost Mode — see `setNativeChromeVisible`.
+    /// Held so Normal and Float Mode can put it back after Ghost Mode — see `setWindowChrome`.
     fileprivate var normalModeToolbar: NSToolbar?
     private let faviconLoader = FaviconLoader()
     /// The current page's favicon, or `nil` while none has been fetched for it. Reset on every
@@ -768,7 +775,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         self.nativePageTopConstraints = nativePageTopConstraints
         self.appliedTitlebarHeight = contentTopInset.constant
         self.contentContainerTopConstraint = contentContainerTopConstraint
-        self.contentContainerGhostModeHeight = webView.superview!.heightAnchor.constraint(equalToConstant: 0)
+        self.contentContainerPinnedHeight = webView.superview!.heightAnchor.constraint(equalToConstant: 0)
         self.defaultWindowBackgroundColor = window.backgroundColor
         super.init()
         window.delegate = self
@@ -926,8 +933,9 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         // The native pages never get the opaque band: the Empty Page (#16) runs full-bleed under a
         // floating, transparent toolbar, and the error page (#38) starts below the strip, which
         // then shows the window's own background.
+        // Float Mode's title bar stays out of sight over the page (#147), so never the band there.
         let isShowingWebContent = !webView.isHidden
-        window.titlebarAppearsTransparent = !(isShowingWebContent && isPageAtTop)
+        window.titlebarAppearsTransparent = chromeMode == .float || !(isShowingWebContent && isPageAtTop)
     }
 
     /// Reports whether the page sits at its scroll origin. There is nothing on `WKWebView` to
@@ -1752,7 +1760,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// fullscreen (#38), otherwise the frame from just before entering it.
     var frameToPersist: NSRect {
         var frame = frameBeforeFullscreen ?? window.frame
-        frame.size.height += ghostModeHeightReduction
+        frame.size.height += toolbarRowHeightReduction
         return frame
     }
 
@@ -1778,58 +1786,118 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         frameBeforeFullscreen = nil
     }
 
-    /// Ghost Mode drops the toolbar row from the window itself, without the page ever noticing.
-    /// The window's top edge comes down by the row's height (the origin is the bottom-left, so
-    /// shrinking the height with the origin held does exactly that), but the content — web view,
-    /// Empty Page, error page — keeps its height, and the web view its `obscuredContentInsets`:
-    /// the obscured strip simply ends up above the window and is clipped. Nothing WebKit can see changes, so the page gets no `resize` and
-    /// can't flash. An earlier version zeroed the inset instead, and the inset and the frame
-    /// reach WebKit separately — for a moment the page had the whole old height and reflowed.
-    /// Leaving Ghost Mode raises the top edge back up and re-pins the content to it.
-    func setNativeChromeVisible(_ visible: Bool) {
-        if visible {
-            window.styleMask.insert(.titled)
+    /// Moves the window between the three modes' chrome (#147, ADR-0035), from whichever it has.
+    ///
+    /// Float and Ghost Mode both drop the toolbar row from the window itself, without the page
+    /// ever noticing. The window's top edge comes down by the row's height (the origin is the
+    /// bottom-left, so shrinking the height with the origin held does exactly that), but the
+    /// content — web view, Empty Page, error page — keeps its height, and the web view its
+    /// `obscuredContentInsets`: the obscured strip simply ends up above the window and is clipped.
+    /// Nothing WebKit can see changes, so the page gets no `resize` and can't flash. An earlier
+    /// version zeroed the inset instead, and the inset and the frame reach WebKit separately — for
+    /// a moment the page had the whole old height and reflowed. Going back to Normal Mode raises
+    /// the top edge back up and re-pins the content to it; switching between Float and Ghost
+    /// touches neither, so the page doesn't move then either.
+    ///
+    /// On top of that, Ghost Mode drops `.titled` altogether (ADR-0012), while Float Mode keeps it
+    /// so the window can still become key, and hides only what shows: the toolbar, the traffic
+    /// lights, any titlebar band. Its green button is disabled — a floating translucent window
+    /// filling the screen would no longer be floating (ADR-0035).
+    func setWindowChrome(_ target: WidgetMode) {
+        let current = chromeMode
+        guard target != current else { return }
+        if current == .float { setFloatDecorations(false) }
+        // A fullscreen window's frame is the screen's, not ours to shrink.
+        let toolbarHeight = window.styleMask.contains(.fullScreen) ? 0 : appliedTitlebarHeight
+        if current == .normal {
+            chromeMode = target
+            pinContentHeight()
+        }
+        if target == .ghost {
+            chromeMode = .ghost
+            window.styleMask.remove(.titled)
+        }
+        if current == .normal, toolbarHeight > 0 {
+            var frame = window.frame
+            frame.size.height -= toolbarHeight
+            toolbarRowHeightReduction = toolbarHeight
+            window.setFrame(frame, display: false)
+        }
+        if current == .ghost {
             // Dropping `.titled` makes AppKit discard the window's toolbar outright — measured:
             // `window.toolbar` reads back `nil` in Ghost Mode and stays `nil` when `.titled`
             // returns, so Normal Mode came back with bare traffic lights and no toolbar at all.
             // Putting the retained one back is the only way it returns. (`.fullSizeContentView`
             // survives the round trip; only the toolbar is lost.)
+            normalModeToolbar?.isVisible = target == .normal
+            window.styleMask.insert(.titled)
             if window.toolbar == nil {
                 window.toolbar = normalModeToolbar
             }
-            if ghostModeHeightReduction > 0 {
-                var frame = window.frame
-                frame.size.height += ghostModeHeightReduction
-                ghostModeHeightReduction = 0
-                window.setFrame(frame, display: false)
-            }
-            contentContainerGhostModeHeight.isActive = false
-            contentContainerTopConstraint.isActive = true
-            contentTopInset.constant = appliedTitlebarHeight
-            isNativeChromeHidden = false
+        }
+        if target == .float {
+            chromeMode = .float
+            window.toolbar?.isVisible = false
+            setFloatDecorations(true)
+        }
+        if target == .normal {
+            window.toolbar?.isVisible = true
+            restoreToolbarRow()
+            chromeMode = .normal
             updateTitlebarMetrics()
             layoutToolbarItems()
-        } else {
-            isNativeChromeHidden = true
-            // A fullscreen window's frame is the screen's, not ours to shrink.
-            let toolbarHeight = window.styleMask.contains(.fullScreen) ? 0 : appliedTitlebarHeight
-            // Pin the height before anything resizes, so no intermediate layout can squeeze it.
-            contentContainerGhostModeHeight.constant = webView.superview!.frame.height
-            contentContainerTopConstraint.isActive = false
-            contentContainerGhostModeHeight.isActive = true
-            // The progress bar belongs at the page's visible top, which is now the window's.
-            contentTopInset.constant = 0
-            window.styleMask.remove(.titled)
-            if toolbarHeight > 0 {
-                var frame = window.frame
-                frame.size.height -= toolbarHeight
-                ghostModeHeightReduction = toolbarHeight
-                window.setFrame(frame, display: false)
-            }
         }
         updateTitlebarBackdrop()
     }
 
+    /// Pins the content's height before anything resizes, so no intermediate layout can squeeze it.
+    private func pinContentHeight() {
+        contentContainerPinnedHeight.constant = webView.superview!.frame.height
+        contentContainerTopConstraint.isActive = false
+        contentContainerPinnedHeight.isActive = true
+        // The progress bar belongs at the page's visible top, which is now the window's.
+        contentTopInset.constant = 0
+    }
+
+    private func restoreToolbarRow() {
+        if toolbarRowHeightReduction > 0 {
+            var frame = window.frame
+            frame.size.height += toolbarRowHeightReduction
+            toolbarRowHeightReduction = 0
+            window.setFrame(frame, display: false)
+        }
+        contentContainerPinnedHeight.isActive = false
+        contentContainerTopConstraint.isActive = true
+        contentTopInset.constant = appliedTitlebarHeight
+    }
+
+    /// What Float Mode hides of a window that keeps its title bar. The traffic lights go by their
+    /// own `alphaValue`, which also stops them taking clicks — fading the titlebar container
+    /// instead would leave invisible buttons that still click (measured).
+    private func setFloatDecorations(_ isOn: Bool) {
+        for kind: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
+            window.standardWindowButton(kind)?.alphaValue = isOn ? 0 : 1
+        }
+        // From `isOn`, not `chromeMode`: leaving Float Mode runs this before the mode moves on.
+        window.standardWindowButton(.zoomButton)?.isEnabled = !isOn
+        if isOn {
+            window.collectionBehavior.insert(.fullScreenNone)
+        } else {
+            window.collectionBehavior.remove(.fullScreenNone)
+        }
+        (webView as? WidgetWebView)?.movesWindowFromTitlebar = !isOn
+    }
+
+    /// The green button's state is AppKit's to reset, so `setFloatDecorations` setting it once is
+    /// not enough: it is put back whenever the window becomes key too. `windowShouldZoom` covers
+    /// the paths that never touch the button.
+    func windowDidBecomeKey(_ notification: Notification) {
+        window.standardWindowButton(.zoomButton)?.isEnabled = chromeMode != .float
+    }
+
+    func windowShouldZoom(_ window: NSWindow, toFrame newFrame: NSRect) -> Bool {
+        chromeMode != .float
+    }
 
     /// `drawsBackground` is a private WKWebView property (ADR-0001) reached via KVC since it has
     /// no public accessor; it must be `false` for anything below full opacity to show through at
@@ -2597,9 +2665,9 @@ public final class AppKitPlatformOps: PlatformOps {
         handle.setWindowTitle(title)
     }
 
-    public func setNativeChromeVisible(_ visible: Bool, in window: WidgetWindowHandle) {
+    public func setWindowChrome(_ mode: WidgetMode, in window: WidgetWindowHandle) {
         guard let handle = handle(for: window) else { return }
-        handle.setNativeChromeVisible(visible)
+        handle.setWindowChrome(mode)
     }
 
     public func setContentOpacity(_ opacity: Double, in window: WidgetWindowHandle) {

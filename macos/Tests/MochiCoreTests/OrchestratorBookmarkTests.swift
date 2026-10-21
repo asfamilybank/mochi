@@ -135,6 +135,19 @@ import Testing
         #expect(fake.bookmarkEditors.isEmpty)
     }
 
+    /// Float Mode has no address bar for the editor to hang from (#147, ADR-0035).
+    @Test func itIsNotOfferedInFloatMode() {
+        let (fake, orchestrator, bookmarks) = makeOrchestrator()
+        defer { withExtendedLifetime(orchestrator) {} }
+        show(page, title: "Mochi", on: fake)
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleFloatMode)
+
+        #expect(!orchestrator.canPerform(.addBookmark))
+        orchestrator.perform(.addBookmark)
+        #expect(bookmarks.all().isEmpty)
+        #expect(fake.bookmarkEditors.isEmpty)
+    }
+
     @Test func itIsNotOfferedOnTheEmptyPage() {
         let (fake, orchestrator, _) = makeOrchestrator()
         defer { withExtendedLifetime(orchestrator) {} }

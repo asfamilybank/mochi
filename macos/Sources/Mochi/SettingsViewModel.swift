@@ -61,6 +61,11 @@ final class SettingsViewModel: ObservableObject {
         config = controller.config
     }
 
+    func updateFloatOpacity(_ opacity: Double) {
+        controller.updateFloatOpacity(opacity)
+        config = controller.config
+    }
+
     func updateSearchEngine(_ engine: SearchEngine) {
         controller.updateSearchEngine(engine)
         config = controller.config

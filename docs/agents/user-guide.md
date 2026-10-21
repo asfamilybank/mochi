@@ -50,6 +50,7 @@ git grep -n "旧的界面文案" -- docs/guide/ README.md
 |---|---|
 | Widget | 窗口 / Mochi 窗口 |
 | Normal Mode | 普通模式 |
+| Float Mode | 悬浮模式 |
 | Ghost Mode | 幽灵模式 |
 | Hidden | 隐藏窗口；第一次出现时补一句「相当于老板键」 |
 | Snap | 吸附屏幕边缘 |
