@@ -51,8 +51,8 @@ final class MediaCapturePermissionController {
         platformOps.forgetMediaCaptureGrants(in: window, of: source, onlyIfIdle: false)
     }
 
-    /// #96: 不打扰 (Ghost Mode) denies the widget's page, so a grant WebKit kept from Normal Mode
-    /// must go (a capture already running carries on).
+    /// #96: 不打扰 (Ghost Mode, or Hidden in any mode since #148) denies the widget's page, so a
+    /// grant WebKit kept from before must go (a capture already running carries on).
     func doNotDisturbBegan() {
         platformOps.forgetMediaCaptureGrants(in: window, of: .widget, onlyIfIdle: true)
     }

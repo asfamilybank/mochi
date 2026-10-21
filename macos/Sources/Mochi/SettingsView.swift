@@ -412,7 +412,7 @@ private extension HotkeyAction {
         switch self {
         case .toggleFloatMode: "隐藏窗口装饰并置顶，窗口仍可点击和输入；再按一次退出。"
         case .toggleGhostMode: "隐藏窗口装饰、置顶并让鼠标穿透；再按一次退出。"
-        case .hideWidget: "幽灵模式下让窗口完全看不见，页面继续运行，视频会暂停。"
+        case .hideWidget: "悬浮或幽灵模式下让窗口完全看不见，页面继续运行，视频会暂停。"
         }
     }
 }

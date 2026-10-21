@@ -32,15 +32,15 @@ Widget 的隐身状态，由全局热键整体切换开关。它是一个**不�
 _Avoid_: 召唤工具栏（ADR-0006 的旧设计，已被 ADR-0012 砍掉；用户要操作工具栏应先退出 Ghost Mode）；鼠标移入避让 / 鼠标移入即隐藏（ADR-0012 的可关闭偏好、ADR-0006 的恒开行为，已被 [ADR-0019](docs/adr/0019-remove-mouse-entered-avoidance.md) 整个砍掉；Ghost Mode 下鼠标不影响可见性，要看不见就用 Hidden）
 
 **Float Mode（悬浮模式）**:
-Widget 的第三种状态，由全局热键整体切换开关：窗口悬在其他应用之上，但用起来和普通窗口一样。它和 Ghost Mode 一样是绑定的复合状态——原生窗口装饰和工具栏隐藏、只留网页内容，透明度降到它自己的设定值（与 Ghost Mode 分开设置），默认置顶（可在设置中关闭，是偏好而不是开关）；分界在焦点：Float Mode 不做鼠标穿透、可以获得焦点，焦点和键盘鼠标的行为与 Normal Mode 无异。移动、缩放靠原生标题栏：平时看不见，鼠标移到窗口顶部边缘时从网页上方向外长出，网页本身不动；进入 Float Mode 时网页也留在屏幕上原来的位置，只是去掉了工具栏。依赖工具栏的命令（打开位置、添加书签）不可用；视频控制和热键传递不生效，它们只属于 Ghost Mode；网页的交互请求按普通窗口处理。三种模式两两之间可以直接切换，Float Mode 和 Ghost Mode 的热键都是"进入这个模式；已经在其中就回到 Normal Mode"。应用重启或 Widget 重新打开一律回到 Normal Mode（见 [ADR-0035](docs/adr/0035-float-mode-as-a-third-bundled-state.md)）。
+Widget 的第三种状态，由全局热键整体切换开关：窗口悬在其他应用之上，但用起来和普通窗口一样。它和 Ghost Mode 一样是绑定的复合状态——原生窗口装饰和工具栏隐藏、只留网页内容，透明度降到它自己的设定值（与 Ghost Mode 分开设置），默认置顶（可在设置中关闭，是偏好而不是开关）；分界在焦点：Float Mode 不做鼠标穿透（处于 Hidden 时除外）、可以获得焦点，焦点和键盘鼠标的行为与 Normal Mode 无异。移动、缩放靠原生标题栏：平时看不见，鼠标移到窗口顶部边缘时从网页上方向外长出，网页本身不动；进入 Float Mode 时网页也留在屏幕上原来的位置，只是去掉了工具栏。依赖工具栏的命令（打开位置、添加书签）不可用；视频控制和热键传递不生效，它们只属于 Ghost Mode；网页的交互请求按普通窗口处理。三种模式两两之间可以直接切换，Float Mode 和 Ghost Mode 的热键都是"进入这个模式；已经在其中就回到 Normal Mode"。应用重启或 Widget 重新打开一律回到 Normal Mode（见 [ADR-0035](docs/adr/0035-float-mode-as-a-third-bundled-state.md)）。
 _Avoid_: 浮窗模式（浮窗是 Widget 的口语说法，不是一种模式）、迷你模式、画中画
 
 **Hidden（隐藏 / 老板键）**:
-Ghost Mode 和 Float Mode 共有的一个可见性维度，由一个只在这两个模式下生效的全局热键切换（Normal Mode 下什么也不做）：窗口**完全看不见，但仍然存在、网页继续运行**。进入 Hidden 时焦点交还给之前的 app，取消隐藏只恢复可见、从不激活。进入 Hidden 时会暂停页面上所有正在播放的视频和音频（包括跨域 iframe 里的）；取消隐藏、或在隐藏状态下回到 Normal Mode 时都**不**自动恢复，想继续看就用视频控制按一下播放（见 [ADR-0021](docs/adr/0021-hidden-pauses-media-and-never-resumes.md)）。这是它跟"关闭 Widget"的分界线——关闭是销毁并停止，Hidden 只是看不见、暂停。热键一直保持隐藏，直到再按一次热键取消，或回到 Normal Mode；在 Float Mode 和 Ghost Mode 之间切换不影响隐藏。Hidden 期间网页发起的交互请求，不论处于哪个模式，都按 Ghost Mode 的不打扰方式了结。可以在设置里选择隐藏时连 Dock 和 ⌘Tab 一起隐藏，两处只能一起（见 [ADR-0035](docs/adr/0035-float-mode-as-a-third-bundled-state.md)）。实现上必须用 `alphaValue = 0` 而非 `orderOut`，否则 WebKit 会因窗口被判定遮挡而节流渲染，破坏"页面继续跑"这条语义（见 [ADR-0012](docs/adr/0012-ghost-mode-as-pure-invisibility.md)）。
+Ghost Mode 和 Float Mode 共有的一个可见性维度，由一个只在这两个模式下生效的全局热键切换（Normal Mode 下什么也不做）：窗口**完全看不见，但仍然存在、网页继续运行**。进入 Hidden 时焦点交还给之前的 app，取消隐藏只恢复可见、从不激活。进入 Hidden 时会暂停页面上所有正在播放的视频和音频（包括跨域 iframe 里的）；取消隐藏、或在隐藏状态下回到 Normal Mode 时都**不**自动恢复，想继续看就用视频控制按一下播放（见 [ADR-0021](docs/adr/0021-hidden-pauses-media-and-never-resumes.md)）。这是它跟"关闭 Widget"的分界线——关闭是销毁并停止，Hidden 只是看不见、暂停。热键一直保持隐藏，直到再按一次热键取消，或回到 Normal Mode；在 Float Mode 和 Ghost Mode 之间切换不影响隐藏。Hidden 期间网页发起的交互请求，不论处于哪个模式，都按 Ghost Mode 的不打扰方式了结；窗口也同时鼠标穿透，看不见的窗口不接住点击。可以在设置里选择隐藏时连 Dock 和 ⌘Tab 一起隐藏，两处只能一起（见 [ADR-0035](docs/adr/0035-float-mode-as-a-third-bundled-state.md)）。实现上必须用 `alphaValue = 0` 而非 `orderOut`，否则 WebKit 会因窗口被判定遮挡而节流渲染，破坏"页面继续跑"这条语义（见 [ADR-0012](docs/adr/0012-ghost-mode-as-pure-invisibility.md)）。
 _Avoid_: 快速隐藏（旧名，当时是 Normal Mode 专用能力，已随 Normal Mode 回归普通窗口而移除）；收起（一个被否决的中间概念，⌘W 是真关闭，不是收起）
 
 **Mouse Passthrough（鼠标穿透）**:
-Ghost Mode 内置的能力，不能独立于 Ghost Mode 单独开启：开启后窗口不接收鼠标事件、点击直接作用于下方应用。
+Ghost Mode 内置的能力，Float Mode 只在 Hidden 期间带上它，不能单独开启：开启后窗口不接收鼠标事件、点击直接作用于下方应用。
 _Avoid_: 无
 
 **Snap（吸附）**:

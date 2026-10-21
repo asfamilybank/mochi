@@ -240,6 +240,45 @@ import Testing
         #expect(fake.mediaCaptureGrantsForgotten.count == 1, "leaving Ghost Mode loosens nothing")
     }
 
+    /// Hidden in Float Mode is 不打扰 too (#148): the widget's page is denied without asking, and a
+    /// grant WebKit kept from before mustn't slip by. Float Mode alone is an ordinary window.
+    @Test func goingHiddenInFloatModeDeniesTheWidgetAndForgetsItsIdleGrants() {
+        let (fake, _, orchestrator) = makeWidget()
+        defer { withExtendedLifetime(orchestrator) {} }
+        let request = MediaCaptureRequest(device: .camera, host: Self.meet)
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleFloatMode)
+        #expect(fake.simulateMediaCaptureRequested(request) == .ask)
+        #expect(fake.mediaCaptureGrantsForgotten.isEmpty)
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.hideWidget)
+        #expect(fake.simulateMediaCaptureRequested(request) == .deny)
+        #expect(fake.mediaCaptureGrantsForgotten.map(\.source) == [.widget])
+        #expect(fake.mediaCaptureGrantsForgotten.map(\.onlyIfIdle) == [true])
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.hideWidget)
+        #expect(fake.simulateMediaCaptureRequested(request) == .ask)
+    }
+
+    /// 不打扰 forgets the grants once, as it begins: switching to Ghost Mode while still Hidden, or
+    /// going Hidden inside Ghost Mode, doesn't begin it again.
+    @Test func stayingDoNotDisturbAcrossSwitchesForgetsTheGrantsOnlyOnce() {
+        let (fake, _, orchestrator) = makeWidget()
+        defer { withExtendedLifetime(orchestrator) {} }
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleFloatMode)
+        fake.simulateHotkeyPressed(DefaultHotkeys.hideWidget)
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+        fake.simulateHotkeyPressed(DefaultHotkeys.hideWidget)
+        fake.simulateHotkeyPressed(DefaultHotkeys.hideWidget)
+        #expect(fake.mediaCaptureGrantsForgotten.count == 1)
+
+        // Back to Normal and in again: a new 不打扰, so a new forgetting.
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+        #expect(fake.mediaCaptureGrantsForgotten.count == 2)
+    }
+
     // MARK: Reopening
 
     /// A reopened widget still answers — and its page load starts without the old grants.

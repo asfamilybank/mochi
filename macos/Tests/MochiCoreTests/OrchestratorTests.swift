@@ -12,9 +12,9 @@ private struct GhostModeEntrySignature: Equatable {
     let pinned: [Bool]
 }
 
-/// The four states the tray's mode entries (#63) have to reflect.
+/// The states the tray's mode entries (#63, #148) have to reflect.
 enum TrayScenario: Sendable {
-    case noWidget, normal, ghost, ghostHidden
+    case noWidget, normal, float, floatHidden, ghost, ghostHidden
 }
 
 @Suite struct OrchestratorTests {
@@ -350,6 +350,9 @@ enum TrayScenario: Sendable {
         (scenario: .normal, ghostChecked: false, ghostEnabled: true, hideChecked: false, hideEnabled: false),
         (scenario: .ghost, ghostChecked: true, ghostEnabled: true, hideChecked: false, hideEnabled: true),
         (scenario: .ghostHidden, ghostChecked: true, ghostEnabled: true, hideChecked: true, hideEnabled: true),
+        // Float Mode shares Hidden (#148).
+        (scenario: .float, ghostChecked: false, ghostEnabled: true, hideChecked: false, hideEnabled: true),
+        (scenario: .floatHidden, ghostChecked: false, ghostEnabled: true, hideChecked: true, hideEnabled: true),
     ])
     func trayModeEntriesReflectTheCurrentState(
         _ row: (scenario: TrayScenario, ghostChecked: Bool, ghostEnabled: Bool, hideChecked: Bool, hideEnabled: Bool)
@@ -363,6 +366,11 @@ enum TrayScenario: Sendable {
             orchestrator.closeWidget()
         case .normal:
             break
+        case .float:
+            fake.simulateHotkeyPressed(DefaultHotkeys.toggleFloatMode)
+        case .floatHidden:
+            fake.simulateHotkeyPressed(DefaultHotkeys.toggleFloatMode)
+            fake.simulateHotkeyPressed(DefaultHotkeys.hideWidget)
         case .ghost:
             fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
         case .ghostHidden:
@@ -482,7 +490,8 @@ enum TrayScenario: Sendable {
         fake.trayItem("幽灵模式").action()
 
         #expect(fake.contentOpacityChanges.map(\.opacity) == [0.2, 0.0, 1.0])
-        #expect(fake.mousePassthroughChanges.map(\.enabled) == [true, false])
+        // Going Hidden re-applies click-through (#148), which Ghost Mode already had.
+        #expect(fake.mousePassthroughChanges.map(\.enabled) == [true, true, false])
         #expect(!fake.trayItem("幽灵模式").isChecked())
         #expect(!fake.trayItem("隐藏窗口").isChecked())
     }
@@ -1625,6 +1634,26 @@ enum TrayScenario: Sendable {
         #expect((fake.deactivateAppCallCount > deactivatedBefore) == row.deactivates)
     }
 
+    /// Hidden carries across Float and Ghost (#148): switching while hidden shows nothing and takes
+    /// no focus; only Normal Mode brings the window back.
+    @Test func switchingModesWhileHiddenStaysHiddenUntilNormalMode() {
+        let (fake, orchestrator) = makeOrchestrator(in: .ghostMode)
+        defer { withExtendedLifetime(orchestrator) {} }
+        fake.simulateHotkeyPressed(DefaultHotkeys.hideWidget)
+        let shownBefore = fake.shownWindowIDs.count
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleFloatMode)
+        #expect(fake.trayItem("悬浮模式").isChecked())
+        #expect(fake.trayItem("隐藏窗口").isChecked())
+        #expect(fake.contentOpacityChanges.last?.opacity == 0.0)
+        #expect(fake.shownWindowIDs.count == shownBefore)
+
+        fake.simulateHotkeyPressed(DefaultHotkeys.toggleFloatMode)
+        #expect(!fake.trayItem("隐藏窗口").isChecked())
+        #expect(fake.contentOpacityChanges.last?.opacity == 1.0)
+        #expect(fake.shownWindowIDs.count == shownBefore + 1)
+    }
+
     @Test func theFloatModeHotkeyDoesNothingWithTheWidgetClosed() {
         let (fake, orchestrator) = makeOrchestrator(in: .noWidget)
         defer { withExtendedLifetime(orchestrator) {} }
@@ -1717,7 +1746,7 @@ enum TrayScenario: Sendable {
         #expect(fake.hotkeyQuickReferences.last?.entries == [
             HotkeyQuickReferenceEntry(label: "切换悬浮模式", keys: ["⌥", "F"]),
             HotkeyQuickReferenceEntry(label: "切换幽灵模式", keys: ["⌘", "J"]),
-            HotkeyQuickReferenceEntry(label: "隐藏窗口（幽灵模式下）", keys: ["⌥", "H"]),
+            HotkeyQuickReferenceEntry(label: "隐藏窗口（悬浮或幽灵模式下）", keys: ["⌥", "H"]),
             HotkeyQuickReferenceEntry(label: "播放/暂停（幽灵模式下）", keys: ["右 ⌥"]),
             HotkeyQuickReferenceEntry(label: "后退 10 秒（幽灵模式下）", keys: ["右 ⌘"], mark: "×2"),
             HotkeyQuickReferenceEntry(label: "前进 10 秒（幽灵模式下）", keys: ["右 ⌥"], mark: "×2"),
@@ -1740,7 +1769,7 @@ enum TrayScenario: Sendable {
         #expect(fake.hotkeyQuickReferences.last?.entries == [
             HotkeyQuickReferenceEntry(label: "切换悬浮模式", keys: ["⌥", "F"]),
             HotkeyQuickReferenceEntry(label: "切换幽灵模式", keys: ["⌥", "G"]),
-            HotkeyQuickReferenceEntry(label: "隐藏窗口（幽灵模式下）", keys: ["⌥", "H"]),
+            HotkeyQuickReferenceEntry(label: "隐藏窗口（悬浮或幽灵模式下）", keys: ["⌥", "H"]),
             HotkeyQuickReferenceEntry(label: "后退 5 秒（幽灵模式下）", keys: ["右 ⌘"], mark: "×2"),
             HotkeyQuickReferenceEntry(label: "前进 5 秒（幽灵模式下）", keys: ["⌘", "→"]),
             HotkeyQuickReferenceEntry(label: "打开设置", keys: ["⌘", ","]),

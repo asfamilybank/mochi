@@ -3,10 +3,10 @@ import Testing
 
 @testable import MochiCore
 
-/// The download kind of the 网页交互请求 seam (#68): Normal vs Ghost Mode × each 文件下载位置,
+/// The download kind of the 网页交互请求 seam (#68): each mode (and Float Mode Hidden, #148) × each 文件下载位置,
 /// through `Orchestrator` and `FakePlatformOps`, against a fake disk.
 @Suite struct OrchestratorDownloadTests {
-    enum Mode: Sendable { case normal, ghost }
+    enum Mode: Sendable { case normal, float, floatHidden, ghost }
     enum Location: Sendable { case downloads, ask, chosenFolder, missingFolder }
     enum Expected: Sendable { case saveInDownloads, saveInChosen, savePanel }
 
@@ -23,6 +23,10 @@ import Testing
         (mode: .ghost, location: .ask, expected: .saveInDownloads),
         (mode: .ghost, location: .chosenFolder, expected: .saveInChosen),
         (mode: .ghost, location: .missingFolder, expected: .saveInDownloads),
+        // Float Mode asks as Normal Mode does — unless Hidden, which is 不打扰 (#148).
+        (mode: .float, location: .ask, expected: .savePanel),
+        (mode: .floatHidden, location: .ask, expected: .saveInDownloads),
+        (mode: .floatHidden, location: .missingFolder, expected: .saveInDownloads),
     ])
     func downloadDestination(_ row: (mode: Mode, location: Location, expected: Expected)) {
         let location: DownloadLocation =
@@ -44,8 +48,8 @@ import Testing
             case .savePanel: .askWithSavePanel(directory: Self.downloads, suggestedFilename: "clip.mp4")
             }
         #expect(decision == expected)
-        // Never leaves Ghost Mode to ask.
-        #expect((fake.mousePassthroughChanges.last?.enabled ?? false) == (row.mode == .ghost))
+        // Never leaves Ghost Mode or Hidden to ask.
+        #expect((fake.mousePassthroughChanges.last?.enabled ?? false) == (row.mode == .ghost || row.mode == .floatHidden))
     }
 
     /// The setting is read at the moment of each download, not when the window opened.
@@ -117,7 +121,14 @@ import Testing
         let orchestrator = Orchestrator(platformOps: fake, currentConfig: { config })
         orchestrator.downloadFileSystem = Self.fakeFileSystem
         orchestrator.start()
-        if mode == .ghost { fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode) }
+        switch mode {
+        case .normal: break
+        case .float: fake.simulateHotkeyPressed(DefaultHotkeys.toggleFloatMode)
+        case .floatHidden:
+            fake.simulateHotkeyPressed(DefaultHotkeys.toggleFloatMode)
+            fake.simulateHotkeyPressed(DefaultHotkeys.hideWidget)
+        case .ghost: fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+        }
         return (fake, orchestrator)
     }
 }

@@ -7,7 +7,7 @@ import Testing
 /// MochiCore decide? Ghost Mode's "不打扰" rule (CONTEXT.md) is pinned here — no UI, no leaving
 /// Ghost Mode, and the page is never left waiting.
 @Suite struct OrchestratorWebInteractionTests {
-    enum Mode: Sendable { case normal, float, ghost }
+    enum Mode: Sendable { case normal, float, floatHidden, ghost }
 
     private static let dialogKinds: [JavaScriptDialogKind] = [.alert, .confirm, .prompt(defaultText: "默认")]
 
@@ -19,6 +19,10 @@ import Testing
         (mode: .float, kindIndex: 0, expected: .presentSheet),
         (mode: .float, kindIndex: 1, expected: .presentSheet),
         (mode: .float, kindIndex: 2, expected: .presentSheet),
+        // Hidden, Float Mode too is 不打扰 (#148): nothing may pop up on a window nobody can see.
+        (mode: .floatHidden, kindIndex: 0, expected: .settleWithoutUI),
+        (mode: .floatHidden, kindIndex: 1, expected: .settleWithoutUI),
+        (mode: .floatHidden, kindIndex: 2, expected: .settleWithoutUI),
         (mode: .ghost, kindIndex: 0, expected: .settleWithoutUI),
         (mode: .ghost, kindIndex: 1, expected: .settleWithoutUI),
         (mode: .ghost, kindIndex: 2, expected: .settleWithoutUI),
@@ -28,13 +32,14 @@ import Testing
         let request = JavaScriptDialogRequest(kind: Self.dialogKinds[row.kindIndex], message: "hi", host: "example.com")
 
         #expect(fake.simulateJavaScriptDialogRequested(request) == row.expected)
-        #expect(fake.passthroughAfterRequest == (row.mode == .ghost))
+        #expect(fake.passthroughAfterRequest == (row.mode == .ghost || row.mode == .floatHidden))
     }
 
     @Test(arguments: [
         (mode: Mode.normal, multiple: false, directories: false, expected: FileUploadDecision.presentOpenPanel),
         (mode: .normal, multiple: true, directories: true, expected: .presentOpenPanel),
         (mode: .float, multiple: false, directories: false, expected: .presentOpenPanel),
+        (mode: .floatHidden, multiple: false, directories: false, expected: .cancel),
         (mode: .ghost, multiple: false, directories: false, expected: .cancel),
         (mode: .ghost, multiple: true, directories: true, expected: .cancel),
     ])
@@ -43,7 +48,7 @@ import Testing
         let request = FileUploadRequest(allowsMultipleSelection: row.multiple, allowsDirectories: row.directories)
 
         #expect(fake.simulateFileUploadRequested(request) == row.expected)
-        #expect(fake.passthroughAfterRequest == (row.mode == .ghost))
+        #expect(fake.passthroughAfterRequest == (row.mode == .ghost || row.mode == .floatHidden))
     }
 
     /// Ghost Mode is read at request time, not when the handler was registered.
@@ -85,6 +90,9 @@ import Testing
         switch mode {
         case .normal: break
         case .float: fake.simulateHotkeyPressed(DefaultHotkeys.toggleFloatMode)
+        case .floatHidden:
+            fake.simulateHotkeyPressed(DefaultHotkeys.toggleFloatMode)
+            fake.simulateHotkeyPressed(DefaultHotkeys.hideWidget)
         case .ghost: fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
         }
         return (fake, orchestrator)
@@ -92,6 +100,7 @@ import Testing
 }
 
 private extension FakePlatformOps {
-    /// Whether the widget is still click-through after the request — i.e. still in Ghost Mode.
+    /// Whether the widget is still click-through after the request — i.e. still in Ghost Mode, or
+    /// still Hidden.
     var passthroughAfterRequest: Bool { mousePassthroughChanges.last?.enabled ?? false }
 }

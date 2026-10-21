@@ -270,9 +270,15 @@ public final class Orchestrator {
 
         let widgetModeController = WidgetModeController(platformOps: platformOps, window: window, currentConfig: currentConfig)
         self.widgetModeController = widgetModeController
-        widgetModeController.onModeChanged = { [weak self] in
-            self?.videoControl?.refreshObservation()
-            if self?.doNotDisturb == true { self?.mediaCapturePermissions?.doNotDisturbBegan() }
+        // Per widget, like the controller: a reopened widget starts in Normal Mode, outside 不打扰.
+        var wasDoNotDisturb = false
+        widgetModeController.onStateChanged = { [weak self] in
+            guard let self else { return }
+            videoControl?.refreshObservation()
+            // Only as 不打扰 begins — entering Ghost Mode, or going Hidden in Float Mode (#148) —
+            // not on every switch made while it lasts.
+            if doNotDisturb, !wasDoNotDisturb { mediaCapturePermissions?.doNotDisturbBegan() }
+            wasDoNotDisturb = doNotDisturb
         }
         // The toolbar button (#44) calls the exact same entry point as the hotkey and tray paths —
         // no shortcut path of its own; giving up focus happens inside it, on every path.
@@ -931,13 +937,16 @@ public final class Orchestrator {
     }
 
     /// CONTEXT.md's 不打扰: a page's interaction request (a dialog, an upload, a download, a camera,
-    /// a new window) is settled at once without showing anything. Ghost Mode for now; #148 widens
-    /// it to Hidden in any mode (ADR-0035) — nothing may pop up on a window nobody can see.
-    private var doNotDisturb: Bool { widgetModeController?.mode == .ghost }
+    /// a new window) is settled at once without showing anything. Ghost Mode, or Hidden in any
+    /// mode (#148, ADR-0035) — nothing may pop up on a window nobody can see.
+    private var doNotDisturb: Bool {
+        guard let widgetModeController else { return false }
+        return widgetModeController.mode == .ghost || widgetModeController.isHidden
+    }
 
     /// What exists only in Ghost Mode, however the other modes look (ADR-0035): 视频控制, 热键传递,
     /// and the main menu offering nothing at all (`canPerform`). Float Mode is an ordinary,
-    /// focusable window for these, so it stays out even once it shares Hidden.
+    /// focusable window for these, so it stays out, Hidden or not (#148).
     private var ghostOnlyFeaturesActive: Bool { widgetModeController?.mode == .ghost }
 
     /// Float Mode keeps no toolbar (ADR-0035), so what needs the address bar is off there: 打开位置

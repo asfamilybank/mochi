@@ -42,13 +42,14 @@ public final class WidgetModeController {
     private let currentConfig: () -> WidgetConfig
     public private(set) var mode: WidgetMode = .normal
     /// The boss key's (ADR-0012) own bookkeeping: deliberate, persists until deliberately undone
-    /// (or until Ghost Mode is left), and never decays on its own. Readable so the tray's
-    /// 隐藏窗口 (#63) can show a checkmark; only `toggleHidden()` and leaving Ghost Mode (for either
-    /// other mode) write it.
+    /// (or until Normal Mode is returned to), and never decays on its own. Switching between Float
+    /// and Ghost keeps it (#148, ADR-0035): the window stays out of sight, only the mode underneath
+    /// changes. Readable so the tray's 隐藏窗口 (#63) can show a checkmark; only `toggleHidden()`
+    /// and leaving for Normal Mode write it.
     public private(set) var isHidden = false
-    /// Told after every mode change, once the transition is complete — how 视频控制 (#74) knows
-    /// to start or stop listening without a second mode of its own.
-    public var onModeChanged: (() -> Void)?
+    /// Told after every change of mode or of Hidden, once the transition is complete — how 视频控制
+    /// (#74) knows to start or stop listening, and how 不打扰 knows it just began (#148).
+    public var onStateChanged: (() -> Void)?
 
     public init(platformOps: PlatformOps, window: WidgetWindowHandle, currentConfig: @escaping () -> WidgetConfig) {
         self.platformOps = platformOps
@@ -89,13 +90,13 @@ public final class WidgetModeController {
         leaveForNormalMode()
     }
 
-    /// Whether Hidden means anything in the current mode — only Ghost Mode for now; Float Mode
-    /// shares it from #148 (ADR-0035). Normal Mode is a plain window, so never there. The tray's
-    /// 隐藏窗口 greys out on exactly this.
+    /// Whether Hidden means anything in the current mode — Float and Ghost share it (#148,
+    /// ADR-0035). Normal Mode is a plain window, so never there. The tray's 隐藏窗口 greys out on
+    /// exactly this.
     public var canHide: Bool {
         switch mode {
-        case .normal, .float: false
-        case .ghost: true
+        case .normal: false
+        case .float, .ghost: true
         }
     }
 
@@ -104,15 +105,20 @@ public final class WidgetModeController {
     /// hiding means "I can't watch this right now" — and coming back resumes nothing, so the user
     /// picks up exactly where they left off, when they choose to (ADR-0021). A silent no-op where
     /// `canHide` says so: in Normal Mode, a plain macOS window with no visibility concept of its
-    /// own beyond what the system already provides (`⌘M`), and in Float Mode until #148.
+    /// own beyond what the system already provides (`⌘M`).
+    ///
+    /// Coming back only makes the window visible again, in Float Mode too: it never activates, so
+    /// focus stays with whatever app the user is in until they click the page (ADR-0035).
     public func toggleHidden() {
         guard canHide else { return }
         isHidden.toggle()
         applyEffectiveOpacity()
+        applyMousePassthrough()
         if isHidden {
             platformOps.pauseAllMedia(in: window)
             giveUpFocusUnlessAnotherWindowHasIt()
         }
+        onStateChanged?()
     }
 
     /// Hidden → fully invisible; Float and Ghost → their configured targets; Normal → opaque. The
@@ -130,31 +136,36 @@ public final class WidgetModeController {
         platformOps.setContentOpacity(effectiveOpacity, in: window)
     }
 
+    /// Ghost Mode is click-through by definition; a hidden Float Mode window is too, so a window
+    /// nobody can see never catches a click meant for the app underneath (#148).
+    private func applyMousePassthrough() {
+        platformOps.setMousePassthrough(mode == .ghost || isHidden, in: window)
+    }
+
     private func enterGhostMode() {
         // Asked before the chrome comes off: losing its title bar takes the widget out of key.
         let anotherWindowIsKey = platformOps.isAnotherWindowKey(than: window)
         mode = .ghost
         platformOps.setWindowChrome(.ghost, in: window)
         applyEffectiveOpacity()
-        platformOps.setMousePassthrough(true, in: window)
+        applyMousePassthrough()
         platformOps.setPinned(true, in: window)
         if !anotherWindowIsKey { platformOps.deactivateApp() }
-        onModeChanged?()
+        onStateChanged?()
     }
 
     /// Float Mode is for using the page (ADR-0035), so entering it brings the widget forward and
-    /// makes it key — from Ghost Mode too, which is the user asking to interact again.
+    /// makes it key — from Ghost Mode too, which is the user asking to interact again. Unless the
+    /// window is hidden (#148): it stays hidden in Float Mode, and an invisible window taking focus
+    /// would swallow the user's typing.
     private func enterFloatMode() {
         mode = .float
-        // Float Mode shares Hidden only from #148; until then coming over from a hidden Ghost Mode
-        // shows the window again, as leaving Ghost Mode for Normal does.
-        isHidden = false
         platformOps.setWindowChrome(.float, in: window)
         applyEffectiveOpacity()
-        platformOps.setMousePassthrough(false, in: window)
+        applyMousePassthrough()
         platformOps.setPinned(true, in: window)
-        platformOps.showWindow(window)
-        onModeChanged?()
+        if !isHidden { platformOps.showWindow(window) }
+        onStateChanged?()
     }
 
     /// Going Ghost or Hidden means getting out of the way, menu bar included: whatever app was
@@ -169,12 +180,12 @@ public final class WidgetModeController {
         isHidden = false
         platformOps.setWindowChrome(.normal, in: window)
         applyEffectiveOpacity()
-        platformOps.setMousePassthrough(false, in: window)
+        applyMousePassthrough()
         platformOps.setPinned(false, in: window)
         // The user just asked to interact with the widget: the one moment leaving Ghost Mode may
         // take focus (ADR-0012). Entering or staying in Ghost Mode never fronts the window, so it
         // can't steal focus from whatever app the user is actually working in.
         platformOps.showWindow(window)
-        onModeChanged?()
+        onStateChanged?()
     }
 }

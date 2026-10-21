@@ -397,15 +397,91 @@ private final class ConfigStore {
         #expect(fake.contentOpacityChanges.map(\.opacity) == [0.8, 0.5])
     }
 
-    @Test func hiddenIsNotYetAvailableInFloatMode() {
-        // Float Mode shares Hidden only from #148; until then the boss key is a no-op there.
-        let (fake, _, controller) = makeSUT()
+    // MARK: - Hidden shared by Float and Ghost (#148, ADR-0035)
+
+    @Test func goingHiddenInFloatModeMakesTheWindowInvisiblePausesTheMediaAndGivesUpFocus() {
+        let (fake, _, controller) = makeSUT(floatOpacity: 0.8)
         controller.toggleFloatMode()
 
         controller.toggleHidden()
 
-        #expect(!controller.canHide)
+        #expect(controller.canHide)
+        #expect(controller.isHidden)
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.8, 0.0])
+        #expect(fake.mediaPausedWindowIDs == [1])
+        #expect(fake.deactivateAppCallCount == 1)
+        #expect(fake.mousePassthroughChanges.map(\.enabled) == [false, true])
+    }
+
+    @Test func comingBackFromHiddenInFloatModeOnlyShowsTheWindowAndNeverActivates() {
+        let (fake, _, controller) = makeSUT(floatOpacity: 0.8)
+        controller.toggleFloatMode()
+        controller.toggleHidden()
+
+        controller.toggleHidden()
+
         #expect(!controller.isHidden)
-        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.8])
+        #expect(fake.contentOpacityChanges.map(\.opacity) == [0.8, 0.0, 0.8])
+        // Shown once, on entering Float Mode: unhiding brings nothing forward.
+        #expect(fake.shownWindowIDs == [1])
+        #expect(fake.deactivateAppCallCount == 1)
+    }
+
+    @Test func switchingFromFloatToGhostWhileHiddenStaysHidden() {
+        let (fake, _, controller) = makeSUT(ghostOpacity: 0.2, floatOpacity: 0.8)
+        controller.toggleFloatMode()
+        controller.toggleHidden()
+
+        controller.toggleGhostMode()
+
+        #expect(controller.mode == .ghost)
+        #expect(controller.isHidden)
+        #expect(fake.contentOpacityChanges.last?.opacity == 0.0)
+        // Unhiding then lands on Ghost Mode's own target.
+        controller.toggleHidden()
+        #expect(fake.contentOpacityChanges.last?.opacity == 0.2)
+    }
+
+    @Test func switchingFromGhostToFloatWhileHiddenStaysHiddenAndDoesNotActivate() {
+        let (fake, _, controller) = makeSUT(ghostOpacity: 0.2, floatOpacity: 0.8)
+        controller.toggleGhostMode()
+        controller.toggleHidden()
+
+        controller.toggleFloatMode()
+
+        #expect(controller.mode == .float)
+        #expect(controller.isHidden)
+        #expect(fake.contentOpacityChanges.last?.opacity == 0.0)
+        // Still click-through while hidden: an invisible window mustn't catch a click.
+        #expect(fake.mousePassthroughChanges.last?.enabled == true)
+        #expect(fake.shownWindowIDs.isEmpty)
+        controller.toggleHidden()
+        #expect(fake.contentOpacityChanges.last?.opacity == 0.8)
+        #expect(fake.mousePassthroughChanges.last?.enabled == false)
+    }
+
+    @Test func leavingFloatModeWhileHiddenClearsHiddenAndShowsTheWindow() {
+        let (fake, _, controller) = makeSUT(floatOpacity: 0.8)
+        controller.toggleFloatMode()
+        controller.toggleHidden()
+
+        controller.toggleFloatMode()
+
+        #expect(controller.mode == .normal)
+        #expect(!controller.isHidden)
+        #expect(fake.contentOpacityChanges.last?.opacity == 1.0)
+        #expect(fake.shownWindowIDs == [1, 1])
+    }
+
+    @Test func hiddenChangesAreReportedLikeModeChanges() {
+        let (_, _, controller) = makeSUT()
+        var changes = 0
+        controller.onStateChanged = { changes += 1 }
+        controller.toggleFloatMode()
+
+        controller.toggleHidden()
+        controller.toggleHidden()
+
+        #expect(changes == 3)
     }
 }

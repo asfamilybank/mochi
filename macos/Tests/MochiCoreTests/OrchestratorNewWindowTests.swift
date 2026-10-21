@@ -6,7 +6,7 @@ import Testing
 /// New windows and Popup Windows (#67, ADR-0017): given the widget's mode and one new-window
 /// request, what does MochiCore decide — and does anything get handed to the default browser?
 @Suite struct OrchestratorNewWindowTests {
-    enum Mode: Sendable { case normal, ghost }
+    enum Mode: Sendable { case normal, float, floatHidden, ghost }
     enum Trigger: Sendable { case link, commandLink, script }
 
     private static let pageURL = URL(string: "https://example.com/login")!
@@ -29,6 +29,11 @@ import Testing
         (mode: .ghost, trigger: .commandLink, opener: .popupWindow, expected: .cancel, opensInBrowser: false),
         (mode: .ghost, trigger: .script, opener: .widget, expected: .cancel, opensInBrowser: false),
         (mode: .ghost, trigger: .script, opener: .popupWindow, expected: .loadInOpener, opensInBrowser: false),
+        // Float Mode opens what Normal Mode opens (#147); Hidden, it is 不打扰 as well (#148).
+        (mode: .float, trigger: .commandLink, opener: .widget, expected: .cancel, opensInBrowser: true),
+        (mode: .float, trigger: .script, opener: .widget, expected: .openPopupWindow, opensInBrowser: false),
+        (mode: .floatHidden, trigger: .commandLink, opener: .widget, expected: .cancel, opensInBrowser: false),
+        (mode: .floatHidden, trigger: .script, opener: .widget, expected: .cancel, opensInBrowser: false),
     ])
     func newWindowDecision(
         _ row: (mode: Mode, trigger: Trigger, opener: NewWindowOpener, expected: NewWindowDecision, opensInBrowser: Bool)
@@ -38,8 +43,8 @@ import Testing
 
         #expect(fake.simulateNewWindowRequested(request) == row.expected)
         #expect(fake.urlsOpenedInDefaultBrowser == (row.opensInBrowser ? [Self.pageURL] : []))
-        // Settling a request never leaves Ghost Mode.
-        #expect((fake.mousePassthroughChanges.last?.enabled ?? false) == (row.mode == .ghost))
+        // Settling a request never leaves Ghost Mode or Hidden.
+        #expect((fake.mousePassthroughChanges.last?.enabled ?? false) == (row.mode == .ghost || row.mode == .floatHidden))
     }
 
     /// A ⌘-click WebKit gives no URL for has nothing to hand over — and still opens nothing.
@@ -120,7 +125,14 @@ import Testing
         let fake = FakePlatformOps()
         let orchestrator = Orchestrator(platformOps: fake, currentConfig: { WidgetConfig(url: Self.pageURL) })
         orchestrator.start()
-        if mode == .ghost { fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode) }
+        switch mode {
+        case .normal: break
+        case .float: fake.simulateHotkeyPressed(DefaultHotkeys.toggleFloatMode)
+        case .floatHidden:
+            fake.simulateHotkeyPressed(DefaultHotkeys.toggleFloatMode)
+            fake.simulateHotkeyPressed(DefaultHotkeys.hideWidget)
+        case .ghost: fake.simulateHotkeyPressed(DefaultHotkeys.toggleGhostMode)
+        }
         return (fake, orchestrator)
     }
 }
