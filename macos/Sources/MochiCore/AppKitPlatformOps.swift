@@ -583,12 +583,14 @@ private final class FloatTitlebarHoverZone: NSView {
 
 /// Reports hover enter/exit for a single view via its own `NSTrackingArea`, so the callbacks land
 /// on closures instead of on the handle itself.
-private final class HoverTracker: NSObject {
+final class HoverTracker: NSObject {
     var onEnter: (() -> Void)?
     var onExit: (() -> Void)?
 
-    @objc func mouseEntered(with event: NSEvent) { onEnter?() }
-    @objc func mouseExited(with event: NSEvent) { onExit?() }
+    // Named outright: on a plain `NSObject`, Swift would call `mouseEntered(with:)`
+    // `mouseEnteredWith:`, and AppKit, sending `mouseEntered:`, would drop every event unseen.
+    @objc(mouseEntered:) func mouseEntered(with event: NSEvent) { onEnter?() }
+    @objc(mouseExited:) func mouseExited(with event: NSEvent) { onExit?() }
 }
 
 /// The interactive controls hosted in the Normal Mode `NSToolbar` (ADR-0009). Bundled together
@@ -1979,13 +1981,18 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     }
 
     /// Decides from where the pointer actually is rather than from the last enter or exit: moving
-    /// the window under a still pointer reports either one only sometimes (measured). Never while
+    /// the window under a still pointer reports either one only sometimes (measured), and so does
+    /// the zone changing shape as the title bar grows — a pointer that left meanwhile gets no exit
+    /// (measured), hence the second look once each animation ends. Worked out from the page's top
+    /// edge, which no animation moves, rather than from a frame caught mid-animation. Never while
     /// Hidden, whose window takes no clicks.
     private func updateFloatTitlebarForPointer() {
         guard floatTitlebarHover != nil else { return }
-        var zone = window.frame
-        zone.origin.y = zone.maxY - floatTitlebarHoverZoneHeight
-        zone.size.height = floatTitlebarHoverZoneHeight
+        let pageTop = window.frame.minY + floatPageHeight
+        let titlebar = isFloatTitlebarShown ? Self.floatTitlebarHeight : 0
+        let zone = NSRect(
+            x: window.frame.minX, y: pageTop - Self.floatTitlebarHoverZoneHeight,
+            width: window.frame.width, height: Self.floatTitlebarHoverZoneHeight + titlebar)
         let isPointerThere = NSMouseInRect(NSEvent.mouseLocation, zone, false)
         setFloatTitlebarShown(isPointerThere && !window.ignoresMouseEvents, animated: true)
     }
@@ -2020,10 +2027,12 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         let finish = { [weak self] in
             guard let self, generation == self.floatTitlebarAnimationGeneration else { return }
             self.isFloatTitlebarAnimating = false
-            guard !self.isFloatTitlebarShown else { return }
-            floatWindow?.shownTitlebarHeight = 0
-            self.isFloatTitlebarDrawn = false
-            self.updateTitlebarBackdrop()
+            if !self.isFloatTitlebarShown {
+                floatWindow?.shownTitlebarHeight = 0
+                self.isFloatTitlebarDrawn = false
+                self.updateTitlebarBackdrop()
+            }
+            self.updateFloatTitlebarForPointer()
         }
         updateTitlebarBackdrop()
         // AppKit puts the green button back on its own schedule (`windowDidBecomeKey`); a grown
