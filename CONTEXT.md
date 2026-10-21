@@ -32,7 +32,7 @@ Widget 的隐身状态，由全局热键整体切换开关。它是一个**不�
 _Avoid_: 召唤工具栏（ADR-0006 的旧设计，已被 ADR-0012 砍掉；用户要操作工具栏应先退出 Ghost Mode）；鼠标移入避让 / 鼠标移入即隐藏（ADR-0012 的可关闭偏好、ADR-0006 的恒开行为，已被 [ADR-0019](docs/adr/0019-remove-mouse-entered-avoidance.md) 整个砍掉；Ghost Mode 下鼠标不影响可见性，要看不见就用 Hidden）
 
 **Float Mode（悬浮模式）**:
-Widget 的第三种状态，由全局热键整体切换开关：窗口悬在其他应用之上，但用起来和普通窗口一样。它和 Ghost Mode 一样是绑定的复合状态——原生窗口装饰和工具栏隐藏、只留网页内容，透明度降到它自己的设定值（与 Ghost Mode 分开设置），默认置顶（可在设置中关闭，是偏好而不是开关）；分界在焦点：Float Mode 不做鼠标穿透（处于 Hidden 时除外）、可以获得焦点，焦点和键盘鼠标的行为与 Normal Mode 无异。移动、缩放靠原生标题栏：平时看不见，鼠标移到窗口顶部边缘时从网页上方向外长出，网页本身不动；进入 Float Mode 时网页也留在屏幕上原来的位置，只是去掉了工具栏。依赖工具栏的命令（打开位置、添加书签）不可用；视频控制和热键传递不生效，它们只属于 Ghost Mode；网页的交互请求按普通窗口处理。三种模式两两之间可以直接切换，Float Mode 和 Ghost Mode 的热键都是"进入这个模式；已经在其中就回到 Normal Mode"。应用重启或 Widget 重新打开一律回到 Normal Mode（见 [ADR-0035](docs/adr/0035-float-mode-as-a-third-bundled-state.md)）。
+Widget 的第三种状态，由全局热键整体切换开关：窗口悬在其他应用之上，但用起来和普通窗口一样。它和 Ghost Mode 一样是绑定的复合状态——原生窗口装饰和工具栏隐藏、只留网页内容，透明度降到它自己的设定值（与 Ghost Mode 分开设置），默认置顶（可在设置中关闭，是偏好而不是开关）；分界在焦点：Float Mode 不做鼠标穿透（处于 Hidden 时除外）、可以获得焦点，焦点和键盘鼠标的行为与 Normal Mode 无异。移动、缩放靠原生标题栏：它是网页正上方一条标题栏高度的带子，平时完全透明，指针进入这条带子时才淡入，网页本身不动（见 [ADR-0036](docs/adr/0036-float-mode-title-bar-is-a-transparent-band.md)）；进入 Float Mode 时网页也留在屏幕上原来的位置，工具栏让位给这条带子。依赖工具栏的命令（打开位置、添加书签）不可用；视频控制和热键传递不生效，它们只属于 Ghost Mode；网页的交互请求按普通窗口处理。三种模式两两之间可以直接切换，Float Mode 和 Ghost Mode 的热键都是"进入这个模式；已经在其中就回到 Normal Mode"。应用重启或 Widget 重新打开一律回到 Normal Mode（见 [ADR-0035](docs/adr/0035-float-mode-as-a-third-bundled-state.md)）。
 _Avoid_: 浮窗模式（浮窗是 Widget 的口语说法，不是一种模式）、迷你模式、画中画
 
 **Hidden（隐藏 / 老板键）**:
@@ -44,7 +44,7 @@ Ghost Mode 内置的能力，Float Mode 只在 Hidden 期间带上它，不能�
 _Avoid_: 无
 
 **Snap（吸附）**:
-Normal Mode 和 Float Mode 下的拖拽磁性吸附，可在设置中关闭：窗口边缘进入阈值距离会自动贴齐屏幕边缘/角落，继续朝反方向拖动超过阈值即可脱离，不是强制锁死。吸附阈值不暴露为配置项。它和 macOS 自带的边缘阻挡是两回事，两者叠加：系统只在窗口已经到达屏幕边缘、继续往外推时把它挡住一段距离（所有窗口都有，阈值不可调、无 API）；Snap 负责在靠近时主动把窗口拉过去贴齐。系统的平铺（拖到边缘变半屏）也是另一回事，Mochi 不需要做任何事就有。它不跟着置顶一起内化进 Ghost Mode——Snap 只在用户手动拖拽时起作用，而 Ghost Mode 下窗口穿透且经常不可见、根本拖不动（见 [ADR-0012](docs/adr/0012-ghost-mode-as-pure-invisibility.md)）。Float Mode 下吸附的是网页那部分，顶边停在可见区域上沿往下一个标题栏高度处，给悬停时长出的标题栏留位置（见 [ADR-0035](docs/adr/0035-float-mode-as-a-third-bundled-state.md)）。保存的窗口位置所在显示器被移除时，自动收回主显示器内的安全默认位置。
+Normal Mode 和 Float Mode 下的拖拽磁性吸附，可在设置中关闭：窗口边缘进入阈值距离会自动贴齐屏幕边缘/角落，继续朝反方向拖动超过阈值即可脱离，不是强制锁死。吸附阈值不暴露为配置项。它和 macOS 自带的边缘阻挡是两回事，两者叠加：系统只在窗口已经到达屏幕边缘、继续往外推时把它挡住一段距离（所有窗口都有，阈值不可调、无 API）；Snap 负责在靠近时主动把窗口拉过去贴齐。系统的平铺（拖到边缘变半屏）也是另一回事，Mochi 不需要做任何事就有。它不跟着置顶一起内化进 Ghost Mode——Snap 只在用户手动拖拽时起作用，而 Ghost Mode 下窗口穿透且经常不可见、根本拖不动（见 [ADR-0012](docs/adr/0012-ghost-mode-as-pure-invisibility.md)）。Float Mode 下吸附作用在整个窗口上，包括网页上方那条透明的标题栏，贴到顶边时网页正好在它下面（见 [ADR-0036](docs/adr/0036-float-mode-title-bar-is-a-transparent-band.md)）。macOS 26 上拖动标题栏由窗口服务器完成，吸附发生在松手那一刻。保存的窗口位置所在显示器被移除时，自动收回主显示器内的安全默认位置。
 _Avoid_: 磁吸（口语化说法，正式术语用 Snap/吸附）；Pin（置顶）（不再是独立术语——置顶是 Ghost Mode 的固有属性、Float Mode 的偏好，见 ADR-0012、ADR-0035）
 
 **Script Injection（脚本注入）**:
