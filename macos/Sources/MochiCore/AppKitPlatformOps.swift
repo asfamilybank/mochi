@@ -1759,9 +1759,9 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// The frame `captureWindowState` should persist — `window.frame` itself during element
     /// fullscreen (#38), otherwise the frame from just before entering it.
     var frameToPersist: NSRect {
-        var frame = frameBeforeFullscreen ?? window.frame
-        frame.size.height += toolbarRowHeightReduction
-        return frame
+        // Normal Mode's frame for a floating window (#149): its page is where it should come back.
+        let frame = frameBeforeFullscreen ?? window.frame
+        return FloatModeFrame.leaving(WindowFrame(cgRect: frame), toolbarHeight: toolbarRowHeightReduction).cgRect
     }
 
     /// A page's own fullscreen button (enabled via `isElementFullscreenEnabled`, #38) puts the
@@ -1818,10 +1818,10 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
             window.styleMask.remove(.titled)
         }
         if current == .normal, toolbarHeight > 0 {
-            var frame = window.frame
-            frame.size.height -= toolbarHeight
+            // Ghost Mode drops the same row as Float Mode does (#149).
+            let frame = FloatModeFrame.entering(from: WindowFrame(cgRect: window.frame), toolbarHeight: toolbarHeight)
             toolbarRowHeightReduction = toolbarHeight
-            window.setFrame(frame, display: false)
+            window.setFrame(frame.cgRect, display: false)
         }
         if current == .ghost {
             // Dropping `.titled` makes AppKit discard the window's toolbar outright — measured:
@@ -1861,10 +1861,9 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
 
     private func restoreToolbarRow() {
         if toolbarRowHeightReduction > 0 {
-            var frame = window.frame
-            frame.size.height += toolbarRowHeightReduction
+            let frame = FloatModeFrame.leaving(WindowFrame(cgRect: window.frame), toolbarHeight: toolbarRowHeightReduction)
             toolbarRowHeightReduction = 0
-            window.setFrame(frame, display: false)
+            window.setFrame(frame.cgRect, display: false)
         }
         contentContainerPinnedHeight.isActive = false
         contentContainerTopConstraint.isActive = true
@@ -1886,6 +1885,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
             window.collectionBehavior.remove(.fullScreenNone)
         }
         (webView as? WidgetWebView)?.movesWindowFromTitlebar = !isOn
+        (window as? MochiWidgetWindow)?.keepsRoomForTheTitlebar = isOn
     }
 
     /// The green button's state is AppKit's to reset, so `setFloatDecorations` setting it once is
@@ -2100,14 +2100,23 @@ extension AppKitWidgetWindowHandle: NSToolbarDelegate {
 /// visible jitter during a slow drag; this doesn't have a second authority to fight.
 final class MochiWidgetWindow: NSWindow {
     var isSnapEnabled = true
+    /// Float Mode (#149): the top edge stays a title bar's height clear of the visible area's top,
+    /// and Snap aims there too (`FloatModeFrame.constrained`).
+    var keepsRoomForTheTitlebar = false
 
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
         let constrained = super.constrainFrameRect(frameRect, to: screen)
+        let screens = NSScreen.screens.map(\.visibleFrame)
+        if keepsRoomForTheTitlebar {
+            return FloatModeFrame.constrained(
+                WindowFrame(cgRect: constrained), toVisibleAreas: screens,
+                isResizing: constrained.size != frame.size, snaps: isSnapEnabled
+            ).cgRect
+        }
         guard isSnapEnabled else { return constrained }
         // Only snap a pure move — during an active resize the frame's size is still changing,
         // and naively adjusting the origin then would fight the edge the user is dragging.
         guard constrained.size == frame.size else { return constrained }
-        let screens = NSScreen.screens.map(\.visibleFrame)
         let snapped = WindowSnapping.snappedFrame(WindowFrame(cgRect: constrained), toEdgesOf: screens)
         return snapped.cgRect
     }
