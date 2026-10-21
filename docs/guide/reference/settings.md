@@ -60,7 +60,7 @@
 
 ## 窗口模式
 
-![「设置 › 窗口模式」面板](../images/settings-ghost-mode.png)
+![「设置 › 窗口模式」面板](../images/settings-window-modes.png)
 
 ### 悬浮模式
 
@@ -103,6 +103,8 @@
 相关页面：[一键隐藏窗口（老板键）](../how-to/hide-window.md#连程序坞和-tab-里的图标一起藏起来)。
 
 ## 热键
+
+![「设置 › 热键」面板](../images/settings-hotkeys.png)
 
 ### 全局热键
 

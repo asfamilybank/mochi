@@ -48,7 +48,7 @@
 
 调到 0% 时，幽灵模式下的窗口就完全看不见了。只是想临时把窗口藏起来，用[隐藏窗口](hide-window.md)更合适，不用改设置。
 
-![「设置 › 窗口模式」面板](../images/settings-ghost-mode.png)
+![「设置 › 窗口模式」面板](../images/settings-window-modes.png)
 
 ## 幽灵模式下不能做的事
 

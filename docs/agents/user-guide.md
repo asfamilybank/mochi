@@ -16,8 +16,8 @@ git grep -n "旧的界面文案" -- docs/guide/ README.md
 |---|---|---|
 | 菜单栏菜单项、菜单快捷键（`MainMenuBuilder`） | `reference/menus.md`、`reference/shortcuts.md` 的「菜单快捷键」一节 | 无 |
 | 托盘菜单项（`TrayMenu`） | `reference/menus.md` 的「托盘菜单」一节、`tutorials/first-steps.md` | `tray-menu.png` |
-| 默认全局热键（`DefaultHotkeys`，现为 ⌥G / ⌥H） | 旧组合（如 `⌥G`）大半个手册都搜得到，以 grep 结果为准。另外：`reference/shortcuts.md` 是总表；`how-to/troubleshooting.md` 的标题里有 ⌥G / ⌥H，改标题要同步别处链过来的锚点；`how-to/global-hotkeys.md` 写着默认组合在其他应用里打不出的字符（`©` / `˙`） | `settings-ghost-mode.png`、`first-steps-empty-page.png`、`tray-menu.png` |
-| 视频控制的默认按键或步长 | 以 grep 旧按键（如 `右 ⌥`）的结果为准。`reference/shortcuts.md` 是总表，`how-to/video-control.md` 和 `tutorials/first-steps.md` 按步骤写着默认按键，`reference/settings.md` 写着默认值 | `settings-ghost-mode.png`、`settings-video-control.png`、`first-steps-empty-page.png` |
+| 默认全局热键（`DefaultHotkeys`，现为 ⌥G / ⌥H） | 旧组合（如 `⌥G`）大半个手册都搜得到，以 grep 结果为准。另外：`reference/shortcuts.md` 是总表；`how-to/troubleshooting.md` 的标题里有 ⌥G / ⌥H，改标题要同步别处链过来的锚点；`how-to/global-hotkeys.md` 写着默认组合在其他应用里打不出的字符（`©` / `˙`） | `settings-hotkeys.png`、`first-steps-empty-page.png`、`tray-menu.png` |
+| 视频控制的默认按键或步长 | 以 grep 旧按键（如 `右 ⌥`）的结果为准。`reference/shortcuts.md` 是总表，`how-to/video-control.md` 和 `tutorials/first-steps.md` 按步骤写着默认按键，`reference/settings.md` 写着默认值 | `settings-hotkeys.png`、`settings-video-control.png`、`first-steps-empty-page.png` |
 | 设置项增删、改名、改可选项或默认值 | `reference/settings.md` 的对应条目，以及条目「相关页面」里链到的操作指南 | 该面板的 `settings-*.png` |
 | 设置项的生效时机 | `reference/settings.md` 的对应条目，**以及页面开头列举的例外**（现在是「启动时」、自动播放、脚本、HTTP 警告） | 无 |
 | 设置面板的布局（分组、顺序、控件） | `reference/settings.md` 的分节顺序 | 该面板的 `settings-*.png`；热键面板还要重裁 `settings-video-control.png`、`settings-hotkey-forwarding.png` |
@@ -80,9 +80,10 @@ git grep -n "旧的界面文案" -- docs/guide/ README.md
 | `tray-menu.png` | 展开的托盘菜单 | AX 打开菜单后按窗口 ID 截，见下文 | `tutorials/first-steps.md`、`reference/menus.md` |
 | `open-pages-suggestions.png` | 地址栏输入 `wiki`，行内补全成 `wikipedia.org`，下拉列表里有书签和历史记录 | 窗口 ID | `how-to/open-pages.md` |
 | `settings-general.png` | 「设置 › 通用」 | 窗口 ID | `reference/settings.md`、`how-to/open-pages.md` |
-| `settings-ghost-mode.png` | 「设置 › 窗口模式」与「设置 › 热键」两页（#153 拆分后待按 #145 的约定重拍、拆成两张），热键传递里有一条示例映射 | 窗口 ID | `reference/settings.md`、`how-to/ghost-mode.md` |
-| `settings-video-control.png` | 「视频控制」分组 | 从 `settings-ghost-mode.png` 用 `sips -c` 裁出 | `how-to/video-control.md` |
-| `settings-hotkey-forwarding.png` | 「热键传递」分组，一条示例映射：轻按右 ⌃ 发送 D | 从 `settings-ghost-mode.png` 用 `sips -c` 裁出 | `how-to/hotkey-forwarding.md` |
+| `settings-window-modes.png` | 「设置 › 窗口模式」 | 窗口 ID | `reference/settings.md`、`how-to/ghost-mode.md` |
+| `settings-hotkeys.png` | 「设置 › 热键」，热键传递里有一条示例映射：轻按右 ⌃ 发送 D | 窗口 ID | `reference/settings.md` |
+| `settings-video-control.png` | 「视频控制」分组 | 从 `settings-hotkeys.png` 裁出，取景从分组标题上方约 35px 到分隔线下方 | `how-to/video-control.md` |
+| `settings-hotkey-forwarding.png` | 「热键传递」分组，一条示例映射：轻按右 ⌃ 发送 D | 从 `settings-hotkeys.png` 裁出，取景从分组标题上方约 35px 到底部提示文字下方约 30px | `how-to/hotkey-forwarding.md` |
 | `settings-websites.png` | 「设置 › 网站 › 通用」 | 窗口 ID | `reference/settings.md` |
 | `settings-websites-camera.png` | 「设置 › 网站 › 摄像头」 | 窗口 ID | `how-to/camera-and-microphone.md` |
 | `settings-privacy.png` | 「设置 › 隐私与安全性」 | 窗口 ID | `reference/settings.md` |
@@ -120,6 +121,14 @@ git grep -n "旧的界面文案" -- docs/guide/ README.md
 地址栏下拉的建议面板和书签编辑气泡是主窗口的子窗口：对主窗口执行 `screencapture -l<主窗口 id>` 时，它们会一并截进去。`open-pages-suggestions.png`、`bookmark-editor.png` 都是这样直接截主窗口得到的，不用另外合成。
 
 设置窗口上的 sheet（「清除浏览数据」「管理网站和数据」）也一样：截设置窗口就会带上它们，连同后面变暗的面板。`clear-browsing-data.png`、`manage-websites.png` 都是这样截的。
+
+### 裁图
+
+从整页截图里裁分组用 CoreGraphics（`CGImage.cropping(to:)` 再用 `CGImageDestination` 写 PNG），别用 `sips --cropOffset`：偏移量为 `0 0` 时它会退回居中裁剪，裁出来是页面中间的一块。
+
+### 截图时的前台
+
+交通灯在窗口不处于前台时是灰的。截之前用 `osascript` 让 System Events 把 Mochi 设成 frontmost，`lsappinfo front` 确认是 Mochi 后立刻截；Claude.app 可能马上把前台抢回去，没抢到就重试。
 
 ### 托盘菜单
 
