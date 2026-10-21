@@ -66,6 +66,15 @@ import Testing
         #expect(store.config.ghostOpacity == WidgetConfig.defaultGhostOpacity)
     }
 
+    @Test func updatingHidesFromDockWhileHiddenPersistsThroughTheInjectedStore() {
+        let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
+        let controller = makeController(store: store)
+
+        controller.updateHidesFromDockWhileHidden(true)
+
+        #expect(store.config.hidesFromDockWhileHidden)
+    }
+
     @Test func updatingFloatAlwaysOnTopPersistsThroughTheInjectedStore() {
         let store = PersistedStore(WidgetConfig(url: URL(string: "https://example.com")!))
         let controller = makeController(store: store)

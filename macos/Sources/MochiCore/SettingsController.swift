@@ -90,6 +90,10 @@ public final class SettingsController {
         persistAndNotify { $0.updatingFloatOpacity(opacity) }
     }
 
+    public func updateHidesFromDockWhileHidden(_ isOn: Bool) {
+        persistAndNotify { $0.updatingHidesFromDockWhileHidden(isOn) }
+    }
+
     public func updateFloatAlwaysOnTop(_ isOn: Bool) {
         persistAndNotify { $0.updatingFloatAlwaysOnTop(isOn) }
     }

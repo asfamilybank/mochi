@@ -27,6 +27,9 @@ public struct WidgetConfig: Equatable {
     /// Whether Float Mode floats above other apps' windows (#150): a preference, on by default,
     /// edited only in the 窗口模式 pane — never a mode of its own to switch (ADR-0035).
     public var isFloatAlwaysOnTop = true
+    /// Whether going Hidden also takes Mochi out of the Dock and ⌘Tab (#152) — both or neither, as
+    /// no public API can do one without the other. Off by default (ADR-0035).
+    public var hidesFromDockWhileHidden = false
     /// Magnetic edge/corner snapping while dragging (#6), on by default. Edited from the
     /// 通用 pane since #88 and re-applied to the live window on every change (#46).
     public var isSnapEnabled: Bool
@@ -219,6 +222,7 @@ extension WidgetConfig {
         let floatOpacity = table["float_opacity"]?.double ?? defaultFloatOpacity
         config.floatOpacity = min(max(floatOpacity, floatOpacityRange.lowerBound), floatOpacityRange.upperBound)
         config.isFloatAlwaysOnTop = table["float_always_on_top"]?.bool ?? true
+        config.hidesFromDockWhileHidden = table["hide_from_dock_while_hidden"]?.bool ?? false
         // #70 — invalid values fall back to the defaults, like the rest of this hand-editable file.
         config.autoplayPolicy = table["autoplay"]?.string.flatMap(AutoplayPolicy.init(rawValue:)) ?? .allowAll
         config.minimumFontSize = table["minimum_font_size"]?.int.flatMap {
@@ -453,6 +457,7 @@ extension WidgetConfig {
         table["ghost_opacity"] = ghostOpacity
         table["float_opacity"] = floatOpacity
         table["float_always_on_top"] = isFloatAlwaysOnTop
+        table["hide_from_dock_while_hidden"] = hidesFromDockWhileHidden
         table["snap_enabled"] = isSnapEnabled
         table["http_warning_enabled"] = isHTTPWarningEnabled
         table["web_inspector_enabled"] = isWebInspectorEnabled
@@ -617,6 +622,12 @@ extension WidgetConfig {
     public func updatingFloatAlwaysOnTop(_ isOn: Bool) -> WidgetConfig {
         var copy = self
         copy.isFloatAlwaysOnTop = isOn
+        return copy
+    }
+
+    public func updatingHidesFromDockWhileHidden(_ isOn: Bool) -> WidgetConfig {
+        var copy = self
+        copy.hidesFromDockWhileHidden = isOn
         return copy
     }
 

@@ -168,6 +168,12 @@ public protocol PlatformOps: AnyObject {
     /// so nothing else calls this.
     func setPinned(_ pinned: Bool, in window: WidgetWindowHandle)
 
+    /// Takes Mochi out of the Dock and ⌘Tab, or puts it back (#152) — the two together, since no
+    /// public API does one without the other. App-wide. Taking it out while Mochi is active hands
+    /// focus back; putting it back never activates Mochi. `DockPresence` alone calls this, and
+    /// paces it.
+    func setHiddenFromDockAndAppSwitcher(_ hidden: Bool)
+
     /// Raises the widget's Popup Windows — those open now and any opened later — to its
     /// always-on-top level, or lowers them back to the normal one (#150). A sign-in popup opened
     /// from a pinned floating widget would otherwise land underneath it. Driven, like `setPinned`,

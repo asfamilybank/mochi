@@ -2518,6 +2518,13 @@ public final class AppKitPlatformOps: PlatformOps {
         handle.setURLSubmittedHandler(handler)
     }
 
+    /// `.accessory` is the only public way out of the Dock, and it takes Mochi out of ⌘Tab too.
+    /// Switching to it while active gives up being active; switching back doesn't activate
+    /// (both measured, ADR-0035).
+    public func setHiddenFromDockAndAppSwitcher(_ hidden: Bool) {
+        NSApp.setActivationPolicy(hidden ? .accessory : .regular)
+    }
+
     public func setPopupWindowsPinned(_ pinned: Bool, in window: WidgetWindowHandle) {
         guard let handle = handle(for: window) else { return }
         handle.setPopupWindowsPinned(pinned)

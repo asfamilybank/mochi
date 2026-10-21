@@ -148,6 +148,12 @@ final class FakePlatformOps: PlatformOps {
         pinnedChanges.append((pinned, handle.id))
     }
 
+    private(set) var dockAndAppSwitcherHiddenChanges: [Bool] = []
+
+    func setHiddenFromDockAndAppSwitcher(_ hidden: Bool) {
+        dockAndAppSwitcherHiddenChanges.append(hidden)
+    }
+
     private(set) var popupWindowsPinnedChanges: [(pinned: Bool, windowID: Int)] = []
 
     func setPopupWindowsPinned(_ pinned: Bool, in window: WidgetWindowHandle) {

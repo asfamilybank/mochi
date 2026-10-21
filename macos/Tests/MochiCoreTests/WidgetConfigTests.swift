@@ -215,6 +215,22 @@ import Testing
         #expect(reparsed == original)
     }
 
+    // #152: leaving the Dock and ⌘Tab while Hidden, off unless turned on (ADR-0035).
+
+    @Test func hidesFromDockWhileHiddenDefaultsToOffWhenAbsent() throws {
+        let config = try WidgetConfig.parse("ghost_opacity = 0.3")
+        #expect(!config.hidesFromDockWhileHidden)
+    }
+
+    @Test func serializingThenReparsingRoundTripsHidesFromDockWhileHidden() throws {
+        let original = WidgetConfig(url: URL(string: "https://example.com")!).updatingHidesFromDockWhileHidden(true)
+
+        let reparsed = try WidgetConfig.parse(original.serialized())
+
+        #expect(reparsed.hidesFromDockWhileHidden)
+        #expect(reparsed == original)
+    }
+
     // #150: Float Mode's always-on-top is a preference, on unless turned off (ADR-0035).
 
     @Test func floatAlwaysOnTopDefaultsToOnWhenAbsent() throws {

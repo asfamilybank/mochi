@@ -266,6 +266,26 @@ struct WindowModesSettingsTab: View {
             ModeOpacitySection(title: "幽灵模式", opacity: viewModel.config.ghostOpacity) {
                 viewModel.updateGhostOpacity($0)
             }
+
+            Divider()
+
+            // #152: what going Hidden does beyond the window, shared by both modes above.
+            VStack(alignment: .leading, spacing: 12) {
+                Text("隐藏").font(.headline)
+                HotkeyRow(
+                    title: "隐藏时也从 Dock 和 ⌘Tab 中移除",
+                    description: "两处一起移除，取消隐藏后恢复。菜单栏图标保留，用它或热键找回窗口。"
+                ) {
+                    Toggle(
+                        "隐藏时也从 Dock 和 ⌘Tab 中移除",
+                        isOn: Binding(
+                            get: { viewModel.config.hidesFromDockWhileHidden },
+                            set: { viewModel.updateHidesFromDockWhileHidden($0) }
+                        )
+                    )
+                    .labelsHidden()
+                }
+            }
         }
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -50,6 +50,7 @@ public final class Orchestrator {
     private var addressBarController: AddressBarController?
     private var hotkeyForwarder: HotkeyForwarder?
     private var videoControl: VideoControl?
+    private var dockPresence: DockPresence?
     private var currentZoom: Double = 1.0
 
     /// Whether a widget window currently exists (#42). The main menu asks `canPerform(_:)`
@@ -100,6 +101,10 @@ public final class Orchestrator {
             currentWindow: { [weak self] in self?.window },
             forward: { [weak self] in self?.hotkeyForwarder?.forward($0) }
         )
+        dockPresence = DockPresence(platformOps: platformOps) { [weak self] in
+            guard let self else { return false }
+            return currentConfig().hidesFromDockWhileHidden && widgetModeController?.isHidden == true
+        }
         registerGlobalHotkeys()
         platformOps.createTrayIcon(items: trayMenuItems())
         platformOps.onReopenRequested { [weak self] in
@@ -275,6 +280,7 @@ public final class Orchestrator {
         widgetModeController.onStateChanged = { [weak self] in
             guard let self else { return }
             videoControl?.refreshObservation()
+            dockPresence?.refresh()
             // Only as 不打扰 begins — entering Ghost Mode, or going Hidden in Float Mode (#148) —
             // not on every switch made while it lasts.
             if doNotDisturb, !wasDoNotDisturb { mediaCapturePermissions?.doNotDisturbBegan() }
@@ -316,6 +322,7 @@ public final class Orchestrator {
         addressBarController = nil
         mediaCapturePermissions = nil  // #101: 「仅这次允许」 ends with the widget
         videoControl?.refreshObservation()
+        dockPresence?.refresh()
     }
 
     /// Registers every global hotkey Mochi holds — the two action hotkeys at their currently
@@ -425,6 +432,7 @@ public final class Orchestrator {
         platformOps.setHotkeyQuickReference(HotkeyQuickReference.entries(for: currentConfig()), in: window)
         widgetModeController?.reapplyConfiguration()
         videoControl?.refreshObservation()
+        dockPresence?.refresh()
     }
 
     private func handleURLSubmitted(_ url: URL) {
