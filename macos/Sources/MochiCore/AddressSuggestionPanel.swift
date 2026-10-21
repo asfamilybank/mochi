@@ -139,6 +139,11 @@ private final class SuggestionWindow: NSPanel {
 private final class SuggestionRowView: NSView {
     var onClick: (() -> Void)?
     private let isSelected: Bool
+    /// The row under the pointer gets a faint highlight of its own, never the selection: the
+    /// keyboard's row and the field's text stay put, and Return still opens the selected row.
+    private var isHovered = false {
+        didSet { if isHovered != oldValue { needsDisplay = true } }
+    }
 
     init(row: AddressSuggestionRow, icon: NSImage?, isSelected: Bool) {
         self.isSelected = isSelected
@@ -173,6 +178,8 @@ private final class SuggestionRowView: NSView {
             mark.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
             mark.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
+        addTrackingArea(NSTrackingArea(
+            rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
         setAccessibilityLabel(Self.isBookmark(row) ? "书签：\(label.stringValue)" : label.stringValue)
@@ -182,9 +189,27 @@ private final class SuggestionRowView: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override func draw(_ dirtyRect: NSRect) {
-        guard isSelected else { return }
-        NSColor.selectedContentBackgroundColor.setFill()
+        if isSelected {
+            NSColor.selectedContentBackgroundColor.setFill()
+        } else if isHovered {
+            NSColor.labelColor.withAlphaComponent(0.1).setFill()
+        } else {
+            return
+        }
         NSBezierPath(roundedRect: bounds, xRadius: 5, yRadius: 5).fill()
+    }
+
+    override func mouseEntered(with event: NSEvent) { isHovered = true }
+    override func mouseExited(with event: NSEvent) { isHovered = false }
+
+    /// The list is rebuilt on every keystroke: a pointer already resting where a new row lands
+    /// never enters it, so each row looks once it is laid out.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let window = self.window else { return }
+            self.isHovered = self.bounds.contains(self.convert(window.mouseLocationOutsideOfEventStream, from: nil))
+        }
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
