@@ -43,7 +43,7 @@
 
 **Ghost Mode 纯净态**：完全无边框、无原生装饰、无工具栏，只剩网页内容，按目标透明度渐隐；始终置顶（浮在其他应用窗口之上）；鼠标移入窗口区域不影响可见性（[ADR-0019](adr/0019-remove-mouse-entered-avoidance.md)）。见 [issue #8](https://github.com/asfamilybank/mochi/issues/8)、[ADR-0012](adr/0012-ghost-mode-as-pure-invisibility.md)。
 
-**Float Mode 悬浮态**：和 Ghost Mode 一样只剩网页内容、按自己的目标透明度（默认 0.8）渐隐，默认置顶；但窗口可以点击、输入、获得焦点。网页正上方有一条标题栏高度的带子，平时完全透明，网页上边两角是圆角；指针进入这条带子时，标题栏背景（系统标题栏材质）和红、黄两个按钮淡入，网页上角变回直角、与标题栏连成一个窗口，指针离开后淡出；网页本身始终不动。没有绿色按钮。整体观感对标 macOS 的「iPhone 镜像」。见 [ADR-0035](adr/0035-float-mode-as-a-third-bundled-state.md)、[ADR-0036](adr/0036-float-mode-title-bar-is-a-transparent-band.md)。
+**Float Mode 悬浮态**：和 Ghost Mode 一样只剩网页内容、按自己的目标透明度（默认 0.8）渐隐，默认置顶；但窗口可以点击、输入、获得焦点。网页正上方有一条标题栏高度的带子，平时完全透明，网页上边两角一直是圆角；指针进入这条带子时，标题栏背景（系统标题栏材质）和交通灯淡入，背景垫在网页圆角后面把两角填满，指针离开后淡出；网页本身始终不动。绿色按钮置灰。整体观感对标 macOS 的「iPhone 镜像」。见 [ADR-0035](adr/0035-float-mode-as-a-third-bundled-state.md)、[ADR-0036](adr/0036-float-mode-title-bar-is-a-transparent-band.md)。
 
 **空页面**（对标 Chrome 新标签页，见 [issue #16](https://github.com/asfamilybank/mochi/issues/16)）：完整的 Normal Mode 窗口（标题栏 + 全套工具栏），地址栏在空态下显示占位提示文字 + 放大镜图标（而不是锁形图标）。内容区是一个不依赖 App 图标的抽象 Liquid Glass 构图（两片半透明圆角面板叠加、轻微旋转错位），下方是一个视觉弱化（低透明度、小字号）的热键速览，列的是**当前生效**的热键而不是写死的默认值：改绑过的显示新组合、被清空的不显示、后退秒数跟随设置的步长（切换悬浮模式、切换幽灵模式、隐藏窗口、已绑定的视频控制按键，以及固定的打开设置 ⌘,；动作名在左、按键在右，每个键一个键帽，连按两次的键只画一颗键帽、旁边跟一个「×2」（见 [ADR-0022](adr/0022-trigger-key-three-kinds.md)）；只在 Ghost Mode 下生效的那几行注明"幽灵模式下"、隐藏窗口注明"悬浮或幽灵模式下"，因为它们在空页面所在的 Normal Mode 里不生效；设置改动后速览立即更新，见 [issue #83](https://github.com/asfamilybank/mochi/issues/83)），不含独立的 URL 输入框——导航统一走工具栏自带的地址栏。
 

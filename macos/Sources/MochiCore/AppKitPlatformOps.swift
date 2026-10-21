@@ -580,8 +580,9 @@ private final class FloatTitlebarHoverZone: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
-/// The band's background, faded in while the pointer is in the band. It covers the band only —
-/// the page below is clipped short of it — so it never lies over the page (ADR-0036).
+/// The band's background, faded in while the pointer is in the band. It reaches a corner's radius
+/// below the band, *behind* the page, to fill the page's rounded top corners — never over the page
+/// (ADR-0036).
 private final class FloatTitlebarBackground: NSVisualEffectView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
@@ -762,7 +763,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// taller than the band, so the page fills the window below the band and follows any resize.
     private let contentContainerBandTop: NSLayoutConstraint
     /// Clips the content to the page in Float and Ghost Mode, short of the band, and rounds the
-    /// page's top corners while the band shows nothing (ADR-0036). The whole window in Normal Mode.
+    /// page's top corners (ADR-0036). The whole window, square, in Normal Mode.
     private let pageClip: NSView
     private let pageClipTop: NSLayoutConstraint
     /// Whether the page is scrolled to its very top. Reported by an injected script — `WKWebView`
@@ -1949,8 +1950,8 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
 
     /// The band's height: the native title bar's with no toolbar.
     private static let floatTitlebarHeight = CGFloat(FloatModeFrame.titlebarHeight)
-    /// The page's top corners while the band shows nothing, matching the window's own (measured on
-    /// macOS 26.5).
+    /// The page's top corners outside Normal Mode, matching the window's own (measured on macOS
+    /// 26.5).
     private static let pageTopCornerRadius: CGFloat = 16
 
     private var trafficLights: [NSButton] {
@@ -1965,14 +1966,16 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         background.state = .active
         background.alphaValue = 0
         let zone = FloatTitlebarHoverZone()
-        for view in [background, zone] as [NSView] {
+        // Behind the page, so it shows only where the page's rounded corners leave room.
+        rootView.addSubview(background, positioned: .below, relativeTo: pageClip)
+        rootView.addSubview(zone)
+        for (view, height) in [(background, Self.floatTitlebarHeight + Self.pageTopCornerRadius), (zone, Self.floatTitlebarHeight)] as [(NSView, CGFloat)] {
             view.translatesAutoresizingMaskIntoConstraints = false
-            rootView.addSubview(view)
             NSLayoutConstraint.activate([
                 view.topAnchor.constraint(equalTo: rootView.topAnchor),
                 view.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
                 view.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
-                view.heightAnchor.constraint(equalToConstant: Self.floatTitlebarHeight),
+                view.heightAnchor.constraint(equalToConstant: height),
             ])
         }
         floatTitlebarHoverTracker.onEnter = { [weak self] in self?.updateFloatTitlebarForPointer() }
@@ -2016,31 +2019,22 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
             views.forEach { $0.animator().alphaValue = shown ? 1 : 0 }
         }
         if !animated { views.forEach { $0.alphaValue = shown ? 1 : 0 } }
-        updatePageCorners(animated: animated)
+        if shown { (window as? MochiWidgetWindow)?.keepZoomGreyedAfterHover() }
     }
 
-    /// Rounds the page's top corners where nothing sits above them — outside Normal Mode, with the
-    /// band showing nothing — so the page alone reads as the window. Square under a shown title
-    /// bar, which joins the page into one window, and in Normal Mode.
-    private func updatePageCorners(animated: Bool = false) {
-        guard let layer = pageClip.layer else { return }
-        let radius = removedToolbarRowHeight > 0 && !isFloatTitlebarShown ? Self.pageTopCornerRadius : 0
-        guard layer.cornerRadius != radius else { return }
-        if animated {
-            let animation = CABasicAnimation(keyPath: "cornerRadius")
-            animation.fromValue = layer.cornerRadius
-            animation.toValue = radius
-            animation.duration = 0.2
-            layer.add(animation, forKey: "cornerRadius")
-        }
-        layer.cornerRadius = radius
+    /// Rounds the page's top corners outside Normal Mode, so the page alone reads as the window
+    /// while the band shows nothing, and sits inside the title bar's background — which fills the
+    /// corners from behind — while it shows, as iPhone Mirroring's picture does. Square in Normal
+    /// Mode, under the toolbar.
+    private func updatePageCorners() {
+        pageClip.layer?.cornerRadius = removedToolbarRowHeight > 0 ? Self.pageTopCornerRadius : 0
     }
 
     func windowDidMove(_ notification: Notification) {
         updateFloatTitlebarForPointer()
     }
 
-    /// Covers what never goes through the hidden green button — a double-click on the band, the
+    /// Covers what never goes through the greyed green button — a double-click on the band, the
     /// Window menu's Zoom.
     func windowShouldZoom(_ window: NSWindow, toFrame newFrame: NSRect) -> Bool {
         chromeMode != .float
@@ -2254,12 +2248,22 @@ final class MochiWidgetWindow: NSWindow {
     var isSnapEnabled = true
     /// The frame Mochi last set on changing mode, left unsnapped (`constrainFrameRect`).
     var frameSetBetweenModes: NSRect?
-    /// Float Mode (ADR-0035, ADR-0036): no zoom and no fullscreen, so no green button at all. A
-    /// disabled one doesn't stay disabled: AppKit re-enables it whenever the pointer is over a key
-    /// window's title bar, which with the band is every time it shows (measured; overriding
-    /// `isZoomable` or `validateUserInterfaceItem` doesn't stop it). Hidden, it stays hidden.
+    /// Float Mode (ADR-0035, ADR-0036): no zoom and no fullscreen, so the green button is greyed.
     var refusesZoom = false {
-        didSet { standardWindowButton(.zoomButton)?.isHidden = refusesZoom }
+        didSet { standardWindowButton(.zoomButton)?.isEnabled = !refusesZoom }
+    }
+
+    /// The pointer entering a key window's title bar has AppKit re-enable the green button, about
+    /// 40ms in, once per entry (measured; overriding `isZoomable` or `validateUserInterfaceItem`
+    /// doesn't stop it, and KVO never sees it). Disabled again just after, it stays greyed for the
+    /// rest of the hover.
+    func keepZoomGreyedAfterHover() {
+        for delay in [0, 0.05, 0.25] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, self.refusesZoom else { return }
+                self.standardWindowButton(.zoomButton)?.isEnabled = false
+            }
+        }
     }
     /// Float Mode (#149): the top edge stays a title bar's height clear of the visible area's top,
     /// and Snap aims there too (`FloatModeFrame.constrained`).
