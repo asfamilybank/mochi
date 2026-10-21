@@ -574,6 +574,13 @@ private enum NavigationSegment {
     static let forward = 1
 }
 
+/// Float Mode's hover zone along the window's top edge (#151): there only to carry a tracking
+/// area, so every click goes through to whatever is underneath. Draws nothing and isn't opaque,
+/// so WebKit never counts the page as covered by it.
+private final class FloatTitlebarHoverZone: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 /// Reports hover enter/exit for a single view via its own `NSTrackingArea`, so the callbacks land
 /// on closures instead of on the handle itself.
 private final class HoverTracker: NSObject {
@@ -725,6 +732,22 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     private var toolbarRowHeightReduction: CGFloat = 0
     /// Whose chrome the window wears (`setWindowChrome`).
     private var chromeMode: WidgetMode = .normal
+    /// Float Mode's hover zone and the constraint sizing it — only while Float Mode's decorations
+    /// are on (#151).
+    private var floatTitlebarHover: (zone: FloatTitlebarHoverZone, height: NSLayoutConstraint)?
+    private let floatTitlebarHoverTracker = HoverTracker()
+    /// Whether Float Mode's title bar has grown out above the page (#151).
+    private var isFloatTitlebarShown = false
+    /// Whether the title bar draws its opaque band — from the start of growing until the end of
+    /// shrinking, so the strip never turns see-through mid-animation.
+    private var isFloatTitlebarDrawn = false
+    /// The floating page's height: the window's less any grown title bar. The base every grow or
+    /// shrink works from — never a frame mid-animation — and changed only by the user resizing.
+    private var floatPageHeight: CGFloat = 0
+    /// Counts title bar animations, so only the latest one's completion acts.
+    private var floatTitlebarAnimationGeneration = 0
+    /// While the title bar grows or shrinks, the resizes are its own, not the page's.
+    private var isFloatTitlebarAnimating = false
     /// True for the whole of Float and Ghost Mode, transitions included, so `updateTitlebarMetrics`
     /// keeps its hands off the inset. Removing `.titled` passes through a half-torn-down titlebar,
     /// and the `contentLayoutRect` observation fires in the middle of it — measured: it read 32pt
@@ -834,6 +857,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     func windowDidResize(_ notification: Notification) {
         updateTitlebarMetrics()
         layoutToolbarItems()
+        followResizeWhileFloating()
     }
 
     /// Fits the toolbar row to the window's width without ever producing an overflow "»":
@@ -933,9 +957,14 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         // The native pages never get the opaque band: the Empty Page (#16) runs full-bleed under a
         // floating, transparent toolbar, and the error page (#38) starts below the strip, which
         // then shows the window's own background.
-        // Float Mode's title bar stays out of sight over the page (#147), so never the band there.
+        // Float Mode's title bar stays out of sight over the page (#147), so never the band there —
+        // until it grows out above the page on hover, where it is opaque throughout (#151).
         let isShowingWebContent = !webView.isHidden
-        window.titlebarAppearsTransparent = chromeMode == .float || !(isShowingWebContent && isPageAtTop)
+        if chromeMode == .float {
+            window.titlebarAppearsTransparent = !isFloatTitlebarDrawn
+            return
+        }
+        window.titlebarAppearsTransparent = !(isShowingWebContent && isPageAtTop)
     }
 
     /// Reports whether the page sits at its scroll origin. There is nothing on `WKWebView` to
@@ -1767,8 +1796,10 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// The frame `captureWindowState` should persist — `window.frame` itself during element
     /// fullscreen (#38), otherwise the frame from just before entering it.
     var frameToPersist: NSRect {
-        // Normal Mode's frame for a floating window (#149): its page is where it should come back.
-        let frame = frameBeforeFullscreen ?? window.frame
+        // Normal Mode's frame for a floating window (#149): its page is where it should come back —
+        // without the title bar it may have grown on hover (#151).
+        var frame = frameBeforeFullscreen ?? window.frame
+        if floatTitlebarHover != nil { frame.size.height = floatPageHeight }
         return FloatModeFrame.leaving(WindowFrame(cgRect: frame), toolbarHeight: toolbarRowHeightReduction).cgRect
     }
 
@@ -1882,9 +1913,10 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// own `alphaValue`, which also stops them taking clicks — fading the titlebar container
     /// instead would leave invisible buttons that still click (measured).
     private func setFloatDecorations(_ isOn: Bool) {
-        for kind: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
-            window.standardWindowButton(kind)?.alphaValue = isOn ? 0 : 1
-        }
+        // First, so pulling a grown title bar back in can't hide the traffic lights again after
+        // they come back below.
+        if !isOn { removeFloatTitlebarHover() }
+        trafficLights.forEach { $0.alphaValue = isOn ? 0 : 1 }
         // From `isOn`, not `chromeMode`: leaving Float Mode runs this before the mode moves on.
         window.standardWindowButton(.zoomButton)?.isEnabled = !isOn
         if isOn {
@@ -1894,6 +1926,136 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
         }
         (webView as? WidgetWebView)?.movesWindowFromTitlebar = !isOn
         (window as? MochiWidgetWindow)?.keepsRoomForTheTitlebar = isOn
+        if isOn { installFloatTitlebarHover() }
+    }
+
+    // MARK: Float Mode's title bar, grown out on hover (#151, ADR-0035)
+
+    /// The native title bar's height with no toolbar — what the window grows by.
+    private static let floatTitlebarHeight = CGFloat(FloatModeFrame.titlebarHeight)
+    /// How far below the window's top edge the pointer brings the title bar out.
+    private static let floatTitlebarHoverZoneHeight: CGFloat = 20
+
+    /// The zone covers the title bar too once it shows, so moving onto it keeps it out.
+    private var floatTitlebarHoverZoneHeight: CGFloat {
+        Self.floatTitlebarHoverZoneHeight + (isFloatTitlebarShown ? Self.floatTitlebarHeight : 0)
+    }
+
+    private var trafficLights: [NSButton] {
+        [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].compactMap { window.standardWindowButton($0) }
+    }
+
+    private func installFloatTitlebarHover() {
+        guard floatTitlebarHover == nil, let rootView = window.contentView else { return }
+        let zone = FloatTitlebarHoverZone()
+        zone.translatesAutoresizingMaskIntoConstraints = false
+        rootView.addSubview(zone)
+        let height = zone.heightAnchor.constraint(equalToConstant: Self.floatTitlebarHoverZoneHeight)
+        NSLayoutConstraint.activate([
+            zone.topAnchor.constraint(equalTo: rootView.topAnchor),
+            zone.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
+            zone.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
+            height,
+        ])
+        floatTitlebarHoverTracker.onEnter = { [weak self] in self?.updateFloatTitlebarForPointer() }
+        floatTitlebarHoverTracker.onExit = { [weak self] in self?.updateFloatTitlebarForPointer() }
+        zone.addTrackingArea(NSTrackingArea(
+            rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: floatTitlebarHoverTracker, userInfo: nil))
+        floatTitlebarHover = (zone, height)
+        floatPageHeight = window.frame.height
+        // The pointer may already be there: entering a tracking area is all that is reported.
+        DispatchQueue.main.async { [weak self] in self?.updateFloatTitlebarForPointer() }
+    }
+
+    /// Takes the zone, its tracking area and constraints away entirely — after pulling the title
+    /// bar back in at once, so leaving Float Mode starts from the page-sized frame it expects.
+    private func removeFloatTitlebarHover() {
+        setFloatTitlebarShown(false, animated: false)
+        floatTitlebarHover?.zone.removeFromSuperview()
+        floatTitlebarHover = nil
+        floatTitlebarHoverTracker.onEnter = nil
+        floatTitlebarHoverTracker.onExit = nil
+    }
+
+    /// Decides from where the pointer actually is rather than from the last enter or exit: moving
+    /// the window under a still pointer reports either one only sometimes (measured). Never while
+    /// Hidden, whose window takes no clicks.
+    private func updateFloatTitlebarForPointer() {
+        guard floatTitlebarHover != nil else { return }
+        var zone = window.frame
+        zone.origin.y = zone.maxY - floatTitlebarHoverZoneHeight
+        zone.size.height = floatTitlebarHoverZoneHeight
+        let isPointerThere = NSMouseInRect(NSEvent.mouseLocation, zone, false)
+        setFloatTitlebarShown(isPointerThere && !window.ignoresMouseEvents, animated: true)
+    }
+
+    /// Grows the window upward by the title bar's height, or takes it back. The page is pinned to
+    /// the window's bottom at a fixed height, so it neither moves on screen nor gets a `resize`.
+    /// The strip it grows into is the title bar itself, drawn opaque by the system for as long as it
+    /// shows — the window's own layer, never a view over the page.
+    private func setFloatTitlebarShown(_ shown: Bool, animated: Bool) {
+        guard shown != isFloatTitlebarShown else { return }
+        isFloatTitlebarShown = shown
+        floatTitlebarAnimationGeneration += 1
+        let generation = floatTitlebarAnimationGeneration
+        // From the page, not `window.frame`, which mid-animation is neither size: reversing halfway
+        // would otherwise leave the window short of its page for good.
+        var frame = window.frame
+        frame.size.height = floatPageHeight + (shown ? Self.floatTitlebarHeight : 0)
+        floatTitlebarHover?.height.constant = floatTitlebarHoverZoneHeight
+        // The progress bar stays at the page's top edge, below the title bar.
+        contentTopInset.constant = shown ? Self.floatTitlebarHeight : 0
+        // Only the grown strip moves the window: otherwise the page's own top edge would.
+        (webView as? WidgetWebView)?.movesWindowFromTitlebar = shown
+        let floatWindow = window as? MochiWidgetWindow
+        // Growing: the constraint must already know the frame carries a title bar, or AppKit
+        // pushes the window down to fit it (#149). Shrinking: only once it no longer does.
+        if shown {
+            floatWindow?.shownTitlebarHeight = Self.floatTitlebarHeight
+            isFloatTitlebarDrawn = true
+        }
+        isFloatTitlebarAnimating = true
+        // Done, in whichever way — and if shrinking, no title bar left to account for or to draw.
+        let finish = { [weak self] in
+            guard let self, generation == self.floatTitlebarAnimationGeneration else { return }
+            self.isFloatTitlebarAnimating = false
+            guard !self.isFloatTitlebarShown else { return }
+            floatWindow?.shownTitlebarHeight = 0
+            self.isFloatTitlebarDrawn = false
+            self.updateTitlebarBackdrop()
+        }
+        updateTitlebarBackdrop()
+        // AppKit puts the green button back on its own schedule (`windowDidBecomeKey`); a grown
+        // title bar shows it, so it must read as disabled then.
+        window.standardWindowButton(.zoomButton)?.isEnabled = false
+        let buttons = trafficLights
+        // `setFrame(_:display:animate:)` doesn't animate a change this small (measured). Without
+        // animation, a zero-length one still replaces whatever animation is running, which would
+        // otherwise carry on and overwrite the frame set here.
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = animated ? 0.18 : 0
+            buttons.forEach { $0.animator().alphaValue = shown ? 1 : 0 }
+            window.animator().setFrame(frame, display: true)
+        }, completionHandler: finish)
+        if !animated {
+            buttons.forEach { $0.alphaValue = shown ? 1 : 0 }
+            window.setFrame(frame, display: true)
+            finish()
+        }
+    }
+
+    func windowDidMove(_ notification: Notification) {
+        updateFloatTitlebarForPointer()
+    }
+
+    /// Float Mode's page is pinned at a fixed height so the title bar can grow without touching it
+    /// (#151); any other resize — the user's edge drag, a window manager's — sets that height
+    /// (#147 had it fixed).
+    private func followResizeWhileFloating() {
+        guard floatTitlebarHover != nil, !isFloatTitlebarAnimating else { return }
+        floatPageHeight = window.frame.height - (isFloatTitlebarShown ? Self.floatTitlebarHeight : 0)
+        contentContainerPinnedHeight.constant = floatPageHeight + toolbarRowHeightReduction
     }
 
     /// The green button's state is AppKit's to reset, so `setFloatDecorations` setting it once is
@@ -1924,6 +2086,8 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
 
     func setMousePassthrough(_ enabled: Bool) {
         window.ignoresMouseEvents = enabled
+        // Hidden in Float Mode is click-through (#148): no title bar then (#151).
+        updateFloatTitlebarForPointer()
     }
 
     func setSnapEnabled(_ enabled: Bool) {
@@ -2111,15 +2275,22 @@ final class MochiWidgetWindow: NSWindow {
     /// Float Mode (#149): the top edge stays a title bar's height clear of the visible area's top,
     /// and Snap aims there too (`FloatModeFrame.constrained`).
     var keepsRoomForTheTitlebar = false
+    /// The title bar Float Mode has grown above the page on hover (#151), 0 while it hasn't: the
+    /// constraint is the page's, so it is worked out without this.
+    var shownTitlebarHeight: CGFloat = 0
 
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
         let constrained = super.constrainFrameRect(frameRect, to: screen)
         let screens = NSScreen.screens.map(\.visibleFrame)
         if keepsRoomForTheTitlebar {
-            return FloatModeFrame.constrained(
-                WindowFrame(cgRect: constrained), toVisibleAreas: screens,
+            var page = constrained
+            page.size.height -= shownTitlebarHeight
+            var result = FloatModeFrame.constrained(
+                WindowFrame(cgRect: page), toVisibleAreas: screens,
                 isResizing: constrained.size != frame.size, snaps: isSnapEnabled
             ).cgRect
+            result.size.height += shownTitlebarHeight
+            return result
         }
         guard isSnapEnabled else { return constrained }
         // Only snap a pure move — during an active resize the frame's size is still changing,
