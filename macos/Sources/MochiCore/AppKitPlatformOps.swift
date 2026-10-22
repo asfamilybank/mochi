@@ -1950,6 +1950,12 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
 
     /// The band's height: the native title bar's with no toolbar.
     private static let floatTitlebarHeight = CGFloat(FloatModeFrame.titlebarHeight)
+    /// A disabled green button at full opacity gets the title bar's vibrancy and turns a light
+    /// grey; at anything less it is drawn as is, a dark disc — the one iPhone Mirroring shows, and
+    /// what the button looks like while it fades in (measured). Held just short of 1, so the
+    /// shown title bar keeps it dark instead of greying it the moment the fade ends.
+    private static let greyedZoomAlpha: CGFloat = 0.99
+
     /// The page's top corners outside Normal Mode, matching the window's own (measured on macOS
     /// 26.5).
     private static let pageTopCornerRadius: CGFloat = 16
@@ -2013,12 +2019,17 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     private func setFloatTitlebarShown(_ shown: Bool, animated: Bool) {
         guard shown != isFloatTitlebarShown else { return }
         isFloatTitlebarShown = shown
+        let zoom = window.standardWindowButton(.zoomButton)
         let views: [NSView] = trafficLights + [floatTitlebarBand?.background].compactMap { $0 }
+        let alpha = { (view: NSView) -> CGFloat in
+            guard shown else { return 0 }
+            return view === zoom ? Self.greyedZoomAlpha : 1
+        }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = animated ? 0.2 : 0
-            views.forEach { $0.animator().alphaValue = shown ? 1 : 0 }
+            views.forEach { $0.animator().alphaValue = alpha($0) }
         }
-        if !animated { views.forEach { $0.alphaValue = shown ? 1 : 0 } }
+        if !animated { views.forEach { $0.alphaValue = alpha($0) } }
         if shown { (window as? MochiWidgetWindow)?.keepZoomGreyedAfterHover() }
     }
 

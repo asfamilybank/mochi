@@ -179,7 +179,8 @@ private final class SuggestionRowView: NSView {
             mark.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
         addTrackingArea(NSTrackingArea(
-            rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+            rect: .zero, options: [.mouseEnteredAndExited, .cursorUpdate, .activeAlways, .inVisibleRect],
+            owner: self, userInfo: nil))
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
         setAccessibilityLabel(Self.isBookmark(row) ? "书签：\(label.stringValue)" : label.stringValue)
@@ -199,8 +200,16 @@ private final class SuggestionRowView: NSView {
         NSBezierPath(roundedRect: bounds, xRadius: 5, yRadius: 5).fill()
     }
 
-    override func mouseEntered(with event: NSEvent) { isHovered = true }
+    override func mouseEntered(with event: NSEvent) {
+        isHovered = true
+        NSCursor.pointingHand.set()
+    }
+
     override func mouseExited(with event: NSEvent) { isHovered = false }
+
+    /// A row is clicked to open, so it shows the pointing hand. Not a cursor rect: those work only
+    /// in the key window, and the list never becomes key.
+    override func cursorUpdate(with event: NSEvent) { NSCursor.pointingHand.set() }
 
     /// The list is rebuilt on every keystroke: a pointer already resting where a new row lands
     /// never enters it, so each row looks once it is laid out.
