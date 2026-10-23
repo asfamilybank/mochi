@@ -693,6 +693,7 @@ final class AppKitWidgetWindowHandle: NSObject, WidgetWindowHandle, NSWindowDele
     /// #101: told the answer to Mochi's camera/microphone prompt, and each web view's new documents.
     var mediaCapturePromptAnsweredHandler: ((MediaCaptureRequest, MediaCapturePromptAnswer) -> Bool)?
     var newDocumentCommittedHandler: ((WebViewSource) -> Void)?
+    var pointerLockRequestedHandler: ((PointerLockRequest) -> PointerLockDecision)?
     /// #101: tells this widget's Popup Windows apart in `WebViewSource.popupWindow(id:)`.
     var nextPopupWindowID = 1
     /// #67: MochiCore's new-window decider, and the Popup Windows this widget opened (owned here,
@@ -2845,6 +2846,12 @@ public final class AppKitPlatformOps: PlatformOps {
     // #96
     public func forgetMediaCaptureGrants(in window: WidgetWindowHandle, of source: WebViewSource, onlyIfIdle: Bool) {
         handle(for: window)?.forgetMediaCaptureGrants(of: source, onlyIfIdle: onlyIfIdle)
+    }
+
+    public func onPointerLockRequested(
+        _ window: WidgetWindowHandle, perform handler: @escaping (PointerLockRequest) -> PointerLockDecision
+    ) {
+        handle(for: window)?.pointerLockRequestedHandler = handler
     }
 
     // #67: new windows and Popup Windows

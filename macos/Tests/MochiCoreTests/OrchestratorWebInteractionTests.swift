@@ -51,6 +51,24 @@ import Testing
         #expect(fake.passthroughAfterRequest == (row.mode == .ghost || row.mode == .floatHidden))
     }
 
+    /// A game in the widget gets the pointer in any visible, clickable mode; 不打扰 refuses the
+    /// widget's page but not a Popup Window.
+    @Test(arguments: [
+        (mode: Mode.normal, popup: false, expected: PointerLockDecision.grant),
+        (mode: .float, popup: false, expected: .grant),
+        (mode: .floatHidden, popup: false, expected: .deny),
+        (mode: .ghost, popup: false, expected: .deny),
+        (mode: .normal, popup: true, expected: .grant),
+        (mode: .ghost, popup: true, expected: .grant),
+    ])
+    func pointerLockDecision(_ row: (mode: Mode, popup: Bool, expected: PointerLockDecision)) {
+        let (fake, orchestrator) = makeWidget(in: row.mode); defer { withExtendedLifetime(orchestrator) {} }
+        let request = PointerLockRequest(source: row.popup ? .popupWindow(id: 1) : .widget)
+
+        #expect(fake.simulatePointerLockRequested(request) == row.expected)
+        #expect(fake.passthroughAfterRequest == (row.mode == .ghost || row.mode == .floatHidden))
+    }
+
     /// Ghost Mode is read at request time, not when the handler was registered.
     @Test func decisionFollowsTheLiveModeAcrossToggles() {
         let (fake, orchestrator) = makeWidget(in: .normal); defer { withExtendedLifetime(orchestrator) {} }

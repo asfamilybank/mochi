@@ -3,7 +3,8 @@ import Foundation
 // MARK: - 网页交互请求接缝 (#66)
 //
 // A page can ask Mochi for something only a user can answer: a JavaScript dialog, a file to
-// upload, a new window (#67), a download (#68), camera/microphone access (#69). Every such request crosses the platform boundary the same way:
+// upload, a new window (#67), a download (#68), camera/microphone access (#69), the mouse pointer
+// (pointer lock). Every such request crosses the platform boundary the same way:
 //
 // - The AppKit layer translates one WebKit delegate callback into a *request* value and hands it
 //   to the handler registered through a per-kind `PlatformOps.on…Requested` hook.
@@ -382,4 +383,23 @@ public enum NewWindowDecision: Equatable, Sendable {
     case openPopupWindow
     /// Open nothing.
     case cancel
+}
+
+// MARK: Pointer lock
+
+/// A page's `requestPointerLock()`: a browser game hides the pointer and reads the mouse's raw
+/// movement to turn its camera. WebKit only passes on a request made from a click or key press in
+/// the page, and hands the pointer back by itself once the window stops being key.
+public struct PointerLockRequest: Equatable, Sendable {
+    public var source: WebViewSource
+
+    public init(source: WebViewSource = .widget) {
+        self.source = source
+    }
+}
+
+/// How a pointer-lock request is settled.
+public enum PointerLockDecision: Equatable, Sendable {
+    case grant
+    case deny
 }

@@ -616,6 +616,19 @@ final class FakePlatformOps: PlatformOps {
         mediaCaptureGrantsForgotten.append((source: source, onlyIfIdle: onlyIfIdle, windowID: handle.id))
     }
 
+    private var pointerLockRequestedHandlers: [Int: (PointerLockRequest) -> PointerLockDecision] = [:]
+
+    func onPointerLockRequested(
+        _ window: WidgetWindowHandle, perform handler: @escaping (PointerLockRequest) -> PointerLockDecision
+    ) {
+        let handle = window as! FakeWidgetWindowHandle
+        pointerLockRequestedHandlers[handle.id] = handler
+    }
+
+    func simulatePointerLockRequested(_ request: PointerLockRequest = PointerLockRequest(), windowID: Int = 1) -> PointerLockDecision? {
+        pointerLockRequestedHandlers[windowID]?(request)
+    }
+
     // MARK: #67: new windows and Popup Windows
 
     private var newWindowRequestedHandlers: [Int: (NewWindowRequest) -> NewWindowDecision] = [:]

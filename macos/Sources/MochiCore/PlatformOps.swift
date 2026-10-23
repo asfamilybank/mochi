@@ -482,6 +482,11 @@ public protocol PlatformOps: AnyObject {
     /// `onlyIfIdle` leaves the web view alone while it is capturing.
     func forgetMediaCaptureGrants(in window: WidgetWindowHandle, of source: WebViewSource, onlyIfIdle: Bool)
 
+    /// Registers the handler that decides a page's pointer-lock request — from the widget's page
+    /// or any of its Popup Windows (`PointerLockRequest.source`). With no handler the platform
+    /// denies it.
+    func onPointerLockRequested(_ window: WidgetWindowHandle, perform handler: @escaping (PointerLockRequest) -> PointerLockDecision)
+
     // #67: new windows and Popup Windows
 
     /// Registers the handler that decides a page's new-window request — from the widget's page or

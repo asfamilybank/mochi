@@ -139,6 +139,17 @@ extension AppKitWidgetWindowHandle: WKUIDelegate {
         webView.setMicrophoneCaptureState(.none)
     }
 
+    // MARK: Pointer lock
+
+    /// `WKUIDelegatePrivate`'s callback: macOS WebKit has no public pointer-lock API, and refuses
+    /// every `requestPointerLock()` when the delegate doesn't answer this. Only this form — when the
+    /// older `_webViewRequestPointerLock:` is implemented too, WebKit calls that one alone (measured).
+    @objc(_webViewDidRequestPointerLock:completionHandler:)
+    func webViewDidRequestPointerLock(_ webView: WKWebView, completionHandler: @escaping (Bool) -> Void) {
+        let request = PointerLockRequest(source: webViewSource(of: webView))
+        completionHandler((pointerLockRequestedHandler?(request) ?? .deny) == .grant)
+    }
+
     // MARK: New windows (#67)
 
     /// `target=_blank` links and `window.open` from the widget's page *or* any of its Popup

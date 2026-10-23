@@ -873,6 +873,12 @@ public final class Orchestrator {
         platformOps.onNewWindowRequested(window) { [weak self] request in
             self?.decideNewWindow(request) ?? .cancel
         }
+
+        // 不打扰 never lets the widget's page take the mouse away — a forwarded hotkey is a key
+        // press in the page, enough for `requestPointerLock()`. A Popup Window isn't 不打扰's.
+        platformOps.onPointerLockRequested(window) { [weak self] request in
+            (self?.doNotDisturb ?? false) && request.source == .widget ? .deny : .grant
+        }
     }
 
     /// ADR-0017's routing (#67). A plain link click loads where it was clicked; a ⌘-click goes to
